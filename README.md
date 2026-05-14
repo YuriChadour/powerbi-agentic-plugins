@@ -33,7 +33,36 @@ plugin-name/
 
 Select your AI assistant and install the plugin or skills directly within it.
 
-### GitHub Copilot CLI Setup
+### 🤝 For Teams: Team-Based Plugin Setup (Recommended)
+
+If you're setting up plugins for a **team or group**, use the team-friendly setup approach:
+
+1. **Clone the repository** (one person or each team member):
+   ```powershell
+   git clone https://github.com/YuriChadour/powerbi-agentic-plugins.git
+   cd powerbi-agentic-plugins
+   ```
+
+2. **Run the setup script** (each team member):
+   ```powershell
+   .\setup-team-plugins.ps1
+   ```
+
+3. **Verify installation** (each team member):
+   ```powershell
+   copilot /plugin list
+   ```
+
+**Benefits:**
+- ✓ All plugins (powerbi + fabric) install in one command
+- ✓ Both GitHub Copilot CLI and VS Code supported
+- ✓ MCP servers auto-configured
+- ✓ Team can pull updates via `git pull` and reinstall with `-Force`
+- ✓ Easy to contribute improvements back to the team fork
+
+**See [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md) for full team setup guide including troubleshooting.**
+
+### GitHub Copilot CLI Setup (Individual Users)
 
 - Install [GitHub Copilot CLI](https://github.com/features/copilot/cli)
 - Open Copilot and run the following commands:
