@@ -6,8 +6,8 @@ Plugins that turn GitHub Copilot into a specialist for Power BI and Microsoft Fa
 
 | Plugin                           | What it does                                                                                                                      | 
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | 
-| **[powerbi](./plugins/powerbi)** | Create semantic models, author reports in PBIR, write DAX queries, explore published datasets, and apply modeling best practices. | 
-| **[fabric](./plugins/fabric)**   | Navigate workspaces, import/export item definitions, call Fabric & Power BI REST APIs, run jobs, and manage OneLake files.        | 
+| **[powerbi](./plugins/powerbi)** | Create semantic models, author reports in PBIR, write DAX queries, explore published datasets, apply modeling best practices, and **optimize reports for Report Copilot pane readiness**. | 
+| **[fabric](./plugins/fabric)**   | Navigate workspaces, import/export item definitions, call Fabric & Power BI REST APIs, run jobs, and manage OneLake files.        |
 
 Every plugin follows the same structure:
 
@@ -75,6 +75,31 @@ Once installed, plugins activate automatically. Skills fire when relevant — fo
         ```
 
         See [GitHub Agent Skills documentation](https://code.visualstudio.com/docs/copilot/customization/agent-skills) for more information where you can configure skills with VS Code.
+
+
+## ✨ What's New: Report Copilot Pane Optimization
+
+This fork adds the **prep-powerbi-for-report-copilot** skill to the powerbi plugin. Optimize your Power BI reports and semantic models so the Report Copilot pane reliably answers questions using existing visuals.
+
+### 5-Step Workflow
+1. 📋 **Report Usage Inventory** — Document which fields each visual uses
+2. 🎯 **AI Data Schema** — Design what Copilot should and shouldn't see
+3. 💬 **AI Instructions** — Teach Copilot your business terminology
+4. 📊 **Answer Pack** — Create visuals that Copilot will reference
+5. ✅ **Test & Iterate** — Validate and refine Copilot behavior
+
+### Example Prompt
+```bash
+# Prompt:
+    Optimize my Power BI report for Copilot readiness
+    
+    Report path: C:\projects\portfolio-analysis\
+    Business domain: Portfolio performance tracking for asset managers
+    Top questions: ["What's the portfolio balance by state?", "Show me top 10 delinquencies", ...]
+    Sensitive fields: SSN, taxpayer ID
+```
+
+See [prep-powerbi-for-report-copilot skill](plugins/powerbi/skills/prep-powerbi-for-report-copilot/README.md) for full details and workflow.
 
 
 ## 📊 Scenarios

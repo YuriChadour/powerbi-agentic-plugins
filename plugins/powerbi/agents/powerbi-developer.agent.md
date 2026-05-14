@@ -38,3 +38,4 @@ When the user asks to implement a spec (e.g., `/implement [path]`), follow this 
 - powerbi-tmdl: For working with TMDL files.
 - powerbi-pbir: For working with PBIR report definition files.
 - fabric-cli: For listing and discovering semantic models in Fabric workspaces. And export/import of semantic model definitions.
+- prep-powerbi-for-report-copilot: For optimizing reports and semantic models so Report Copilot pane reliably answers questions using existing visuals. Includes workflow for building AI data schema, instructions, and Answer Pack pages.
