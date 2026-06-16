@@ -21,6 +21,7 @@ cd powerbi-agentic-plugins
 ```
 
 The script will:
+- ✓ Set execution policy to Bypass for the current PowerShell session only
 - ✓ Validate your system (PowerShell 7+, Git, GitHub Copilot CLI or VS Code)
 - ✓ Copy all plugins to `$env:USERPROFILE\.copilot\extensions\`
 - ✓ Register plugins with GitHub Copilot CLI (if installed)
@@ -33,7 +34,7 @@ The script will:
 # GitHub Copilot CLI
 copilot
 /plugin list
-# Should show: powerbi, fabric ✓
+# Should show: powerbi, fabric, devops ✓
 
 # VS Code
 # Restart VS Code and open Settings (Ctrl+,)
@@ -131,7 +132,7 @@ You'll see the documentation explaining each step.
 
 1. **Validates prerequisites** — checks PowerShell version, Git, Node.js, Copilot CLI/VS Code
 2. **Finds the repository** — uses the current directory or searches common locations
-3. **Copies plugins** — installs powerbi and fabric plugins to `$env:USERPROFILE\.copilot\extensions\`
+3. **Copies plugins** — installs powerbi, fabric, and devops plugins to `$env:USERPROFILE\.copilot\extensions\`
 4. **Registers with tools** — registers plugins with GitHub Copilot CLI and/or VS Code
 5. **Configures MCP servers** — sets up Model Context Protocol servers from `.mcp.json` files
 6. **Validates installation** — verifies all plugins loaded correctly
@@ -175,6 +176,7 @@ You should see:
 Available plugins:
   • powerbi — Power BI and Fabric development  ✓
   • fabric — Fabric administration and operations  ✓
+  • devops — Branch hygiene and Azure DevOps policies  ✓
 ```
 
 **VS Code:**
@@ -288,7 +290,7 @@ If still not working:
 A: Yes! Once installed, you can modify skills and agents. See `CONTRIBUTING_TEAM.md` for guidelines.
 
 **Q: What if I want to install only certain plugins?**  
-A: The setup script installs both powerbi and fabric. You can manually delete the ones you don't need from `$env:USERPROFILE\.copilot\extensions\`.
+A: The setup script installs powerbi, fabric, and devops. You can manually delete the ones you don't need from `$env:USERPROFILE\.copilot\extensions\`.
 
 **Q: Do I need both GitHub Copilot CLI and VS Code?**  
 A: No. Install one or both, depending on your preference. The setup script supports both.

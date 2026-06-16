@@ -1,0 +1,28 @@
+#Requires -Version 7.0
+
+$ErrorActionPreference = "Stop"
+
+$protectedBranches = @("main", "master", "prod", "production", "dev", "develop")
+$currentBranch = (git branch --show-current).Trim()
+
+if ([string]::IsNullOrWhiteSpace($currentBranch)) {
+    Write-Host "Could not determine the current Git branch." -ForegroundColor Red
+    exit 1
+}
+
+if ($protectedBranches -contains $currentBranch) {
+    Write-Host "Current branch '$currentBranch' is protected. Create a drv branch with a Jira key before continuing." -ForegroundColor Red
+    exit 1
+}
+
+if (-not $currentBranch.StartsWith("drv/")) {
+    Write-Host "Branch '$currentBranch' must start with 'drv/'." -ForegroundColor Red
+    exit 1
+}
+
+if ($currentBranch -notmatch '[A-Z]+-\d+') {
+    Write-Host "Branch '$currentBranch' must include an uppercase Jira key like ABC-123." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Branch '$currentBranch' is valid." -ForegroundColor Green

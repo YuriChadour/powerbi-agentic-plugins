@@ -47,7 +47,7 @@ This guide walks your team through adopting the `prep-powerbi-for-report-copilot
 
 ## Installation & Setup
 
-**New team members:** Follow [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md) to install all plugins (powerbi + fabric) in 3 steps.
+**New team members:** Follow [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md) to install all plugins (powerbi + fabric + devops) in 3 steps.
 
 ---
 

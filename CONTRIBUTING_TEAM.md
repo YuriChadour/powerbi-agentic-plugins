@@ -55,9 +55,9 @@ Examples:
 ### 3. Make Your Changes
 
 Edit files in your branch:
-- `plugins/powerbi/skills/[skill-name]/SKILL.md` — Update skill workflows
-- `plugins/powerbi/agents/[agent-name].agent.md` — Update agent instructions
-- `plugins/powerbi/.mcp.json` — Update MCP server configuration
+- `plugins/<plugin>/skills/[skill-name]/SKILL.md` — Update skill workflows
+- `plugins/devops/agent.md` or `plugins/<plugin>/agents/[agent-name].agent.md` — Update agent instructions
+- `plugins/<plugin>/.mcp.json` — Update MCP server configuration
 - Documentation and tests
 
 **Key files not to modify without review:**
@@ -193,7 +193,7 @@ git branch -d feature/improve-copilot-instructions
   - Troubleshooting guidance
   - Best practices
 
-- **Agents** (`plugins/powerbi/agents/*.agent.md`)
+- **Agents** (`plugins/<plugin>/agents/*.agent.md` or `plugins/devops/agent.md`)
   - Instructions and prompts
   - Skills referenced
   - Role descriptions
@@ -279,7 +279,7 @@ To add a new skill (requires team lead approval):
 
 3. Update agent files to reference the new skill:
    ```powershell
-   code plugins/powerbi/agents/powerbi-developer.agent.md
+   code plugins/devops/agent.md
    # Add to "## Skills to use" section
    ```
 
@@ -295,7 +295,7 @@ Agents are markdown files that define personas and tool usage. When editing:
 
 1. **Locate the agent:**
    ```powershell
-   code plugins/powerbi/agents/powerbi-developer.agent.md
+   code plugins/devops/agent.md
    ```
 
 2. **Update agent properties:**
