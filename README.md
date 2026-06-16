@@ -8,6 +8,7 @@ Plugins that turn GitHub Copilot into a specialist for Power BI and Microsoft Fa
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | 
 | **[powerbi](./plugins/powerbi)** | Create semantic models, author reports in PBIR, write DAX queries, explore published datasets, apply modeling best practices, and **optimize reports for Report Copilot pane readiness**. | 
 | **[fabric](./plugins/fabric)**   | Navigate workspaces, import/export item definitions, call Fabric & Power BI REST APIs, run jobs, and manage OneLake files.        |
+| **[devops](./plugins/devops)**   | Enforce branch hygiene, standard Azure DevOps branch policies, and team-safe Git workflows.                                      |
 
 Every plugin follows the same structure:
 
@@ -15,12 +16,12 @@ Every plugin follows the same structure:
 plugin-name/
 ├── .claude-plugin/plugin.json   # Manifest
 ├── .mcp.json                    # Tool connections
-├── agents/                      # Agent personas with role-specific instructions
+├── agents/ or agent.md          # Agent personas with role-specific instructions
 └── skills/                      # Domain knowledge Copilot draws on automatically
 ```
 
 - **Skills** encode domain expertise, best practices, command references, and step-by-step workflows. Copilot draws on them automatically when relevant.
-- **Agents** define personas with specific responsibilities (e.g., a Power BI architect vs. developer) and declare which skills and tools to use.
+- **Agents** define personas with specific responsibilities (e.g., a Power BI architect vs. developer) and declare which skills and tools to use. Some single-purpose plugins package one top-level `agent.md` instead of an `agents/` folder.
 - **Connectors** wire Copilot to external tools — the Fabric CLI and Power BI Modeling MCP — via [MCP servers](https://modelcontextprotocol.io/).
 
 **These plugins are starting points.** They become much more useful when you customize them for how your team actually works:
@@ -48,13 +49,15 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
    .\setup-team-plugins.ps1
    ```
 
+   The script sets execution policy to `Bypass` for the current session only, so it works without admin rights.
+
 3. **Verify installation** (each team member):
    ```powershell
    copilot /plugin list
    ```
 
 **Benefits:**
-- ✓ All plugins (powerbi + fabric) install in one command
+- ✓ All plugins (powerbi + fabric + devops) install in one command
 - ✓ Both GitHub Copilot CLI and VS Code supported
 - ✓ MCP servers auto-configured
 - ✓ Team can pull updates via `git pull` and reinstall with `-Force`
@@ -77,6 +80,7 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
     # Install plugins
     /plugin install powerbi@powerbi-agentic-plugins
     /plugin install fabric@powerbi-agentic-plugins
+    /plugin install devops@powerbi-agentic-plugins
 
     # Restart Copilot to activate
     ```

@@ -31,6 +31,18 @@
                 "crud",
                 "onelake"
             ]
+        },
+        {
+            "name": "devops",
+            "description": "Skills and agent instructions for branch hygiene and Azure DevOps policy workflows.",
+            "source": "./plugins/devops",
+            "version": "0.1.0",
+            "keywords": [
+                "devops",
+                "azure-devops",
+                "branch-policy",
+                "branch-guard"
+            ]
         }
     ]
 }
