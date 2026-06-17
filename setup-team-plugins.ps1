@@ -112,6 +112,20 @@ function Get-TargetPlugins {
     return @("powerbi", "fabric", "devops")
 }
 
+function Get-InstallRoot {
+    param([string]$PluginName)
+
+    if ($PluginName) {
+        return (Join-Path $env:USERPROFILE ".copilot\installed-plugins")
+    }
+
+    return (Join-Path $env:USERPROFILE ".copilot\extensions")
+}
+
+function Get-DiscoveryRoot {
+    return (Join-Path $env:USERPROFILE ".copilot\extensions")
+}
+
 function Test-Prerequisites {
     Write-Header "Validating Prerequisites"
     
@@ -289,6 +303,43 @@ function Install-Plugins {
     return $successCount -eq $Plugins.Count
 }
 
+function Sync-PluginsToDiscoveryRoot {
+    param(
+        [string]$InstallRoot,
+        [string]$DiscoveryRoot,
+        [string[]]$Plugins,
+        [bool]$Force
+    )
+
+    if ($InstallRoot -eq $DiscoveryRoot) {
+        return $true
+    }
+
+    foreach ($pluginName in $Plugins) {
+        $sourcePath = Join-Path $InstallRoot $pluginName
+        $destPath = Join-Path $DiscoveryRoot $pluginName
+
+        if (-not (Test-Path $sourcePath)) {
+            Write-Error-Custom "Installed plugin not found at: $sourcePath"
+            return $false
+        }
+
+        if ($Force -and (Test-Path $destPath)) {
+            Write-Info "Removing existing discovered $pluginName plugin..."
+            Remove-Item -Path $destPath -Recurse -Force
+        }
+
+        if (-not (Test-Path $destPath)) {
+            New-Item -ItemType Directory -Path $destPath -Force | Out-Null
+        }
+
+        Copy-Item -Path "$sourcePath\*" -Destination $destPath -Recurse -Force
+        Write-Info "Mirrored $pluginName plugin to discovery path: $destPath"
+    }
+
+    return $true
+}
+
 function Register-CopilotCLI {
     param([string]$ExtensionsPath)
     
@@ -378,18 +429,12 @@ function Validate-Installation {
         $hasAgents = Test-Path "$pluginPath\agents"
         $hasSkills = Test-Path "$pluginPath\skills"
         $hasMCP = Test-Path "$pluginPath\.mcp.json"
-        $hasRootAgent = Test-Path "$pluginPath\agent.md"
 
-        if ($hasSkills -and ($plugin -ne "devops" -or $hasRootAgent)) {
+        if ($hasSkills) {
             $agentStatus = if ($hasAgents) { "agents ✓" } else { "agents (optional)" }
-            $devopsStatus = if ($plugin -eq "devops") { "agent.md ✓ " } else { "" }
-            Write-Success "$plugin plugin: $devopsStatus$agentStatus skills ✓ $(if ($hasMCP) { 'mcp ✓' } else { 'mcp (optional)' })"
+            Write-Success "$plugin plugin: $agentStatus skills ✓ $(if ($hasMCP) { 'mcp ✓' } else { 'mcp (optional)' })"
         } else {
-            if ($plugin -eq "devops" -and -not $hasRootAgent) {
-                Write-Error-Custom "$plugin plugin missing required agent.md file"
-            } else {
-                Write-Error-Custom "$plugin plugin missing required skills directory"
-            }
+            Write-Error-Custom "$plugin plugin missing required skills directory"
             $allValid = $false
         }
     }
@@ -406,8 +451,11 @@ function Validate-Installation {
                 Write-Info "  • $plugin/$skill"
             }
         }
-        if ($plugin -eq "devops" -and (Test-Path "$pluginPath\agent.md")) {
-            Write-Info "  • $plugin/agent.md"
+        if (Test-Path "$pluginPath\agents") {
+            $agents = Get-ChildItem -Path "$pluginPath\agents" -File -Name
+            foreach ($agent in $agents) {
+                Write-Info "  • $plugin/agents/$agent"
+            }
         }
     }
     
@@ -469,32 +517,44 @@ try {
     }
     
     # Set up destination paths
-    $extensionsPath = Join-Path $env:USERPROFILE ".copilot" "extensions"
-    if (-not (Test-Path $extensionsPath)) {
-        New-Item -ItemType Directory -Path $extensionsPath -Force | Out-Null
+    $installRoot = Get-InstallRoot -PluginName $PluginName
+    $discoveryRoot = Get-DiscoveryRoot
+
+    if (-not (Test-Path $installRoot)) {
+        New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+    }
+
+    if (-not (Test-Path $discoveryRoot)) {
+        New-Item -ItemType Directory -Path $discoveryRoot -Force | Out-Null
     }
     
-    Write-Info "Destination: $extensionsPath"
+    Write-Info "Install root: $installRoot"
+    Write-Info "Discovery root: $discoveryRoot"
     $targetPlugins = Get-TargetPlugins -PluginName $PluginName
     
     # Install plugins
-    if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $extensionsPath -Force $Force -Plugins $targetPlugins)) {
+    if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $installRoot -Force $Force -Plugins $targetPlugins)) {
         Write-Error-Custom "Failed to install plugins."
+        exit 1
+    }
+
+    if (-not (Sync-PluginsToDiscoveryRoot -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins -Force $Force)) {
+        Write-Error-Custom "Failed to sync plugins to discovery path."
         exit 1
     }
     
     # Register with tools
-    $cliRegistered = Register-CopilotCLI -ExtensionsPath $extensionsPath
-    $vscodeRegistered = Register-VSCode -ExtensionsPath $extensionsPath
+    $cliRegistered = Register-CopilotCLI -ExtensionsPath $discoveryRoot
+    $vscodeRegistered = Register-VSCode -ExtensionsPath $discoveryRoot
     
     # Validate
-    if (-not (Validate-Installation -ExtensionsPath $extensionsPath -Plugins $targetPlugins)) {
+    if (-not (Validate-Installation -ExtensionsPath $discoveryRoot -Plugins $targetPlugins)) {
         Write-Error-Custom "Installation validation failed."
         exit 1
     }
     
     # Show next steps
-    Show-NextSteps -ExtensionsPath $extensionsPath -Plugins $targetPlugins
+    Show-NextSteps -ExtensionsPath $discoveryRoot -Plugins $targetPlugins
     
     Write-Success "Setup complete!"
     exit 0
