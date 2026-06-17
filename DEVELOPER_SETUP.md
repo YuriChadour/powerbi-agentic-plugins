@@ -17,7 +17,16 @@ cd powerbi-agentic-plugins
 ### Step 2: Run the Setup Script
 ```powershell
 # Run the setup script (one command installs everything)
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1
+
+# Or install from a repo you already cloned elsewhere
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+.\setup-team-plugins.ps1 -RepositoryPath "C:\Development\powerbi-agentic-plugins"
+
+# Or install only one plugin
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+.\setup-team-plugins.ps1 -PluginName powerbi
 ```
 
 The script will:
@@ -113,18 +122,23 @@ You'll see the documentation explaining each step.
 
 ```powershell
 # Basic setup (installs all plugins)
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1
 
 # If you already have plugins installed and want to update
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -Force
 
 # If you only want GitHub Copilot CLI (skip VS Code setup)
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -SkipVSCode
 
 # If you only want VS Code (skip Copilot CLI setup)
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -SkipCopilotCLI
 
 # Verbose output for troubleshooting
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -Verbose
 ```
 
@@ -132,7 +146,7 @@ You'll see the documentation explaining each step.
 
 1. **Validates prerequisites** — checks PowerShell version, Git, Node.js, Copilot CLI/VS Code
 2. **Finds the repository** — uses the current directory or searches common locations
-3. **Copies plugins** — installs powerbi, fabric, and devops plugins to `$env:USERPROFILE\.copilot\extensions\`
+3. **Copies plugins** — installs all plugins by default, or just one when `-PluginName` is provided
 4. **Registers with tools** — registers plugins with GitHub Copilot CLI and/or VS Code
 5. **Configures MCP servers** — sets up Model Context Protocol servers from `.mcp.json` files
 6. **Validates installation** — verifies all plugins loaded correctly
@@ -197,6 +211,7 @@ cd $env:USERPROFILE\repos\powerbi-agentic-plugins  # or wherever you cloned it
 git pull
 
 # Reinstall plugins (this updates them to the latest version)
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -Force
 
 # Restart your tools (Copilot CLI or VS Code)
@@ -230,7 +245,7 @@ git --version
 
 **Solutions:**
 - Install GitHub Copilot CLI from https://github.com/features/copilot/cli
-- Or use the script with `.\setup-team-plugins.ps1 -SkipCopilotCLI` to install for VS Code only
+- Or use the script with `Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force` then `.\setup-team-plugins.ps1 -SkipCopilotCLI` to install for VS Code only
 
 ### Issue: "Repository not found in common locations"
 
@@ -258,6 +273,7 @@ git --version
 
 3. Check for errors:
    ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
    .\setup-team-plugins.ps1 -Verbose
    ```
 
@@ -290,7 +306,7 @@ If still not working:
 A: Yes! Once installed, you can modify skills and agents. See `CONTRIBUTING_TEAM.md` for guidelines.
 
 **Q: What if I want to install only certain plugins?**  
-A: The setup script installs powerbi, fabric, and devops. You can manually delete the ones you don't need from `$env:USERPROFILE\.copilot\extensions\`.
+A: Pass `-PluginName powerbi`, `-PluginName fabric`, or `-PluginName devops` to install just one plugin.
 
 **Q: Do I need both GitHub Copilot CLI and VS Code?**  
 A: No. Install one or both, depending on your preference. The setup script supports both.
@@ -305,16 +321,18 @@ A: Delete the folders from `$env:USERPROFILE\.copilot\extensions\`:
 **Q: What if the setup script fails?**  
 A: Run with `-Verbose` for detailed output:
   ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
   .\setup-team-plugins.ps1 -Verbose
   ```
   Then check the "Troubleshooting" section above or ask your team lead.
 
 **Q: How often should I update?**  
-A: Pull updates weekly or when your team notifies you. You'll run `git pull && .\setup-team-plugins.ps1 -Force`.
+A: Pull updates weekly or when your team notifies you. You'll run `git pull`, then `Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force`, then `.\setup-team-plugins.ps1 -Force`.
 
 **Q: Can I have the repo in a different location?**  
 A: Yes! Pass the path to the script:
   ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
   .\setup-team-plugins.ps1 -RepositoryPath "C:\my\custom\path"
   ```
 
@@ -331,7 +349,7 @@ A: Yes! Pass the path to the script:
 
 ## Getting Help
 
-- **Script not working?** Run with `-Verbose`: `.\setup-team-plugins.ps1 -Verbose`
+- **Script not working?** Run with `Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force` then `.\setup-team-plugins.ps1 -Verbose`
 - **Want to contribute?** Read `CONTRIBUTING_TEAM.md`
 - **Have questions?** Contact your team lead or open an issue on GitHub
 

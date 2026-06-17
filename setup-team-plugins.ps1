@@ -4,18 +4,24 @@
     Setup script for installing Power BI Agentic Plugins for the team
     
 .DESCRIPTION
-    This script installs all plugins (powerbi + fabric + devops) from the powerbi-agentic-plugins
-    repository to $USERPROFILE\.copilot\extensions for GitHub Copilot CLI and VS Code.
+    This script installs all plugins, or a single selected plugin, from a local copy of the
+    powerbi-agentic-plugins repository to $USERPROFILE\.copilot\extensions for GitHub Copilot CLI
+    and VS Code.
     
     It validates prerequisites, copies plugins, registers with GitHub Copilot CLI,
     integrates with VS Code, and configures MCP servers.
     
 .PARAMETER RepositoryPath
-    Path to the cloned powerbi-agentic-plugins repository.
+    Path to the local powerbi-agentic-plugins repository.
     If not provided, will search common locations or prompt to clone.
-    
+
+.PARAMETER PluginName
+    Install only the specified plugin instead of all plugins.
+    Valid values: powerbi, fabric, devops
+     
 .PARAMETER SkipCopilotCLI
-    Skip registration with GitHub Copilot CLI (if not installed or not needed)
+    Skip GitHub Copilot CLI registration and verification.
+    Use this for VS Code-only installs or when Copilot CLI is not installed.
     
 .PARAMETER SkipVSCode
     Skip integration with VS Code (if not installed or not needed)
@@ -31,6 +37,12 @@
     
 .EXAMPLE
     .\setup-team-plugins.ps1 -RepositoryPath "C:\repos\powerbi-agentic-plugins" -Force
+
+.EXAMPLE
+    .\setup-team-plugins.ps1 -SkipCopilotCLI
+
+.EXAMPLE
+    .\setup-team-plugins.ps1 -PluginName powerbi
     
 .NOTES
     Requires PowerShell 7.0 or later
@@ -40,6 +52,8 @@
 
 param(
     [string]$RepositoryPath,
+    [ValidateSet("powerbi", "fabric", "devops")]
+    [string]$PluginName,
     [switch]$SkipCopilotCLI,
     [switch]$SkipVSCode,
     [switch]$Force,
@@ -86,6 +100,16 @@ function Write-Warning-Custom {
 function Write-Info {
     param([string]$Message)
     Write-Host "ℹ $Message" -ForegroundColor $ColorInfo
+}
+
+function Get-TargetPlugins {
+    param([string]$PluginName)
+
+    if ($PluginName) {
+        return @($PluginName)
+    }
+
+    return @("powerbi", "fabric", "devops")
 }
 
 function Test-Prerequisites {
@@ -215,21 +239,22 @@ function Install-Plugins {
     param(
         [string]$SourcePath,
         [string]$DestinationPath,
-        [bool]$Force
+        [bool]$Force,
+        [string[]]$Plugins
     )
     
     Write-Header "Installing Plugins"
     
-    $plugins = @("powerbi", "fabric", "devops")
     $successCount = 0
+    Write-Info "Target plugins: $($Plugins -join ', ')"
     
-    for ($i = 0; $i -lt $plugins.Count; $i++) {
-        $pluginName = $plugins[$i]
+    for ($i = 0; $i -lt $Plugins.Count; $i++) {
+        $pluginName = $Plugins[$i]
         
         $sourcePath_Local = Join-Path $SourcePath "plugins" $pluginName
         $destPath_Local = Join-Path $DestinationPath $pluginName
         
-        Write-Verbose "DEBUG: Processing plugin $($i+1) of $($plugins.Count): $pluginName"
+        Write-Verbose "DEBUG: Processing plugin $($i+1) of $($Plugins.Count): $pluginName"
         Write-Verbose "DEBUG: Source: $sourcePath_Local"
         
         if (-not (Test-Path $sourcePath_Local)) {
@@ -261,7 +286,7 @@ function Install-Plugins {
         }
     }
     
-    return $successCount -eq $plugins.Count
+    return $successCount -eq $Plugins.Count
 }
 
 function Register-CopilotCLI {
@@ -331,14 +356,16 @@ function Register-VSCode {
 }
 
 function Validate-Installation {
-    param([string]$ExtensionsPath)
+    param(
+        [string]$ExtensionsPath,
+        [string[]]$Plugins
+    )
     
     Write-Header "Validating Installation"
     
-    $plugins = @("powerbi", "fabric", "devops")
     $allValid = $true
     
-    foreach ($plugin in $plugins) {
+    foreach ($plugin in $Plugins) {
         $pluginPath = Join-Path $ExtensionsPath $plugin
         
         if (-not (Test-Path $pluginPath)) {
@@ -369,7 +396,7 @@ function Validate-Installation {
     
     # List installed skills
     Write-Info "Installed plugins and skills:"
-    foreach ($plugin in $plugins) {
+    foreach ($plugin in $Plugins) {
         $pluginPath = Join-Path $ExtensionsPath $plugin
         $skillsPath = "$pluginPath\skills"
         
@@ -388,12 +415,16 @@ function Validate-Installation {
 }
 
 function Show-NextSteps {
-    param([string]$ExtensionsPath)
+    param(
+        [string]$ExtensionsPath,
+        [string[]]$Plugins
+    )
     
     Write-Header "Installation Complete!"
     
     Write-Info "Plugins installed to:"
     Write-Host "  $ExtensionsPath" -ForegroundColor $ColorInfo
+    Write-Info "Installed plugin(s): $($Plugins -join ', ')"
     
     Write-Info "Next steps:"
     Write-Host "  1. Restart GitHub Copilot CLI or VS Code to load plugins" -ForegroundColor $ColorInfo
@@ -419,8 +450,8 @@ try {
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║         Power BI Agentic Plugins — Team Setup Script                      ║
 ║                                                                            ║
-║  This script installs all plugins (powerbi + fabric + devops) to your user ║
-║  profile for use with GitHub Copilot CLI and/or VS Code.                  ║
+║  This script installs all plugins, or a single selected plugin, to your    ║
+║  user profile for use with GitHub Copilot CLI and/or VS Code.             ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 " -ForegroundColor $ColorInfo
     
@@ -444,9 +475,10 @@ try {
     }
     
     Write-Info "Destination: $extensionsPath"
+    $targetPlugins = Get-TargetPlugins -PluginName $PluginName
     
     # Install plugins
-    if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $extensionsPath -Force $Force)) {
+    if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $extensionsPath -Force $Force -Plugins $targetPlugins)) {
         Write-Error-Custom "Failed to install plugins."
         exit 1
     }
@@ -456,13 +488,13 @@ try {
     $vscodeRegistered = Register-VSCode -ExtensionsPath $extensionsPath
     
     # Validate
-    if (-not (Validate-Installation -ExtensionsPath $extensionsPath)) {
+    if (-not (Validate-Installation -ExtensionsPath $extensionsPath -Plugins $targetPlugins)) {
         Write-Error-Custom "Installation validation failed."
         exit 1
     }
     
     # Show next steps
-    Show-NextSteps -ExtensionsPath $extensionsPath
+    Show-NextSteps -ExtensionsPath $extensionsPath -Plugins $targetPlugins
     
     Write-Success "Setup complete!"
     exit 0

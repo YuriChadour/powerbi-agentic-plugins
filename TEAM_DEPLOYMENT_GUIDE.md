@@ -141,7 +141,12 @@ git clone https://github.com/YuriChadour/powerbi-agentic-plugins.git
 
 # Run the setup script (installs all plugins)
 cd powerbi-agentic-plugins
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1
+
+# Or install from an already-cloned local repo path
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+.\setup-team-plugins.ps1 -RepositoryPath "C:\Development\powerbi-agentic-plugins"
 
 # Verify
 copilot /plugin list
@@ -212,6 +217,7 @@ When the team updates the repository, team members should pull the latest change
 ```powershell
 # Navigate to your repo
 cd $env:USERPROFILE\repos\powerbi-agentic-plugins  # or wherever you cloned it
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
 # Pull updates from GitHub
 git pull origin main
@@ -283,7 +289,7 @@ After full rollout, monitor:
 
 | Problem | Solution |
 |---------|----------|
-| "Skill not found" | Run `/plugin marketplace add YuriChadour/powerbi-agentic-plugins` again |
+| "Skill not found" | Re-run `.\setup-team-plugins.ps1 -RepositoryPath "C:\Development\powerbi-agentic-plugins"` from the local repo |
 | PowerShell version error | Upgrade to PowerShell 7: https://github.com/PowerShell/PowerShell |
 | "Cannot connect to GitHub" | Check firewall; try manual clone (Option B) |
 | Plugin loads but skill missing | Run `copilot /skill list` to verify; restart Copilot |
@@ -321,7 +327,8 @@ Print and share with team:
 INSTALLATION (see DEVELOPER_SETUP.md for full guide):
   1. git clone https://github.com/YuriChadour/powerbi-agentic-plugins.git
   2. cd powerbi-agentic-plugins
-  3. .\setup-team-plugins.ps1
+  3. Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+  4. .\setup-team-plugins.ps1
 
 USING THE SKILL:
   copilot
