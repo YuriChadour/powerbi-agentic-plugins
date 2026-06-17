@@ -7,6 +7,9 @@ param(
     [string]$SkillVersion = "main"
 )
 
+# Run with a process-scoped bypass so the installer works without changing user policy.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
 # Detect OS
 if ($PSVersionTable.Platform -ne "Win32NT" -and $PSVersionTable.PSVersion.Major -lt 7) {
     Write-Host "❌ This installer requires PowerShell 7.0+ or Windows PowerShell on Windows." -ForegroundColor Red

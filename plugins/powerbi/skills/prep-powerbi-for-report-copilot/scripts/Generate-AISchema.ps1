@@ -7,6 +7,9 @@ param(
     [string]$OutputPath = "documentation/copilot/ai-schema.csv"
 )
 
+# Run with a process-scoped bypass so helper scripts work without policy changes.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
 # Default inclusion rules based on displayFolder
 $includeDisplayFolders = @("Standard", "PM", "MoM", "Delinquency")
 $excludeDisplayFolders = @("Visual", "Visual\SVG", "Reference", "Reference for Table", "Tolerance", "Signal", "Narrative", "Utility")

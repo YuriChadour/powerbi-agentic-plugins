@@ -40,6 +40,9 @@ param(
     [switch]$CleanBoth
 )
 
+# Run with a process-scoped bypass so helper scripts work without policy changes.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
 $RemoveBomScript = Join-Path $PSScriptRoot "remove_all_boms.ps1"
 
 if (-not (Test-Path $RemoveBomScript)) {

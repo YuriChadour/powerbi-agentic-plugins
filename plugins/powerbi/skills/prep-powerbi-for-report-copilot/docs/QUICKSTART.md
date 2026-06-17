@@ -9,7 +9,7 @@
 ### Option A: Automated (Recommended)
 ```powershell
 # Windows PowerShell / PowerShell 7+
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 iwr "https://raw.githubusercontent.com/bayviewasset/prep-powerbi-for-report-copilot/main/install-skill.ps1" | iex
 ```
 

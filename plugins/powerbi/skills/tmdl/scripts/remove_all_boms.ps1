@@ -9,6 +9,9 @@ param(
     [string]$Encoding = "UTF8"
 )
 
+# Run with a process-scoped bypass so helper scripts work without policy changes.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
 # Validate path exists
 if (-not (Test-Path -Path $RootPath)) {
     Write-Host "Error: Path does not exist: $RootPath" -ForegroundColor Red
