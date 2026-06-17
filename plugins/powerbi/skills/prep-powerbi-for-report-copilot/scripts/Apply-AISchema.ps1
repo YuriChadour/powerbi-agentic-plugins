@@ -8,6 +8,9 @@ param(
     [string]$CSVPath = "documentation/copilot/ai-schema.csv"
 )
 
+# Run with a process-scoped bypass so helper scripts work without policy changes.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
 # Validate inputs
 if (-not (Test-Path $CSVPath)) {
     Write-Error "Cannot find ai-schema.csv at: $CSVPath"

@@ -7,6 +7,9 @@ param (
     ,
     $rulesFilePath = $null
 )
+
+# Run with a process-scoped bypass so helper scripts work without policy changes.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
   
 $currentFolder = (Split-Path $MyInvocation.MyCommand.Definition -Parent)
 

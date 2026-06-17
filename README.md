@@ -46,6 +46,7 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 
 2. **Run the setup script** (each team member):
    ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
    .\setup-team-plugins.ps1
    ```
 
@@ -68,22 +69,23 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 ### GitHub Copilot CLI Setup (Individual Users)
 
 - Install [GitHub Copilot CLI](https://github.com/features/copilot/cli)
-- Open Copilot and run the following commands:
+- Clone or download this repository locally, then run the setup script from that folder:
 
-    ```bash
-    # Open GitHub Copilot CLI
-    copilot
-
-    # Add the marketplace (one-time setup)
-    /plugin marketplace add RuiRomano/powerbi-agentic-plugins
-
-    # Install plugins
-    /plugin install powerbi@powerbi-agentic-plugins
-    /plugin install fabric@powerbi-agentic-plugins
-    /plugin install devops@powerbi-agentic-plugins
-
-    # Restart Copilot to activate
+    ```powershell
+    git clone https://github.com/YuriChadour/powerbi-agentic-plugins.git
+    cd powerbi-agentic-plugins
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+    .\setup-team-plugins.ps1
     ```
+
+- If the repo is already on disk somewhere else, point the script at that local path:
+
+    ```powershell
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+    .\setup-team-plugins.ps1 -RepositoryPath "C:\Development\powerbi-agentic-plugins"
+    ```
+
+- To install only one plugin, add `-PluginName powerbi` (or `fabric`, `devops`).
 
 Once installed, plugins activate automatically. Skills fire when relevant — for example, asking Copilot to create a semantic model automatically pulls in the `powerbi-semantic-model` skill.
 

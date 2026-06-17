@@ -70,6 +70,7 @@ Edit files in your branch:
 
 ```powershell
 # Reinstall plugins with your changes
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -Force
 
 # Restart Copilot CLI or VS Code
@@ -242,6 +243,7 @@ Skills are markdown files that define workflows. When editing:
 3. **Test in Copilot:**
    ```powershell
    # Reinstall with your changes
+   Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
    .\setup-team-plugins.ps1 -Force
    
    # Restart Copilot and ask it to use the skill
@@ -305,7 +307,7 @@ Agents are markdown files that define personas and tool usage. When editing:
    - Instructions and guidelines
 
 3. **Test:**
-   - Reinstall: `.\setup-team-plugins.ps1 -Force`
+   - Reinstall: run `Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force` then `.\setup-team-plugins.ps1 -Force`
    - Ask Copilot to take on the agent role
 
 4. **Commit:**
@@ -439,6 +441,7 @@ git commit -m "fixed bug"
 ### Test Before Pushing
 ```powershell
 # Always test your changes locally
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -Force
 # Then manually verify in Copilot
 ```
