@@ -220,6 +220,7 @@ function Find-Repository {
     
     # Search common locations
     $commonLocations = @(
+        $PSScriptRoot,
         "$(Split-Path $PSScriptRoot -Parent)",
         "$env:USERPROFILE\repos\powerbi-agentic-plugins",
         "$env:USERPROFILE\git\powerbi-agentic-plugins",
