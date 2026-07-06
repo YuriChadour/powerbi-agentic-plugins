@@ -85,7 +85,7 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
     .\setup-team-plugins.ps1 -RepositoryPath "C:\Development\powerbi-agentic-plugins"
     ```
 
-- To install only one plugin, add `-PluginName powerbi` (or `fabric`, `devops`).
+- To install only one plugin, add `-PluginName powerbi` (or `fabric`, `devops`). It installs to `~\.copilot\installed-plugins\<plugin>` and mirrors into `~\.copilot\extensions\<plugin>` so Copilot can discover it.
 
 Once installed, plugins activate automatically. Skills fire when relevant — for example, asking Copilot to create a semantic model automatically pulls in the `powerbi-semantic-model` skill.
 
