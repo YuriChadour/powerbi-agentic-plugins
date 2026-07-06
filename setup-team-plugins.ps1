@@ -112,6 +112,36 @@ function Get-TargetPlugins {
     return @("powerbi", "fabric", "devops")
 }
 
+function Get-MarketplaceName {
+    param([string]$RepositoryPath)
+    $marketplacePath = Join-Path $RepositoryPath ".claude-plugin\marketplace.json"
+    if (Test-Path $marketplacePath) {
+        $marketplace = Get-Content $marketplacePath -Raw | ConvertFrom-Json
+        return $marketplace.name
+    }
+    return "powerbi-agentic-plugins"
+}
+
+function Get-PluginVersion {
+    param([string]$RepositoryPath, [string]$PluginName)
+    $marketplacePath = Join-Path $RepositoryPath ".claude-plugin\marketplace.json"
+    if (Test-Path $marketplacePath) {
+        $marketplace = Get-Content $marketplacePath -Raw | ConvertFrom-Json
+        $plugin = $marketplace.plugins | Where-Object { $_.name -eq $PluginName }
+        if ($plugin) { return $plugin.version }
+    }
+    return "0.1.0"
+}
+
+function Get-InstallRoot {
+    param([string]$MarketplaceName)
+    return (Join-Path $env:USERPROFILE ".copilot\installed-plugins\$MarketplaceName")
+}
+
+function Get-DiscoveryRoot {
+    return (Join-Path $env:USERPROFILE ".copilot\extensions")
+}
+
 function Test-Prerequisites {
     Write-Header "Validating Prerequisites"
     
@@ -190,6 +220,7 @@ function Find-Repository {
     
     # Search common locations
     $commonLocations = @(
+        $PSScriptRoot,
         "$(Split-Path $PSScriptRoot -Parent)",
         "$env:USERPROFILE\repos\powerbi-agentic-plugins",
         "$env:USERPROFILE\git\powerbi-agentic-plugins",
@@ -289,6 +320,119 @@ function Install-Plugins {
     return $successCount -eq $Plugins.Count
 }
 
+function Sync-PluginsToDiscoveryRoot {
+    param(
+        [string]$InstallRoot,
+        [string]$DiscoveryRoot,
+        [string[]]$Plugins,
+        [bool]$Force
+    )
+
+    if ($InstallRoot -eq $DiscoveryRoot) {
+        return $true
+    }
+
+    foreach ($pluginName in $Plugins) {
+        $sourcePath = Join-Path $InstallRoot $pluginName
+        $destPath = Join-Path $DiscoveryRoot $pluginName
+
+        if (-not (Test-Path $sourcePath)) {
+            Write-Error-Custom "Installed plugin not found at: $sourcePath"
+            return $false
+        }
+
+        if ($Force -and (Test-Path $destPath)) {
+            Write-Info "Removing existing discovered $pluginName plugin..."
+            Remove-Item -Path $destPath -Recurse -Force
+        }
+
+        if (-not (Test-Path $destPath)) {
+            New-Item -ItemType Directory -Path $destPath -Force | Out-Null
+        }
+
+        Copy-Item -Path "$sourcePath\*" -Destination $destPath -Recurse -Force
+        Write-Info "Mirrored $pluginName plugin to discovery path: $destPath"
+    }
+
+    return $true
+}
+
+function Register-PluginsInCopilotConfig {
+    param(
+        [string]$InstallRoot,
+        [string]$MarketplaceName,
+        [string[]]$Plugins,
+        [string]$RepositoryPath
+    )
+
+    $configPath = "$env:USERPROFILE\.copilot\config.json"
+    if (-not (Test-Path $configPath)) {
+        Write-Warning-Custom "config.json not found — skipping plugin registration in config"
+        return $false
+    }
+
+    Write-Header "Registering Plugins in Copilot Config"
+
+    $config = Get-Content $configPath -Raw | ConvertFrom-Json
+
+    foreach ($pluginName in $Plugins) {
+        $cachePath = Join-Path $InstallRoot $pluginName
+        $version   = Get-PluginVersion -RepositoryPath $RepositoryPath -PluginName $pluginName
+
+        $existing = $config.installedPlugins | Where-Object { $_.name -eq $pluginName -and $_.marketplace -eq $MarketplaceName }
+
+        if ($existing) {
+            $existing.version    = $version
+            $existing.cache_path = $cachePath
+            $existing.enabled    = $true
+            Write-Info "Updated $pluginName in config.json (version $version)"
+        } else {
+            $entry = [PSCustomObject]@{
+                name         = $pluginName
+                marketplace  = $MarketplaceName
+                installed_at = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+                enabled      = $true
+                version      = $version
+                cache_path   = $cachePath
+            }
+            $config.installedPlugins += $entry
+            Write-Info "Registered $pluginName in config.json (version $version)"
+        }
+    }
+
+    $config | ConvertTo-Json -Depth 20 | Set-Content $configPath -Encoding UTF8
+    Write-Success "Plugin registrations saved to config.json ✓"
+    return $true
+}
+
+function Register-PluginsInSettings {
+    param(
+        [string]$MarketplaceName,
+        [string[]]$Plugins
+    )
+
+    $settingsPath = "$env:USERPROFILE\.copilot\settings.json"
+    if (-not (Test-Path $settingsPath)) {
+        Write-Warning-Custom "settings.json not found — skipping enabledPlugins update"
+        return $false
+    }
+
+    foreach ($pluginName in $Plugins) {
+        $key = "$pluginName@$MarketplaceName"
+        if (-not ($settings = Get-Content $settingsPath -Raw | ConvertFrom-Json).enabledPlugins.PSObject.Properties[$key]) {
+            $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+            $settings.enabledPlugins | Add-Member -NotePropertyName $key -NotePropertyValue $true -Force
+            $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath -Encoding UTF8
+            Write-Info "Enabled $key in settings.json"
+        } else {
+            Write-Info "$key already enabled in settings.json"
+        }
+    }
+
+    Write-Success "Plugin settings saved to settings.json ✓"
+    return $true
+}
+
 function Register-CopilotCLI {
     param([string]$ExtensionsPath)
     
@@ -378,18 +522,12 @@ function Validate-Installation {
         $hasAgents = Test-Path "$pluginPath\agents"
         $hasSkills = Test-Path "$pluginPath\skills"
         $hasMCP = Test-Path "$pluginPath\.mcp.json"
-        $hasRootAgent = Test-Path "$pluginPath\agent.md"
 
-        if ($hasSkills -and ($plugin -ne "devops" -or $hasRootAgent)) {
+        if ($hasSkills) {
             $agentStatus = if ($hasAgents) { "agents ✓" } else { "agents (optional)" }
-            $devopsStatus = if ($plugin -eq "devops") { "agent.md ✓ " } else { "" }
-            Write-Success "$plugin plugin: $devopsStatus$agentStatus skills ✓ $(if ($hasMCP) { 'mcp ✓' } else { 'mcp (optional)' })"
+            Write-Success "$plugin plugin: $agentStatus skills ✓ $(if ($hasMCP) { 'mcp ✓' } else { 'mcp (optional)' })"
         } else {
-            if ($plugin -eq "devops" -and -not $hasRootAgent) {
-                Write-Error-Custom "$plugin plugin missing required agent.md file"
-            } else {
-                Write-Error-Custom "$plugin plugin missing required skills directory"
-            }
+            Write-Error-Custom "$plugin plugin missing required skills directory"
             $allValid = $false
         }
     }
@@ -406,8 +544,11 @@ function Validate-Installation {
                 Write-Info "  • $plugin/$skill"
             }
         }
-        if ($plugin -eq "devops" -and (Test-Path "$pluginPath\agent.md")) {
-            Write-Info "  • $plugin/agent.md"
+        if (Test-Path "$pluginPath\agents") {
+            $agents = Get-ChildItem -Path "$pluginPath\agents" -File -Name
+            foreach ($agent in $agents) {
+                Write-Info "  • $plugin/agents/$agent"
+            }
         }
     }
     
@@ -467,34 +608,53 @@ try {
         Write-Error-Custom "Could not locate repository. Exiting."
         exit 1
     }
+
+    # Resolve marketplace name and target plugins
+    $marketplaceName = Get-MarketplaceName -RepositoryPath $repoPath
+    $targetPlugins   = Get-TargetPlugins -PluginName $PluginName
     
     # Set up destination paths
-    $extensionsPath = Join-Path $env:USERPROFILE ".copilot" "extensions"
-    if (-not (Test-Path $extensionsPath)) {
-        New-Item -ItemType Directory -Path $extensionsPath -Force | Out-Null
+    $installRoot   = Get-InstallRoot -MarketplaceName $marketplaceName
+    $discoveryRoot = Get-DiscoveryRoot
+
+    if (-not (Test-Path $installRoot)) {
+        New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+    }
+
+    if (-not (Test-Path $discoveryRoot)) {
+        New-Item -ItemType Directory -Path $discoveryRoot -Force | Out-Null
     }
     
-    Write-Info "Destination: $extensionsPath"
-    $targetPlugins = Get-TargetPlugins -PluginName $PluginName
+    Write-Info "Install root: $installRoot"
+    Write-Info "Discovery root: $discoveryRoot"
     
     # Install plugins
-    if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $extensionsPath -Force $Force -Plugins $targetPlugins)) {
+    if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $installRoot -Force $Force -Plugins $targetPlugins)) {
         Write-Error-Custom "Failed to install plugins."
         exit 1
     }
+
+    if (-not (Sync-PluginsToDiscoveryRoot -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins -Force $Force)) {
+        Write-Error-Custom "Failed to sync plugins to discovery path."
+        exit 1
+    }
+
+    # Register plugins in Copilot config and settings
+    Register-PluginsInCopilotConfig -InstallRoot $installRoot -MarketplaceName $marketplaceName -Plugins $targetPlugins -RepositoryPath $repoPath | Out-Null
+    Register-PluginsInSettings -MarketplaceName $marketplaceName -Plugins $targetPlugins | Out-Null
     
     # Register with tools
-    $cliRegistered = Register-CopilotCLI -ExtensionsPath $extensionsPath
-    $vscodeRegistered = Register-VSCode -ExtensionsPath $extensionsPath
+    $cliRegistered = Register-CopilotCLI -ExtensionsPath $discoveryRoot
+    $vscodeRegistered = Register-VSCode -ExtensionsPath $discoveryRoot
     
     # Validate
-    if (-not (Validate-Installation -ExtensionsPath $extensionsPath -Plugins $targetPlugins)) {
+    if (-not (Validate-Installation -ExtensionsPath $discoveryRoot -Plugins $targetPlugins)) {
         Write-Error-Custom "Installation validation failed."
         exit 1
     }
     
     # Show next steps
-    Show-NextSteps -ExtensionsPath $extensionsPath -Plugins $targetPlugins
+    Show-NextSteps -ExtensionsPath $discoveryRoot -Plugins $targetPlugins
     
     Write-Success "Setup complete!"
     exit 0
