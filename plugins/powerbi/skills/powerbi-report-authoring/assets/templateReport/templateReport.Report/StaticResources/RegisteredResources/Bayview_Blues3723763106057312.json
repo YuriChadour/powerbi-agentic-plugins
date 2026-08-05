@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "Bayview Blues",
-  "$schema": "https://raw.githubusercontent.com/microsoft/powerbi-desktop-samples/main/Report%20Theme%20JSON%20Schema/reportThemeSchema-2.156.json",
+  "$schema": "reportThemeSchema-2.156.json",
   "dataColors": [
     "#005288",
     "#0d96d4",
@@ -710,7 +710,7 @@
             "$id": "default",
             "horizontalAlignment": "center",
             "verticalAlignment": "middle",
-            "fontSize": 7,
+            "fontSize": 8,
             "text": "Button"
           }
         ]
@@ -742,7 +742,7 @@
             "saturation": 40
           },
           {
-            "$id": "selected",
+            "$id": "selection:selected",
             "saturation": 100
           }
         ],
