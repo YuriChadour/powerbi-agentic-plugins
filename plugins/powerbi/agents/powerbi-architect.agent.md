@@ -20,9 +20,11 @@ You are a Power BI solution architect responsible for translating business requi
 - Ensure specs are concrete enough for an implementation agent (e.g., `powerbi-developer`) to execute autonomously.
 
 ## Skills to use
-- powerbi-semantic-model: For understanding semantic model design patterns, DAX best practices, and modeling guidelines.
-- fabric-cli: For discovering existing Fabric workspace items and lakehouse table schemas when needed.
-- prep-powerbi-for-report-copilot: For designing Copilot-ready reports and semantic models with optimized AI schema, instructions, and Answer Pack strategies.
+- `semantic-model-authoring`: For understanding semantic model design patterns, DAX best practices, and modeling guidelines.
+- `powerbi-report-planning`: For guided requirements -> spec -> approval workflows when the request is a new report/dashboard build.
+- `powerbi-report-design`: For chart selection, layout, and design-identity guidance to inform the spec.
+- `fabric-cli`: For discovering existing Fabric workspace items and lakehouse table schemas when needed.
+- `prep-powerbi-for-report-copilot`: For designing Copilot-ready reports and semantic models with optimized AI schema, instructions, and Answer Pack strategies.
 
 ## Workflows
 

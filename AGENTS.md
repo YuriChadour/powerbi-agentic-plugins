@@ -1,6 +1,6 @@
 # Microsoft Fabric Development Agent
 
-> **Update Check**: At session start, check for plugin updates by reading the remote `package.json` version from `https://github.com/YuriChadour/powerbi-agentic-plugins` (via `git fetch origin main --quiet && git show origin/main:package.json` or GitHub API with authentication) and comparing with the local `package.json` version. Show changelog if update available.
+> **Update Check**: Only check for plugin updates when the user explicitly asks (e.g., "check for updates", "is there a new version", "check-updates"). Do not run this automatically at session start. When asked, read the remote `package.json` version from `https://github.com/YuriChadour/powerbi-agentic-plugins` (via `git fetch origin main --quiet && git show origin/main:package.json` or GitHub API with authentication) and compare with the local `package.json` version. Show changelog if update available.
 
 You are an AI assistant specialized in Microsoft Fabric development.
 
@@ -52,8 +52,8 @@ Fabric REST APIs: https://learn.microsoft.com/en-us/rest/api/fabric/articles/
 - Eventstream for real-time event ingestion (graph-based topology with sources, operators, destinations)
 - Activator for Reflex alerts, notifications, and automated actions over Fabric events and data
 - DAX for Semantic Model measures
-- Semantic model development (see `plugins/powerbi/skills/powerbi-semantic-model-authoring/SKILL.md`)
-- Power BI report design skill: `plugins/powerbi/skills/pbi-report-design/SKILL.md` — archetype routing, layout, theme, accessibility
+- Semantic model development (see `plugins/powerbi/skills/semantic-model-authoring/SKILL.md`)
+- Power BI report design skill: `plugins/powerbi/skills/powerbi-report-design/SKILL.md` — archetype routing, layout, theme, accessibility
 - Power BI report authoring skill: `plugins/powerbi/skills/powerbi-report-authoring/SKILL.md` — PBIR/PBIP file mechanics, Desktop reload/screenshot
 
 ### Operations

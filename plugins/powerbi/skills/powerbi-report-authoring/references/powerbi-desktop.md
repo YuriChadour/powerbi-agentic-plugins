@@ -26,7 +26,10 @@ structurally valid. Use this loop:
 
 ### Setup
 
-Install the Desktop Bridge CLI globally:
+The Desktop Bridge CLI is installed automatically by `setup-team-plugins.ps1`
+when the `powerbi` plugin is included (the default). If it's missing —
+e.g., manual plugin copy, or `npm`/Node.js wasn't available at setup time —
+install it globally yourself:
 
 ```bash
 npm install -g @microsoft/powerbi-desktop-bridge-cli

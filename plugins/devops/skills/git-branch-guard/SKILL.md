@@ -1,6 +1,6 @@
 ---
 name: git-branch-guard
-description: Ensures development starts on a valid drv branch that includes a Jira ticket number.
+description: Ensures development starts on a valid bugfix/ or feature/ branch that includes a Jira ticket number.
 ---
 
 # Git Branch Guard (Windows)
@@ -27,7 +27,8 @@ A valid development branch must:
    - dev
    - develop
 2. Follow the preferred pattern:
-   - `drv/JIRA-123-short-description`
+   - `bugfix/JIRA-123-short-description`
+   - `feature/JIRA-123-short-description`
 3. Include a Jira ticket key in uppercase format:
    - `ABC-123`
 
@@ -35,7 +36,7 @@ A valid development branch must:
 1. Detect the current Git branch.
 2. Fail if the branch is protected.
 3. Fail if the branch does not contain a Jira ticket.
-4. Fail if the branch does not start with `drv/`.
+4. Fail if the branch does not start with `bugfix/` or `feature/`.
 5. Suggest a compliant replacement branch name.
 6. Do not proceed to implementation until the branch check passes.
 
@@ -46,8 +47,8 @@ powershell -ExecutionPolicy Bypass -File check_git_branch_guard.txt
 ```
 
 ## Example valid branches
-- drv/BI-123-fix-allocation-bug
-- drv/DATA-456-add-audit-table
+- bugfix/BI-123-fix-allocation-bug
+- feature/DATA-456-add-audit-table
 
 ## Example invalid branches
 - dev

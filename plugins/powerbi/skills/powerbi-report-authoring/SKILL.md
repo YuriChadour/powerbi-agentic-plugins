@@ -16,11 +16,8 @@ metadata:
   version: 0.2.0
 ---
 
-> **Update Check — ONCE PER SESSION (mandatory)**
-> The first time this skill is used in a session, run the **check-updates** skill before proceeding.
-> - **GitHub Copilot CLI / VS Code**: invoke the `check-updates` skill.
-> - **Claude Code / Cowork / Cursor / Windsurf / Codex**: compare local vs remote package.json version.
-> - Skip if the check was already performed earlier in this session.
+> **Update Check — explicit only**
+> Only run the **check-updates** skill when the user explicitly asks to check for updates (e.g., "check for updates", "is there a new version"). Do not invoke it automatically at session start or the first time this skill is used.
 
 > **CRITICAL NOTES**
 > 1. To find the workspace details (including its ID) from workspace name: list all workspaces and, then, use JMESPath filtering
