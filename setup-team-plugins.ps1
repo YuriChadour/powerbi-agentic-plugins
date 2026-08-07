@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Setup script for installing Power BI Agentic Plugins for the team
@@ -8,8 +8,16 @@
     powerbi-agentic-plugins repository to $USERPROFILE\.copilot\extensions for GitHub Copilot CLI
     and VS Code.
     
-    It validates prerequisites, copies plugins, registers with GitHub Copilot CLI,
-    integrates with VS Code, and configures MCP servers.
+    It validates prerequisites, backs up and removes any existing copies of the
+    targeted plugins already installed under $USERPROFILE\.copilot (both the
+    installed-plugins cache and the extensions discovery folder), copies the
+    current plugins, registers with GitHub Copilot CLI, integrates with VS Code,
+    configures MCP servers, and installs the Power BI Desktop Bridge CLI
+    (@microsoft/powerbi-desktop-bridge-cli) when the powerbi plugin is targeted.
+    
+    Backups are timestamped and stored under
+    $USERPROFILE\.copilot\backups\<yyyyMMdd-HHmmss>, so previous plugin versions
+    can be restored manually if needed.
     
 .PARAMETER RepositoryPath
     Path to the local powerbi-agentic-plugins repository.
@@ -17,7 +25,7 @@
 
 .PARAMETER PluginName
     Install only the specified plugin instead of all plugins.
-    Valid values: powerbi, fabric, devops
+    Valid values: powerbi, fabric, devops, skill-creator
      
 .PARAMETER SkipCopilotCLI
     Skip GitHub Copilot CLI registration and verification.
@@ -45,14 +53,14 @@
     .\setup-team-plugins.ps1 -PluginName powerbi
     
 .NOTES
-    Requires PowerShell 7.0 or later
+    Requires PowerShell 5.1 or later (Windows PowerShell 5.1 or PowerShell 7+)
     Requires Git installed and in PATH
     Requires GitHub Copilot CLI or VS Code with GitHub Copilot Chat extension
 #>
 
 param(
     [string]$RepositoryPath,
-    [ValidateSet("powerbi", "fabric", "devops")]
+    [ValidateSet("powerbi", "fabric", "devops", "skill-creator")]
     [string]$PluginName,
     [switch]$SkipCopilotCLI,
     [switch]$SkipVSCode,
@@ -109,7 +117,7 @@ function Get-TargetPlugins {
         return @($PluginName)
     }
 
-    return @("powerbi", "fabric", "devops")
+    return @("powerbi", "fabric", "devops", "skill-creator")
 }
 
 function Get-MarketplaceName {
@@ -142,6 +150,56 @@ function Get-DiscoveryRoot {
     return (Join-Path $env:USERPROFILE ".copilot\extensions")
 }
 
+function Backup-ExistingPlugins {
+    param(
+        [string]$InstallRoot,
+        [string]$DiscoveryRoot,
+        [string[]]$Plugins
+    )
+
+    Write-Header "Backing Up Existing Plugins"
+
+    $backupRoot = Join-Path $env:USERPROFILE ".copilot\backups\$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    $anyBackedUp = $false
+
+    # (label, root) pairs so both the install cache and the discovery/extensions
+    # copy of each plugin get backed up and removed before the fresh install.
+    $locations = @(
+        @{ Label = "installed-plugins"; Root = $InstallRoot },
+        @{ Label = "extensions"; Root = $DiscoveryRoot }
+    )
+
+    foreach ($location in $locations) {
+        foreach ($pluginName in $Plugins) {
+            $existingPath = Join-Path $location.Root $pluginName
+            if (-not (Test-Path $existingPath)) {
+                continue
+            }
+
+            $backupDest = Join-Path (Join-Path $backupRoot $location.Label) $pluginName
+            $backupParent = Split-Path $backupDest -Parent
+            if (-not (Test-Path $backupParent)) {
+                New-Item -ItemType Directory -Path $backupParent -Force | Out-Null
+            }
+
+            Write-Info "Backing up existing $pluginName plugin ($($location.Label)) to: $backupDest"
+            Copy-Item -Path $existingPath -Destination $backupDest -Recurse -Force
+            $anyBackedUp = $true
+
+            Write-Info "Removing existing $pluginName plugin ($($location.Label))..."
+            Remove-Item -Path $existingPath -Recurse -Force
+        }
+    }
+
+    if ($anyBackedUp) {
+        Write-Success "Existing plugins backed up to: $backupRoot"
+    } else {
+        Write-Info "No existing plugins found to back up."
+    }
+
+    return $backupRoot
+}
+
 function Test-Prerequisites {
     Write-Header "Validating Prerequisites"
     
@@ -149,11 +207,11 @@ function Test-Prerequisites {
     
     # Check PowerShell version
     Write-Info "PowerShell version: $($PSVersionTable.PSVersion)"
-    if ($PSVersionTable.PSVersion.Major -lt 7) {
-        Write-Error-Custom "PowerShell 7.0 or later required. Current: $($PSVersionTable.PSVersion)"
+    if ($PSVersionTable.PSVersion -lt [Version]"5.1") {
+        Write-Error-Custom "PowerShell 5.1 or later required. Current: $($PSVersionTable.PSVersion)"
         $prereqsMet = $false
     } else {
-        Write-Success "PowerShell 7.0+ ✓"
+        Write-Success "PowerShell 5.1+ ✓"
     }
     
     # Check Git
@@ -282,7 +340,7 @@ function Install-Plugins {
     for ($i = 0; $i -lt $Plugins.Count; $i++) {
         $pluginName = $Plugins[$i]
         
-        $sourcePath_Local = Join-Path $SourcePath "plugins" $pluginName
+        $sourcePath_Local = Join-Path (Join-Path $SourcePath "plugins") $pluginName
         $destPath_Local = Join-Path $DestinationPath $pluginName
         
         Write-Verbose "DEBUG: Processing plugin $($i+1) of $($Plugins.Count): $pluginName"
@@ -499,6 +557,42 @@ function Register-VSCode {
     }
 }
 
+function Install-DesktopBridgeCli {
+    param([bool]$Force)
+
+    Write-Header "Installing Power BI Desktop Bridge CLI"
+
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npmCmd) {
+        Write-Warning-Custom "npm not found — skipping powerbi-desktop-bridge-cli install. Install Node.js from https://nodejs.org, then run: npm install -g @microsoft/powerbi-desktop-bridge-cli"
+        return $false
+    }
+
+    $existing = Get-Command powerbi-desktop -ErrorAction SilentlyContinue
+    if ($existing -and -not $Force) {
+        Write-Success "powerbi-desktop CLI already installed ✓ ($($existing.Source))"
+        return $true
+    }
+
+    Write-Info "Running: npm install -g @microsoft/powerbi-desktop-bridge-cli"
+    try {
+        npm install -g "@microsoft/powerbi-desktop-bridge-cli" 2>&1 | ForEach-Object { Write-Verbose "$_" }
+
+        $installed = Get-Command powerbi-desktop -ErrorAction SilentlyContinue
+        if ($installed) {
+            $version = & powerbi-desktop --version 2>&1
+            Write-Success "powerbi-desktop CLI installed ✓ ($version)"
+            return $true
+        }
+
+        Write-Warning-Custom "npm install completed but 'powerbi-desktop' was not found on PATH. You may need to restart your shell."
+        return $false
+    } catch {
+        Write-Warning-Custom "Failed to install powerbi-desktop-bridge-cli: $_. Install manually with: npm install -g @microsoft/powerbi-desktop-bridge-cli"
+        return $false
+    }
+}
+
 function Validate-Installation {
     param(
         [string]$ExtensionsPath,
@@ -558,7 +652,8 @@ function Validate-Installation {
 function Show-NextSteps {
     param(
         [string]$ExtensionsPath,
-        [string[]]$Plugins
+        [string[]]$Plugins,
+        [string]$BackupPath
     )
     
     Write-Header "Installation Complete!"
@@ -566,6 +661,10 @@ function Show-NextSteps {
     Write-Info "Plugins installed to:"
     Write-Host "  $ExtensionsPath" -ForegroundColor $ColorInfo
     Write-Info "Installed plugin(s): $($Plugins -join ', ')"
+    if ($BackupPath -and (Test-Path $BackupPath)) {
+        Write-Info "Previous plugins (if any) were backed up to:"
+        Write-Host "  $BackupPath" -ForegroundColor $ColorInfo
+    }
     
     Write-Info "Next steps:"
     Write-Host "  1. Restart GitHub Copilot CLI or VS Code to load plugins" -ForegroundColor $ColorInfo
@@ -627,7 +726,10 @@ try {
     
     Write-Info "Install root: $installRoot"
     Write-Info "Discovery root: $discoveryRoot"
-    
+
+    # Always back up and remove any existing plugins before installing the current ones
+    $backupPath = Backup-ExistingPlugins -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins
+
     # Install plugins
     if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $installRoot -Force $Force -Plugins $targetPlugins)) {
         Write-Error-Custom "Failed to install plugins."
@@ -637,6 +739,12 @@ try {
     if (-not (Sync-PluginsToDiscoveryRoot -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins -Force $Force)) {
         Write-Error-Custom "Failed to sync plugins to discovery path."
         exit 1
+    }
+
+    # Install Power BI Desktop Bridge CLI (needed for the powerbi-report-authoring skill's
+    # Desktop reload/screenshot verification loop)
+    if ($targetPlugins -contains "powerbi") {
+        Install-DesktopBridgeCli -Force $Force | Out-Null
     }
 
     # Register plugins in Copilot config and settings
@@ -654,7 +762,7 @@ try {
     }
     
     # Show next steps
-    Show-NextSteps -ExtensionsPath $discoveryRoot -Plugins $targetPlugins
+    Show-NextSteps -ExtensionsPath $discoveryRoot -Plugins $targetPlugins -BackupPath $backupPath
     
     Write-Success "Setup complete!"
     exit 0

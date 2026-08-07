@@ -3,7 +3,8 @@ name: dax-data-quality
 description: |
   Build a metadata-driven Power BI Data Quality (DQ) framework using Power Query for per-row checks and DAX measures for rules registry and aggregation.
   Use when the user asks to validate data quality, identify bad datapoints, detect duplicates/blanks, enforce expected types/domains/ranges, or build an exceptions view in a semantic model. Favors Power Query for row-level flag computation + DAX for aggregation + governance.
-version: 0.2.0
+metadata:
+  version: 0.2.0
 ---
 
 # Data Quality Framework — Power Query–First Approach
