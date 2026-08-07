@@ -4,7 +4,8 @@ description: |
   Build a metadata-driven SQL Server Data Quality (DQ) framework using T-SQL audit VIEWs with per-column DQ flags and a mandatory user approval workflow.
   Use when the user asks to validate data quality in SQL Server tables, audit data for blanks/duplicates/invalid types/domain violations/referential integrity, and surface bad datapoints to Power BI over DirectQuery.
   This skill REQUIRES an explicit approval step: schema is inspected, CSV rules are auto-generated, user reviews and approves before VIEW generation.
-version: 0.1.0
+metadata:
+  version: 0.1.0
 ---
 
 # SQL Server Data Quality Framework — Audit VIEW Pattern
