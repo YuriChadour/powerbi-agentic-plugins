@@ -8,7 +8,7 @@ description: |
   - Validate PBIR JSON schemas and entity/property consistency
   - Detect orphaned references after renames
   - Fix issues when unambiguous; report when human judgment is needed
-model: sonnet
+model: Claude Haiku 4.5 (copilot)
 color: yellow
 tools: ["Read", "Grep", "Glob", "Bash", "Edit"]
 ---
