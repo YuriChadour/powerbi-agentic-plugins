@@ -326,9 +326,9 @@ table 'Date Table'
 		annotation SummarizationSetBy = Automatic
 
 	column CurrDayOffset
-		dataType: decimal
+		dataType: double
 		lineageTag: 9448c96e-d441-465f-afb7-3179206c6aa6
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: CurrDayOffset
 
 		annotation SummarizationSetBy = Automatic
@@ -379,9 +379,9 @@ table 'Date Table'
 		annotation SummarizationSetBy = Automatic
 
 	column 'ISO Year'
-		dataType: decimal
+		dataType: double
 		lineageTag: 78062c2d-eb77-424e-a413-1ef71cc335a0
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: ISO Year
 
 		annotation SummarizationSetBy = Automatic
