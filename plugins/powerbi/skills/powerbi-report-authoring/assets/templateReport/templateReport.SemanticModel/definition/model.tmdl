@@ -15,6 +15,7 @@ annotation __TEdtr = 1
 annotation PBI_ProTooling = ["DevMode"]
 
 ref table 'Date Table'
+ref table _Measures
 
 ref cultureInfo en-US
 
