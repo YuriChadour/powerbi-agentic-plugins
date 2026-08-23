@@ -55,3 +55,16 @@ powershell -ExecutionPolicy Bypass -File check_git_branch_guard.txt
 - main
 - feature/test
 - drv/no-ticket
+
+## Related skill: jira-workflow
+
+This skill only validates/creates branch names — it does not talk to Jira.
+When a user starts work on a ticket (e.g. "I want to work on FIN-1740"), the
+`devops` agent invokes the `jira-workflow` skill **first** to
+fetch/assign/transition the ticket via the `atlassian-rovo-mcp` or
+`com.atlassian/atlassian-mcp-server` MCP server (see
+`plugins/devops/skills/jira-workflow/SKILL.md` Step 0), then hands this
+skill the resulting `ticket_key` + `short_description` to build the branch
+name. If neither MCP server is connected, `jira-workflow` falls back to
+asking the user directly for ticket type + description, which are passed to
+this skill unchanged.
