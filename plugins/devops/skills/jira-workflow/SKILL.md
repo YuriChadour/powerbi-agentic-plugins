@@ -21,75 +21,71 @@ the separate `git-branch-guard` skill. This skill only supplies
 
 | Dependency | Purpose | Required When |
 |---|---|---|
-| `atlassian-rovo-mcp` MCP server (primary) | Fetch/assign/transition Jira tickets, add comments | Preferred — try first in Step 0 |
-| `com.atlassian/atlassian-mcp-server` MCP server (secondary) | Same as above | Fallback candidate if `atlassian-rovo-mcp` is not connected |
+| `com.atlassian/atlassian-mcp-server` MCP server (primary, confirmed) | Fetch/assign/transition Jira tickets, add comments | Preferred — try first in Step 0 |
+| `atlassian-rovo-mcp` MCP server (alternate name, some orgs) | Same as above | Only if the primary is not connected |
 | `git` / `git-branch-guard` skill | Creates the branch using `ticket_key` + `short_description` | Always, after Step 2 |
 
-Both MCP server identifiers above are already used elsewhere in this repo
-(`plugins/powerbi/agents/powerbi-architect.agent.md`), so they are the
-first things to look for — see Step 0. If neither is connected, this skill
-degrades automatically to the **Fallback algorithm** — this is expected,
-non-error behavior, not a failure to work around.
+`com.atlassian/atlassian-mcp-server` is the server actually registered in
+this environment's `~/.copilot/mcp.json` / `mcp-config.json` (gallery entry,
+endpoint `https://mcp.atlassian.com/v1/mcp`) and has been verified working
+end-to-end (fetch, assign, transition, comment) in a prior session on
+FIN-1740. Treat its tool names and parameter shapes below as **known-good
+defaults** — do not re-derive them from scratch every time. If neither
+server is connected, this skill degrades automatically to the **Fallback
+algorithm** — this is expected, non-error behavior, not a failure to work
+around.
 
 ---
 
-## Step 0 — Discover the real MCP tool names (always do this first)
+## Step 0 — Confirm MCP tool names (single targeted search, not a fishing expedition)
 
-This repo already has a known, working Atlassian MCP integration configured
-in `plugins/powerbi/agents/powerbi-architect.agent.md`, which lists these
-exact MCP server identifiers:
-```
-atlassian-rovo-mcp/search
-com.atlassian/atlassian-mcp-server/search
-```
-Try these two concrete server names **first**, in this order:
+The CLI's tool-search interface truncates long tool names, so the exact
+string returned by `tool_search_tool` may not exactly match the theoretical
+`com-atlassian-atlassian-mcp-server-<ToolName>` pattern — always use the
+**exact string returned by the search**, never construct it by hand.
 
-1. Call `tool_search_tool` with pattern `atlassian-rovo-mcp` (case-insensitive).
-   - IF this returns one or more tools → this is the server to use. Skip to
-     Step 0.3.
-2. ELSE call `tool_search_tool` with pattern `com.atlassian.*atlassian-mcp-server`
-   (case-insensitive).
-   - IF this returns one or more tools → this is the server to use. Continue
-     to Step 0.3.
-   - IF this also returns zero tools → call `tool_search_tool` once more
-     with the broader pattern `jira|atlassian` as a last resort, in case a
-     differently-named Jira/Atlassian MCP server is connected instead.
-     - IF that also returns zero tools → go directly to the **Fallback
-       algorithm** at the bottom of this document, and stop. Do not attempt
-       Steps 1-4.
-3. Read the returned tool list from whichever search above succeeded. Match
-   tools **by function** to the 7 jobs below — the exact tool names can
-   still vary by MCP server version, so confirm each one exists before using
-   it (example names shown in parentheses are hints from
-   `Fabric Admin\.github\prompts\weekly_status_report.md`, not guaranteed):
-   - List accessible Atlassian sites / get `cloudId` (e.g.
-     `getAccessibleAtlassianResources`)
-   - Get a single issue by key (e.g. `getJiraIssue`)
-   - Search issues by JQL (e.g. `searchJiraIssuesUsingJql`)
-   - List valid transitions for an issue (e.g. `getTransitionsForJiraIssue`)
-   - Execute a transition (e.g. `transitionJiraIssue`)
-   - Edit an issue's fields, including assignee (e.g. `editJiraIssue`)
-   - Add a comment (e.g. `addCommentToJiraIssue`)
-   - Resolve the current signed-in user's account id (any "who am I" /
-     current-user tool; if none exists, plan to ask the user for their
-     Atlassian email and use a user-lookup tool instead)
-4. Record which concrete tool name fills each of the 7 jobs above. Reuse
-   those exact discovered names for the rest of this session — never call a
-   tool name you have not confirmed exists.
-5. **Decision point:**
-   - IF no tool was found in Steps 0.1-0.2 for **any** of the 7 jobs → go
-     directly to the **Fallback algorithm** at the bottom of this document,
-     and stop. Do not attempt Steps 1-4.
-   - ELSE → continue to Step 1.
+1. Make **one** `tool_search_tool` call with a combined regex covering every
+   job this skill needs, anchored with `$` where the tool name could
+   otherwise prefix-match a longer sibling tool name:
+   ```
+   pattern: "getAccessible|atlassianUserInfo|getJiraIssue$|getTransitionsForJiraIssue|transitionJiraIssue|editJiraIssue|addCommentToJiraIssue"
+   limit: 10
+   ```
+   (`getJiraIssue$` avoids also matching `getJiraIssueRemoteIssueLinks` /
+   `getJiraIssueTypeMetaWithFields`.)
+2. Map the returned tool names to these 7 jobs by the distinctive suffix
+   each contains — this is the known-good mapping, confirmed working:
+   - site/cloudId discovery → tool whose name contains `getAccessible...` (site discovery tool)
+   - get a single issue → tool whose name ends in `getJiraIssue`
+   - list transitions → tool whose name ends in `getTransitionsForJiraIssue`
+   - execute a transition → tool whose name ends in `transitionJiraIssue`
+   - edit issue fields (assignee, etc.) → tool whose name ends in `editJiraIssue`
+   - add a comment → tool whose name ends in `addCommentToJiraIssue`
+   - current-user lookup → tool whose name ends in `atlassianUserInfo`
+3. IF the combined search returns **zero** tools for all 7 jobs → retry once
+   with the broader fallback pattern `jira|atlassian`.
+   - IF that also returns zero tools → go directly to the **Fallback
+     algorithm** at the bottom of this document, and stop. Do not attempt
+     Steps 1-4.
+4. Reuse the exact discovered tool names for the rest of this session — do
+   not re-run `tool_search_tool` again once all 7 are resolved, and never
+   call a tool name you have not confirmed exists in this session's search
+   results.
 
 ## Step 1 — Resolve the Atlassian `cloudId` (once per session)
 
-1. Call the site-discovery tool found in Step 0.
+1. Call the site-discovery tool found in Step 0 with no arguments.
 2. IF it errors, times out, or returns no site → go to the **Fallback
    algorithm** and stop.
-3. ELSE → store the returned `cloudId` value in memory for this session.
-   Reuse it in every subsequent Jira MCP call below — do not re-resolve it
-   each time.
+3. The response is an array of resources; the same `id` (cloudId) commonly
+   appears more than once with different `scopes` (e.g. one entry scoped to
+   Confluence, another to `read:jira-work`/`write:jira-work`). Take the `id`
+   value — it is the same cloudId regardless of which scoped entry you read,
+   so the first entry is normally sufficient. Only ask the user which site
+   to use if you see genuinely **different** `id` values (multiple distinct
+   Atlassian sites).
+4. Store the resolved `cloudId` value for this session. Reuse it in every
+   subsequent Jira MCP call below — do not re-resolve it each time.
 
 ## Step 2 — Start-ticket trigger
 
@@ -101,15 +97,20 @@ ticket key is any token matching the regex `[A-Z]+-\d+`):
 - "pick up <KEY>"
 - "I'm starting <KEY>"
 
-When one of these matches, extract `<KEY>` and do the following, in order:
+When one of these matches, extract `<KEY>` and do the following, in order.
+**Parameter shapes below are confirmed from a live run — use them exactly,
+do not invent alternate field names like `issue_key`, `assignee` (flat), or
+`transition_id`:**
 
-1. Call the get-issue tool from Step 0 with `{ cloudId, issue_key: <KEY> }`.
+1. Call the get-issue tool with `{ cloudId, issueIdOrKey: <KEY> }`.
    - IF it errors (not found, permission denied, call fails) → tell the user
      the exact error text returned, then go to the **Fallback algorithm** and
      stop.
-   - ELSE → store the issue's `summary`, `status`, and `issuetype` fields.
-2. Resolve the current user's Atlassian account id using the current-user
-   tool found in Step 0.
+   - ELSE → store the issue's `fields.summary`, `fields.status.name`, and
+     `fields.issuetype.name`.
+2. Resolve the current user's Atlassian account id by calling the
+   current-user tool (no arguments) → returns `account_id` (snake_case in
+   this response).
    - IF no such tool exists, or it errors → ask the user directly: "What is
      your Atlassian account email?" Then call a user-lookup tool (found in
      Step 0) with that email to get the account id.
@@ -118,15 +119,19 @@ When one of these matches, extract `<KEY>` and do the following, in order:
      manually in Jira." Continue to Step 2.4 anyway (do not treat this as a
      full MCP failure / do not go to Fallback).
 3. IF an account id was resolved in Step 2.2 → call the edit-issue tool with
-   `{ cloudId, issue_key: <KEY>, assignee: <account_id> }` to assign the
-   ticket to the current user.
+   `{ cloudId, issueIdOrKey: <KEY>, fields: { assignee: { accountId:
+   <account_id> } } }` to assign the ticket to the current user. Note
+   `assignee` is nested one level inside `fields`, and the key is
+   `accountId` (camelCase) even though the lookup tool returned `account_id`.
    - IF it errors → tell the user the exact error text, but continue (do not
      stop the whole flow over an assignment failure).
-4. Call the list-transitions tool with `{ cloudId, issue_key: <KEY> }`.
-   - Search the returned list, case-insensitively, for an entry whose target
-     status name is exactly **"In Progress"**.
-   - IF found → call the transition tool with `{ cloudId, issue_key: <KEY>,
-     transition_id: <the matched id> }`.
+4. Call the list-transitions tool with `{ cloudId, issueIdOrKey: <KEY> }`.
+   - Search the returned `transitions[]` array, case-insensitively, for an
+     entry whose `name` (or `to.name`) is exactly **"In Progress"**.
+   - IF found → call the transition tool with `{ cloudId, issueIdOrKey:
+     <KEY>, transition: { id: <the matched transitions[].id> } }`. Note the
+     transition id is nested inside a `transition` object, not a flat
+     `transition_id` field.
    - IF not found → tell the user, verbatim style: "No transition to 'In
      Progress' is available from the ticket's current status ('<current
      status>'). Available transitions are: <list the returned transition
@@ -165,10 +170,11 @@ When one of these matches:
      `git branch --show-current` if needed to read the branch name.
    - IF no key can be determined either way → ask the user: "Which ticket
      key should I transition?" and use their answer.
-2. Call the list-transitions tool with `{ cloudId, issue_key: <KEY> }`.
-   - Search case-insensitively for a transition whose target status name is
-     exactly **"Ready to Test"**.
-   - IF found → call the transition tool with that transition id.
+2. Call the list-transitions tool with `{ cloudId, issueIdOrKey: <KEY> }`.
+   - Search case-insensitively for a transition whose `name` is exactly
+     **"Ready to Test"**.
+   - IF found → call the transition tool with `{ cloudId, issueIdOrKey:
+     <KEY>, transition: { id: <matched id> } }`.
    - IF not found → use the same explicit message pattern as Step 2.4,
      substituting "Ready to Test" for "In Progress".
 
@@ -186,8 +192,9 @@ session, in order:
    2. Write a 1-3 sentence **plain-English summary** of what the commit
       changed and why — a human-readable explanation, not the raw commit
       message or diff pasted verbatim.
-   3. Call the add-comment tool with `{ cloudId, issue_key: <KEY>, body:
-      <the plain-English summary> }`.
+   3. Call the add-comment tool with `{ cloudId, issueIdOrKey: <KEY>,
+      commentBody: <the plain-English summary> }`. Note the body parameter
+      is named `commentBody`, not `body`.
       - IF it errors → tell the user the exact error text and that they
         should add the comment manually in Jira. Do not retry silently and
         do not fail the rest of the task over this.
@@ -210,32 +217,42 @@ session, in order:
 
 ---
 
-## Worked example (Steps 0-2, MCP available)
+## Worked example (Steps 0-2, MCP available — reproduced from a real run)
 
 ```
 User: I want to work on FIN-1740
 
-Agent (Step 0): [calls tool_search_tool("jira|atlassian")]
-  -> finds: getAccessibleAtlassianResources, getJiraIssue,
-     getTransitionsForJiraIssue, transitionJiraIssue, editJiraIssue,
-     addCommentToJiraIssue, atlassianUserInfo
+Agent (Step 0): [calls tool_search_tool with the combined pattern]
+  -> finds (names truncated by the CLI's search index, use verbatim):
+     com-atlassian-atlassian-mcp-server-getAccessibleAtlassianResourc
+     com-atlassian-atlassian-mcp-server-getJiraIssue
+     com-atlassian-atlassian-mcp-server-getTransitionsForJiraIssue
+     com-atlassian-atlassian-mcp-server-transitionJiraIssue
+     com-atlassian-atlassian-mcp-server-editJiraIssue
+     com-atlassian-atlassian-mcp-server-addCommentToJiraIssue
+     com-atlassian-atlassian-mcp-server-atlassianUserInfo
 
-Agent (Step 1): [calls getAccessibleAtlassianResources]
-  -> cloudId = "abc-123-bayview"
+Agent (Step 1): [calls the getAccessibleAtlassianResourc tool, no args]
+  -> two entries returned, both with the same id, different scopes
+  -> cloudId = "b3fcc1a7-23ed-45d2-a353-ebd4c9f5043e"
 
-Agent (Step 2.1): [calls getJiraIssue(cloudId, "FIN-1740")]
-  -> summary = "Update Agentic tooling for developers to automatically
-     link to relevant jira and create latest comments on jira ticket"
-  -> status = "To Do", issuetype = "Story"
+Agent (Step 2.1): [calls getJiraIssue({ cloudId, issueIdOrKey: "FIN-1740" })]
+  -> fields.summary = "Update Agentic tooling for developers to
+     automatically link to relevant jira and create latest comments on
+     jira ticket"
+  -> fields.status.name = "Not Started", fields.issuetype.name = "Story"
 
-Agent (Step 2.2): [calls atlassianUserInfo] -> accountId = "abc123"
+Agent (Step 2.2): [calls atlassianUserInfo, no args]
+  -> account_id = "712020:35e0a254-a41b-4606-8895-efa6b7c6aed1"
 
-Agent (Step 2.3): [calls editJiraIssue(cloudId, "FIN-1740",
-  assignee: "abc123")] -> success
+Agent (Step 2.3): [calls editJiraIssue({ cloudId, issueIdOrKey: "FIN-1740",
+  fields: { assignee: { accountId: "712020:35e0a254-a41b-4606-8895-efa6b7c6aed1" } } })]
+  -> success, fields.assignee now reflects the current user
 
-Agent (Step 2.4): [calls getTransitionsForJiraIssue(cloudId, "FIN-1740")]
-  -> finds transition "In Progress" (id=21)
-  [calls transitionJiraIssue(cloudId, "FIN-1740", 21)] -> success
+Agent (Step 2.4): [calls getTransitionsForJiraIssue({ cloudId, issueIdOrKey: "FIN-1740" })]
+  -> finds transitions[] entry { id: "31", name: "In Progress" }
+  [calls transitionJiraIssue({ cloudId, issueIdOrKey: "FIN-1740",
+  transition: { id: "31" } })] -> success, fields.status.name = "In Progress"
 
 Agent (Step 2.5): slugify summary ->
   "update-agentic-tooling-for-developers-to-autom" (truncated to 40 chars)
