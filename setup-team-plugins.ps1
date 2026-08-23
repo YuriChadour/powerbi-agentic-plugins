@@ -150,6 +150,15 @@ function Get-DiscoveryRoot {
     return (Join-Path $env:USERPROFILE ".copilot\extensions")
 }
 
+function ConvertFrom-JsonWithComments {
+    # Some .copilot config files ship with leading // comment lines, which
+    # ConvertFrom-Json cannot parse ("Invalid JSON primitive").
+    param([string]$RawContent)
+
+    $stripped = ($RawContent -split "`r?`n" | Where-Object { $_.TrimStart() -notmatch '^//' }) -join "`n"
+    return $stripped | ConvertFrom-Json
+}
+
 function Backup-ExistingPlugins {
     param(
         [string]$InstallRoot,
@@ -431,7 +440,16 @@ function Register-PluginsInCopilotConfig {
 
     Write-Header "Registering Plugins in Copilot Config"
 
-    $config = Get-Content $configPath -Raw | ConvertFrom-Json
+    try {
+        $config = ConvertFrom-JsonWithComments -RawContent (Get-Content $configPath -Raw)
+    } catch {
+        Write-Warning-Custom "Could not parse config.json ($_) — skipping plugin registration in config"
+        return $false
+    }
+
+    if (-not $config.PSObject.Properties['installedPlugins']) {
+        $config | Add-Member -NotePropertyName 'installedPlugins' -NotePropertyValue @() -Force
+    }
 
     foreach ($pluginName in $Plugins) {
         $cachePath = Join-Path $InstallRoot $pluginName
@@ -475,17 +493,28 @@ function Register-PluginsInSettings {
         return $false
     }
 
+    try {
+        $settings = ConvertFrom-JsonWithComments -RawContent (Get-Content $settingsPath -Raw)
+    } catch {
+        Write-Warning-Custom "Could not parse settings.json ($_) — skipping enabledPlugins update"
+        return $false
+    }
+
+    if (-not $settings.PSObject.Properties['enabledPlugins']) {
+        $settings | Add-Member -NotePropertyName 'enabledPlugins' -NotePropertyValue ([PSCustomObject]@{}) -Force
+    }
+
     foreach ($pluginName in $Plugins) {
         $key = "$pluginName@$MarketplaceName"
-        if (-not ($settings = Get-Content $settingsPath -Raw | ConvertFrom-Json).enabledPlugins.PSObject.Properties[$key]) {
-            $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        if (-not $settings.enabledPlugins.PSObject.Properties[$key]) {
             $settings.enabledPlugins | Add-Member -NotePropertyName $key -NotePropertyValue $true -Force
-            $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath -Encoding UTF8
             Write-Info "Enabled $key in settings.json"
         } else {
             Write-Info "$key already enabled in settings.json"
         }
     }
+
+    $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath -Encoding UTF8
 
     Write-Success "Plugin settings saved to settings.json ✓"
     return $true

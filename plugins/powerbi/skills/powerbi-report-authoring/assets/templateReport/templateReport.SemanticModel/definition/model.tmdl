@@ -6,9 +6,25 @@ model Model
 		legacyRedirects
 		returnErrorValuesAsNull
 
+queryGroup Facts
+
+	annotation PBI_QueryGroupOrder = 3
+
+queryGroup Dimensions
+
+	annotation PBI_QueryGroupOrder = 2
+
+queryGroup Parameters
+
+	annotation PBI_QueryGroupOrder = 0
+
+queryGroup raw
+
+	annotation PBI_QueryGroupOrder = 1
+
 annotation __PBI_TimeIntelligenceEnabled = 0
 
-annotation PBI_QueryOrder = ["Date Table"]
+annotation PBI_QueryOrder = ["Date Table","StartDate","EndDate","SharepointURL","raw_OneDriveAsSharepoint","fact","SharepointFolder"]
 
 annotation __TEdtr = 1
 
