@@ -60,6 +60,7 @@ Fabric REST APIs: https://learn.microsoft.com/en-us/rest/api/fabric/articles/
 - REST APIs for programmatic management
 - Pipelines for orchestration
 - Parameterize everything for reusability
+- After every `git commit`, if the `jira-workflow` skill is in play and the user has a Jira ticket, ask whether to add a plain-English summary comment to the Jira ticket before moving on.
 
 ### Activator / Reflex
 - Use Activator for Reflex item definitions, rule templates, and action payloads
