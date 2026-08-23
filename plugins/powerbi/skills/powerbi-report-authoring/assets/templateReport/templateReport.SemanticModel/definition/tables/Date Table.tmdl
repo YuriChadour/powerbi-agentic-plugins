@@ -494,6 +494,7 @@ table 'Date Table'
 
 	partition 'Date Table' = m
 		mode: import
+		queryGroup: Dimensions
 		source = ```
 				let
 				    Source = [
@@ -657,8 +658,9 @@ table 'Date Table'
 				    ],
 				    fxCalendar = Source[fxCalendar],
 				                    //Parameters
-				                StartDate = #date(2019, 1, 1),
-				                EndDate = Date.From(DateTime.LocalNow()),
+				                StartDate = StartDate,
+				                // EndDate = Date.From(DateTime.LocalNow()),
+				                EndDate = EndDate,
 				                FYStartMonthNum = 1,
 				                Holidays = Holidays,
 				                WDStartNum = 1,
