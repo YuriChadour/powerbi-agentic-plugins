@@ -22,6 +22,12 @@ tasks. Uses the `jira-workflow`, `git-branch-guard`, and
 tickets, validate branch names, enforce repository policy standards, and
 guide safe team workflows.
 
+### Sample install prompt
+
+```text
+Use @setup-team-plugins.ps1 -PluginName devops to install only the DevOps plugin.
+```
+
 ## Skills
 
 ### `jira-workflow`

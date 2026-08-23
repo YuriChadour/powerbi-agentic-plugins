@@ -88,6 +88,23 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 
 - To install only one plugin, add `-PluginName powerbi` (or `fabric`, `devops`, `skill-creator`). It installs to `~\.copilot\installed-plugins\<plugin>` and mirrors into `~\.copilot\extensions\<plugin>` so Copilot can discover it.
 
+### Sample install prompts
+
+Use these prompts when you want the assistant to install just one plugin:
+
+```text
+Use @setup-team-plugins.ps1 -PluginName powerbi to install only the Power BI plugin.
+```
+```text
+Use @setup-team-plugins.ps1 -PluginName fabric to install only the Fabric plugin.
+```
+```text
+Use @setup-team-plugins.ps1 -PluginName devops to install only the DevOps plugin.
+```
+```text
+Use @setup-team-plugins.ps1 -PluginName skill-creator to install only the Skill Creator plugin.
+```
+
 Once installed, plugins activate automatically. Skills fire when relevant — for example, asking Copilot to create a semantic model automatically pulls in the `powerbi-semantic-model` skill.
 
 ### Visual Studio Code Setup
