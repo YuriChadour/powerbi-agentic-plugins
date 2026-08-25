@@ -95,7 +95,7 @@ def build_page_name_lookup(root: Path) -> Dict[str, str]:
     lookup: Dict[str, str] = {}
     for path in root.rglob("page.json"):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
         name = data.get("name")
@@ -122,7 +122,7 @@ def read_files(root: Path) -> Dict[str, str]:
             continue
 
         try:
-            files[relative_path] = path.read_text(encoding="utf-8")
+            files[relative_path] = path.read_text(encoding="utf-8-sig")
         except UnicodeDecodeError as exc:
             print(
                 f"warning: skipping non-UTF-8 file {relative_path}: {exc}",
@@ -764,7 +764,7 @@ def load_pbip_metadata(root: Path) -> Dict[str, Dict[str, str]]:
 
     for path in root.rglob("*.json"):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
 
