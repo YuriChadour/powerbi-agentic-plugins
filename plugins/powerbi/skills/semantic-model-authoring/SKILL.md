@@ -147,7 +147,7 @@ Steps:
 4. **Execute** in correct order:
    - **Adding tables** - partitions -> columns -> relationships -> measures.
    - **Adding relationships** - ensure key columns exist on both sides with matching data types;
-   - **Adding measures** - verify referenced columns/tables exist;
+   - **Adding measures** - classify per [modeling-guidelines.md § Measures & DAX](./references/modeling-guidelines.md#measures--dax) (`_Measures` vs `_ReportMeasures`) and verify referenced columns/tables exist;
 5. **Save & validate** - per [Saving Changes to a Semantic Model](#saving-changes-to-a-semantic-model) and [Validation Checklist](#validation-checklist).
 
 ---
@@ -174,7 +174,7 @@ Steps:
 
 1. **Connect & inventory** - per [Connecting to a Semantic Model](#connecting-to-a-semantic-model). Capture all tables, columns, relationships, measures, and storage mode.
 2. **Load applicable guidelines** - [modeling-guidelines.md](./references/modeling-guidelines.md) always; [direct-lake-guidelines.md](./references/direct-lake-guidelines.md) if Direct Lake; [naming-conventions.md](./references/naming-conventions.md) when assessing naming; [dax-guidelines.md](./references/dax-guidelines.md) when assessing DAX.
-3. **Evaluate** - compare the model against the loaded guidelines (star schema, naming, relationship cardinality and cross-filter, explicit measures with `formatString`, column data types and `sourceColumn`, hidden FK columns, calculated-column-vs-measure choices, Direct Lake constraints, etc.).
+3. **Evaluate** - compare the model against the loaded guidelines (star schema, naming, relationship cardinality and cross-filter, explicit measures with `formatString`, column data types and `sourceColumn`, hidden FK columns, calculated-column-vs-measure choices, Direct Lake constraints, measures misplaced outside `_Measures`/`_ReportMeasures`, etc.).
 4. **Present findings** grouped by severity (critical, recommended, optional). For each item state the rule violated and the proposed fix. Wait for user approval.
 5. **Apply approved fixes** via [Modify an Existing Model](#workflow-modify-an-existing-model).
 6. **Save & validate** - per [Saving Changes to a Semantic Model](#saving-changes-to-a-semantic-model) and [Validation Checklist](#validation-checklist).
