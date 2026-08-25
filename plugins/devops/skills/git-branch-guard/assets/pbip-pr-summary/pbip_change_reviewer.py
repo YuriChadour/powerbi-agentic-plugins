@@ -36,8 +36,22 @@ IGNORED_KEYS = {
 _PAGE_NAME_LOOKUP: Dict[str, str] = {}
 
 # Populated by main() from CLI args; used to build markdown links to
-# the file diff inside the PR. Empty when run locally.
-_LINK_CONTEXT: Dict[str, str] = {"repo_url": "", "head_sha": "", "pr_number": ""}
+# the file diff inside the PR. Empty when run locally. "platform" is either
+# "github" or "azure-devops" and controls the URL shape file_link() builds.
+_LINK_CONTEXT: Dict[str, str] = {
+    "repo_url": "",
+    "head_sha": "",
+    "pr_number": "",
+    "platform": "github",
+}
+
+
+def detect_platform(repo_url: str) -> str:
+    """Infer host from a repo URL; defaults to github when unrecognized."""
+    lowered = repo_url.lower()
+    if "dev.azure.com" in lowered or "visualstudio.com" in lowered:
+        return "azure-devops"
+    return "github"
 
 
 def file_link(path: str) -> str:
@@ -52,6 +66,19 @@ def file_link(path: str) -> str:
 
     pr_number = _LINK_CONTEXT.get("pr_number") or ""
     head_sha = _LINK_CONTEXT.get("head_sha") or ""
+    platform = _LINK_CONTEXT.get("platform") or "github"
+
+    if platform == "azure-devops":
+        # Azure Repos has no per-file diff anchor; link into the PR's Files tab
+        # (or, without a PR, the file at that commit) using its ?path= query param.
+        encoded_path = quote("/" + path)
+        if pr_number:
+            target = f"{repo_url}/pullrequest/{pr_number}?_a=files&path={encoded_path}"
+        elif head_sha:
+            target = f"{repo_url}?path={encoded_path}&version=GC{head_sha}&_a=contents"
+        else:
+            return ""
+        return f" [↗]({target})"
 
     if pr_number:
         digest = hashlib.sha256(path.encode("utf-8")).hexdigest()
@@ -1826,9 +1853,15 @@ def main() -> int:
         default="pbip_change_summary.md",
         help="Output markdown file.",
     )
-    parser.add_argument("--repo-url", default="", help="GitHub repo URL for file links.")
+    parser.add_argument("--repo-url", default="", help="Repo URL (GitHub or Azure Repos) for file links.")
     parser.add_argument("--head-sha", default="", help="PR head commit SHA for file links.")
     parser.add_argument("--pr-number", default="", help="PR number for diff anchors.")
+    parser.add_argument(
+        "--platform",
+        default="auto",
+        choices=("auto", "github", "azure-devops"),
+        help="Link style to generate. 'auto' infers from --repo-url.",
+    )
 
     args = parser.parse_args()
 
@@ -1846,6 +1879,9 @@ def main() -> int:
     _LINK_CONTEXT["repo_url"] = args.repo_url
     _LINK_CONTEXT["head_sha"] = args.head_sha
     _LINK_CONTEXT["pr_number"] = args.pr_number
+    _LINK_CONTEXT["platform"] = (
+        detect_platform(args.repo_url) if args.platform == "auto" else args.platform
+    )
 
     summary = compare_projects(old_root, new_root)
 
