@@ -69,3 +69,12 @@ name. If neither MCP server is connected, `jira-workflow` falls back to
 asking the user directly for ticket type + description, which are passed to
 this skill unchanged.
 
+## Note: assets/pbip-pr-summary/
+
+This folder holds a standalone PBIP/PBIR change-summary tool (not part of
+branch validation). It lives here only because skills are the unit that
+gets distributed on install — a top-level repo `assets/` folder is not
+scanned by the skill-loading mechanism, so tooling has to live inside a
+skill's own folder to travel with it. `jira-workflow` (Step 4.3.2) is the
+actual consumer; see `plugins/devops/skills/jira-workflow/SKILL.md`.
+
