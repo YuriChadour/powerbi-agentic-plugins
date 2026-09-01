@@ -1,19 +1,19 @@
 ---
 name: powerbi-report-authoring
 description: >-
-  Create and modify Power BI report files in PBIR/PBIP format using the
-  `powerbi-report-author` and `powerbi-desktop` CLIs. Use when the user wants
-  to: (1) implement an approved report spec or design brief, (2) add or edit
-  pages, visuals, filters, slicers, bookmarks, themes, or formatting, (3)
-  validate PBIR and verify rendering in Power BI Desktop, (4) scaffold a new
-  report from the built-in template, (5) run Best Practice Analysis (BPA)
-  against a report definition. For open-ended visual design, use
-  `powerbi-report-design` first. For end-to-end requirements and approval
-  workflow, use `powerbi-report-planning` first. Triggers: "edit PBIR",
-  "create Power BI report page", "add visual to PBIP", "format report visual",
-  "validate Power BI report", "reload Desktop screenshot", "implement an approved PBIP report spec", "edit PBIR pages/visuals", "scaffold from template", "BPA report".
+  Create and modify Power BI report files in PBIR/PBIP format with the
+  `powerbi-report-author` and `powerbi-desktop` CLIs. Use for approved report
+  specs; pages, visuals, filters, themes, and formatting; PBIR validation and
+  Desktop rendering; template scaffolding; BPA; and scanning local PBIP report
+  references before model entity renames or removals. Use
+  `powerbi-report-design` for open-ended design and `powerbi-report-planning`
+  for requirements and build sequencing. Triggers: "edit PBIR", "create Power
+  BI report page", "format report visual", "validate Power BI report", "reload
+  Desktop screenshot", "scaffold from template", "BPA report", "scan report
+  references", "assess PBIP rename impact", "check report dependencies before
+  removing a model entity".
 metadata:
-  version: 0.2.0
+  version: 0.3.0
 ---
 
 > **Update Check — explicit only**
@@ -43,6 +43,7 @@ definition files in the **PBIR (Power BI Report)** format used by **PBIP
 - Start from an approved `Design Brief:` or `_brief/report-spec.md` for greenfield report builds.
 - Route visual-design uncertainty to `powerbi-report-design` before writing files.
 - For semantic model metadata or model-side changes, use a semantic-model authoring skill, Power BI Modeling MCP, or local TMDL files when available.
+- Before renaming or removing a table, column, or measure in a local PBIP project, run the bundled reference scanner and review every TMDL and PBIR hit.
 
 ### AVOID
 
@@ -118,6 +119,7 @@ Use the user's intent to choose the relevant topic file(s) before editing:
 | [`version-control.md`](references/version-control.md) | Git branching, committing, reverting — read when the task involves version control or safe rollback planning |
 | [`assets/templateReport/template-report-kb.md`](assets/templateReport/template-report-kb.md) | Starting from the template report — maps each template visual (`title`, `topCard`, `dateSlicer`, `barChart`, `timeSeries`) to semantic model fields |
 | [`scripts/bpa-rules-report.json`](scripts/bpa-rules-report.json) | Reference for which BPA rules are active; customize by marking rules `disabled: true` |
+| [`scripts/report_reference_scan.ps1`](scripts/report_reference_scan.ps1) | Preflight for finding TMDL and PBIR references to tables, columns, and measures before local PBIP renames or removals |
 
 ### Greenfield / Design Handoff
 
@@ -362,6 +364,7 @@ patterns. It does not replace Desktop reload and screenshot review.
 
 | Pitfall | Consequence | Fix |
 |---------|-------------|-----|
+| Renaming or removing a model entity without impact analysis | Visuals, filters, and field bindings can break | Scan the local PBIP root before the change, review every hit, update model and report files, then require zero hits for the old name |
 | Using `"Entity"` inside filter `Where` conditions | Filter silently fails | Use `"Source"` with the alias from `From` |
 | Omitting `nativeQueryRef` | Visual calculations may break | Always include `nativeQueryRef` |
 | Reusing visual/filter names | Unpredictable behavior | Generate unique IDs |
@@ -455,6 +458,44 @@ Run the BPA script against the report definition using the bundled PBI Inspector
     | `REDUCE_VISUALS_ON_PAGE` | Page exceeds 20 visible visuals | Split into sub-pages or hide non-essential visuals |
 
 3. **Fix and re-validate** — After fixing BPA violations, run `powerbi-report-author validate <path-to-.Report-dir>` to confirm PBIR schema integrity is intact.
+
+---
+
+## Task: Scan references before renaming or removing an entity
+
+Use the bundled scanner before changing a table, column, or measure in a local
+PBIP project. **Python 3.10 or later is required.** Pass the PBIP root that
+contains sibling `*.SemanticModel` and `*.Report` folders:
+
+```powershell
+scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales"
+scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales", "Net Amount" -MaxItems 25
+scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales", "Net Amount" -Json
+scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales" -Output "<path-to-scan.md>"
+```
+
+Wrapper parameters:
+
+| Parameter | Behavior |
+|-----------|----------|
+| `-Root` | Mandatory PBIP root containing sibling model and report folders |
+| `-Terms` | Mandatory `string[]` of one or more exact entity names |
+| `-Json` | Emits structured JSON to stdout |
+| `-MaxItems` | Limits detailed rows per Markdown section/report; `0` shows all |
+| `-Output` | Writes UTF-8 Markdown to the specified file instead of stdout; cannot be combined with `-Json` |
+
+The Markdown output is grouped into **Semantic Model References** (records,
+calculated columns, and measures) and **Reports - Page, Visual**. JSON report
+hits identify the PBIR shape through `match_type`: `Entity`, `Property`, or
+`queryRef`, and include page, visual, file, line, and matched text context.
+Review every hit before editing.
+
+This is an on-disk PBIP/TMDL/PBIR scan. It does not inspect unsaved Desktop
+changes or service-only model state. After updating both model and report
+references, scan the old name again and require zero hits, then run
+`powerbi-report-author validate <path-to-.Report-dir>`. The scan does not
+replace semantic-model validation, PBIR validation, Desktop reload, or rendered
+screenshot review.
 
 ---
 
