@@ -1535,6 +1535,15 @@ def classify_m_step_change(step_name: str, old_body: str, new_body: str) -> str:
     return f"Power Query step changed: {step_name}"
 
 
+_BOOKMARK_FILTER_ID_RENAME = re.compile(r"^Value changed at .*\.filters\.byExpr\[\d+\]\.name: ")
+
+
+def _filter_bookmark_noise(entries: List[str]) -> List[str]:
+    """Drop bookmark filter-instance ID churn (opaque hashes Desktop regenerates
+    on save); these carry no reviewer-relevant information."""
+    return [entry for entry in entries if not _BOOKMARK_FILTER_ID_RENAME.match(entry)]
+
+
 def classify_text_change(file_path: str, old_text: str, new_text: str) -> Dict[str, List[str]]:
     _LINK_CONTEXT["current_file"] = file_path
     try:
@@ -1545,12 +1554,15 @@ def classify_text_change(file_path: str, old_text: str, new_text: str) -> Dict[s
             new_json = try_parse_json(new_text)
 
             if old_json is not None and new_json is not None:
+                modified = json_diff_summary(
+                    normalize_json(old_json), normalize_json(new_json)
+                )
+                if lower_path.endswith(".bookmark.json"):
+                    modified = _filter_bookmark_noise(modified)
                 return {
                     "added": [],
                     "removed": [],
-                    "modified": json_diff_summary(
-                        normalize_json(old_json), normalize_json(new_json)
-                    ),
+                    "modified": modified,
                 }
 
         if lower_path.endswith(".tmdl"):
@@ -1575,23 +1587,38 @@ def classify_text_change(file_path: str, old_text: str, new_text: str) -> Dict[s
 # new page -> one line (no per-visual detail), supporting files -> a count.
 
 
+_PROJECT_SUFFIXES = (".Report", ".SemanticModel", ".PaginatedReport")
+
+
 def _project_root_of(path: str) -> Optional[str]:
     """Return the path up to and including the first `*.Report` / `*.SemanticModel`
-    segment, or None if the path isn't inside a PBIP project."""
+    / `*.PaginatedReport` segment, or None if the path isn't inside a PBIP project."""
     acc: List[str] = []
     for seg in path.split("/"):
         acc.append(seg)
-        if seg.endswith(".Report") or seg.endswith(".SemanticModel"):
+        if seg.endswith(_PROJECT_SUFFIXES):
             return "/".join(acc)
     return None
 
 
 def _project_display_name(root: str) -> str:
     leaf = root.split("/")[-1]
-    for ext in (".Report", ".SemanticModel"):
+    for ext in _PROJECT_SUFFIXES:
         if leaf.endswith(ext):
             return leaf[: -len(ext)]
     return leaf
+
+
+def _is_model_project(root: str) -> bool:
+    return root.endswith(".SemanticModel")
+
+
+def _slugify_heading(text: str) -> str:
+    """Approximate GitHub's markdown heading-anchor slug algorithm."""
+    slug = text.strip().lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"\s+", "-", slug)
+    return slug
 
 
 def _page_folder_of(path: str) -> Optional[str]:
@@ -1682,14 +1709,118 @@ def _rollup_auto_date_table_changes(entries: List[str]) -> List[str]:
     return rolled_up
 
 
+_DIAGRAM_NODE_CHANGE = re.compile(r"^- Value changed at diagrams\[\d+\]\.nodes\[(\d+)\]\.")
+_DIAGRAM_HIDDEN_COUNT = re.compile(r"^- Additional changes hidden: \d+ \(in `diagramLayout\.json`\)")
+
+
+def _rollup_diagram_layout_changes(entries: List[str]) -> List[str]:
+    """Collapse Power BI's auto-repositioned diagram-view churn (every node's
+    x/y/zIndex/lineageTag rewritten on save) into one reviewer-friendly line."""
+    matched_indexes = set()
+    node_indexes = set()
+    for index, entry in enumerate(entries):
+        if "(in `diagramLayout.json`)" not in entry:
+            continue
+        match = _DIAGRAM_NODE_CHANGE.match(entry)
+        if match:
+            matched_indexes.add(index)
+            node_indexes.add(match.group(1))
+        elif _DIAGRAM_HIDDEN_COUNT.match(entry):
+            matched_indexes.add(index)
+
+    if len(node_indexes) < 5:
+        return entries
+
+    rolled_up: List[str] = []
+    inserted = False
+    for index, entry in enumerate(entries):
+        if index not in matched_indexes:
+            rolled_up.append(entry)
+            continue
+        if not inserted:
+            rolled_up.append(
+                f"- Diagram view layout repositioned ({len(node_indexes)} table node(s) moved)"
+            )
+            inserted = True
+
+    return rolled_up
+
+
+_ENTITY_RENAME_LINE = re.compile(
+    r'^- .+ changed: (?P<old>[^\n]+?) -> (?P<new>[^\n]+?) '
+    r'\(in (?P<ctx>(?:visual "[^"]+" on )?page "[^"]+")\)'
+)
+_HEXY_TOKEN = re.compile(r"^[0-9a-fA-F]{6,}$")
+_NUMERICY_TOKEN = re.compile(r"^-?\d+(\.\d+)?[A-Za-z]?$")
+
+
+def _looks_like_entity_token(token: str) -> bool:
+    """True for plausible table/entity names; false for GUIDs, numbers, or
+    other opaque values that shouldn't be rolled up as a table rename."""
+    token = token.strip().strip("'\"")
+    if not token or len(token) > 60:
+        return False
+    if _HEXY_TOKEN.match(token) or _NUMERICY_TOKEN.match(token):
+        return False
+    return True
+
+
+def _rollup_entity_rename_changes(entries: List[str]) -> List[str]:
+    """A table/entity rebind (e.g. a semantic-model table rename) touches every
+    visual property referencing it, producing dozens of near-duplicate lines
+    per page. Collapse repeats of the same rename on the same page into one
+    summary line, keeping unrelated changes untouched."""
+    groups: Dict[Tuple[str, str, str], List[int]] = {}
+    for index, entry in enumerate(entries):
+        match = _ENTITY_RENAME_LINE.match(entry)
+        if not match:
+            continue
+        old_table = match.group("old").split(".")[0].strip()
+        new_table = match.group("new").split(".")[0].strip()
+        if not _looks_like_entity_token(old_table) or not _looks_like_entity_token(new_table):
+            continue
+        page_match = re.search(r'page "([^"]+)"', match.group("ctx"))
+        if not page_match:
+            continue
+        key = (old_table, new_table, page_match.group(1))
+        groups.setdefault(key, []).append(index)
+
+    matched_indexes: Dict[int, Tuple[str, str, str]] = {}
+    for key, indexes in groups.items():
+        if len(indexes) >= 8:
+            for index in indexes:
+                matched_indexes[index] = key
+
+    if not matched_indexes:
+        return entries
+
+    rolled_up: List[str] = []
+    inserted_keys = set()
+    for index, entry in enumerate(entries):
+        key = matched_indexes.get(index)
+        if key is None:
+            rolled_up.append(entry)
+            continue
+        if key not in inserted_keys:
+            old_table, new_table, page = key
+            rolled_up.append(
+                f'- Rebound {len(groups[key])} reference(s) from `{old_table}` to '
+                f'`{new_table}` (page "{page}")'
+            )
+            inserted_keys.add(key)
+
+    return rolled_up
+
+
 def rollup_new_or_deleted(
     paths: set, files: Dict[str, str], counterpart: set, *, new: bool
-) -> List[str]:
-    """Collapse a set of wholly added/removed files into notable bullets."""
+) -> Dict[str, List[str]]:
+    """Collapse a set of wholly added/removed files into notable bullets,
+    grouped by project root. Files outside any project are keyed under ""."""
     verb = "New" if new else "Deleted"
     page_verb = "New page" if new else "Removed page"
     word = "added" if new else "removed"
-    lines: List[str] = []
+    grouped: Dict[str, List[str]] = {}
 
     by_project: Dict[str, List[str]] = {}
     loose: List[str] = []
@@ -1701,9 +1832,10 @@ def rollup_new_or_deleted(
             loose.append(p)
 
     for root in sorted(by_project):
+        lines: List[str] = []
         proj_paths = sorted(by_project[root])
         name = _project_display_name(root)
-        is_model = root.endswith(".SemanticModel")
+        is_model = _is_model_project(root)
         wholly = not any(c == root or c.startswith(root + "/") for c in counterpart)
 
         # --- entire project added / removed -> one headline line ---
@@ -1761,10 +1893,14 @@ def rollup_new_or_deleted(
                 f"(bookmarks, theme, resources){file_link(sorted(others)[0])}"
             )
 
-    for p in sorted(loose):
-        lines.append(f"- {verb} file: `{Path(p).name}`{file_link(p)}")
+        grouped[root] = lines
 
-    return lines
+    if loose:
+        grouped[""] = [
+            f"- {verb} file: `{Path(p).name}`{file_link(p)}" for p in sorted(loose)
+        ]
+
+    return grouped
 
 
 def compare_projects(old_root: Path, new_root: Path) -> str:
@@ -1780,16 +1916,13 @@ def compare_projects(old_root: Path, new_root: Path) -> str:
     old_paths = set(old_files.keys())
     new_paths = set(new_files.keys())
 
-    new_section: List[str] = []
-    deleted_section: List[str] = []
-    modified_section: List[str] = []
-
-    new_section.extend(
-        rollup_new_or_deleted(new_paths - old_paths, new_files, old_paths, new=True)
+    new_by_project = rollup_new_or_deleted(
+        new_paths - old_paths, new_files, old_paths, new=True
     )
-    deleted_section.extend(
-        rollup_new_or_deleted(old_paths - new_paths, old_files, new_paths, new=False)
+    deleted_by_project = rollup_new_or_deleted(
+        old_paths - new_paths, old_files, new_paths, new=False
     )
+    modified_by_project: Dict[str, List[str]] = {}
 
     for path in sorted(old_paths & new_paths):
         if old_files[path] == new_files[path]:
@@ -1801,16 +1934,18 @@ def compare_projects(old_root: Path, new_root: Path) -> str:
 
         context = describe_pbip_path(path, metadata)
         link = file_link(path)
+        root = _project_root_of(path) or ""
 
-        for category, section in (
-            ("added", new_section),
-            ("removed", deleted_section),
-            ("modified", modified_section),
+        for category, target in (
+            ("added", new_by_project),
+            ("removed", deleted_by_project),
+            ("modified", modified_by_project),
         ):
             entries = result[category]
             if not entries:
                 continue
             entries = _dedupe_preserve_order(entries)
+            section = target.setdefault(root, [])
             for entry in entries[:80]:
                 if "\n" in entry:
                     head, body = entry.split("\n", 1)
@@ -1821,24 +1956,71 @@ def compare_projects(old_root: Path, new_root: Path) -> str:
             if len(entries) > 80:
                 section.append(f"- Additional changes hidden: {len(entries) - 80} (in {context}){link}")
 
+    # Group everything by report: the shared base name between a `*.Report`
+    # (or `*.PaginatedReport`) project and its paired `*.SemanticModel` project.
+    all_roots = set(new_by_project) | set(deleted_by_project) | set(modified_by_project)
+    report_sections: Dict[str, Dict[str, List[str]]] = {}
+    for root in all_roots:
+        if root == "":
+            continue
+        name = _project_display_name(root)
+        report_sections.setdefault(name, {"visual": [], "model": []})
+
+    for root in all_roots:
+        if root == "":
+            continue
+        name = _project_display_name(root)
+        kind = "model" if _is_model_project(root) else "visual"
+        bucket = report_sections[name][kind]
+        bucket.extend(new_by_project.get(root, []))
+        bucket.extend(deleted_by_project.get(root, []))
+        modified_lines = modified_by_project.get(root, [])
+        if modified_lines:
+            modified_lines = _rollup_auto_date_table_changes(modified_lines)
+            modified_lines = _rollup_diagram_layout_changes(modified_lines)
+            modified_lines = _rollup_entity_rename_changes(modified_lines)
+            bucket.extend(modified_lines)
+
+    other_lines: List[str] = []
+    other_lines.extend(new_by_project.get("", []))
+    other_lines.extend(deleted_by_project.get("", []))
+    other_lines.extend(modified_by_project.get("", []))
+
+    sorted_report_names = sorted(
+        name
+        for name, sections in report_sections.items()
+        if sections["visual"] or sections["model"]
+    )
+
     lines: List[str] = ["# PBIP Change Summary", ""]
 
-    if new_section:
-        lines.append("## New")
-        lines.extend(new_section)
+    if sorted_report_names:
+        lines.append("## Table of Contents")
+        for index, name in enumerate(sorted_report_names, start=1):
+            heading = f"Report {index}: {name}"
+            lines.append(f"- [{heading}](#{_slugify_heading(heading)})")
+        if other_lines:
+            lines.append("- [Other Changes](#other-changes)")
         lines.append("")
 
-    if deleted_section:
-        lines.append("## Deleted")
-        lines.extend(deleted_section)
-        lines.append("")
+    for index, name in enumerate(sorted_report_names, start=1):
+        sections = report_sections[name]
+        lines.append(f"## Report {index}: {name}")
+        if sections["visual"]:
+            lines.append("### Visual Changes")
+            lines.extend(sections["visual"])
+            lines.append("")
+        if sections["model"]:
+            lines.append("### Semantic Model Changes")
+            lines.extend(sections["model"])
+            lines.append("")
 
-    if modified_section:
-        modified_section = _rollup_auto_date_table_changes(modified_section)
-        lines.append("## Modified")
-        lines.extend(modified_section)
+    if other_lines:
+        lines.append("## Other Changes")
+        lines.extend(other_lines)
 
     return "\n".join(lines)
+
 
 
 def main() -> int:

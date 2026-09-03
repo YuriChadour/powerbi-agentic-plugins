@@ -1,7 +1,9 @@
 param(
     [string]$Old = "HEAD~1",
     [string]$New = "HEAD",
-    [switch]$KeepWorktrees
+    [string]$OutputPath,
+    [Alias("KeepWorktrees")]
+    [switch]$KeepFiles
 )
 $ErrorActionPreference = "Stop"
 
@@ -27,10 +29,16 @@ try {
     & $pyLauncher @pyArgs --old $oldWt --new $newWt --output $summaryFile
     if ($LASTEXITCODE -ne 0) { throw "pbip_change_reviewer.py failed." }
 
-    Get-Content $summaryFile -Raw
+    $summary = Get-Content $summaryFile -Raw
+    if ($OutputPath) {
+        $outputDirectory = Split-Path -Parent $OutputPath
+        if ($outputDirectory) { New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null }
+        Set-Content -LiteralPath $OutputPath -Value $summary -Encoding UTF8
+    }
+    $summary
 }
 finally {
-    if (-not $KeepWorktrees) {
+    if (-not $KeepFiles) {
         git worktree remove --force $oldWt 2>$null
         git worktree remove --force $newWt 2>$null
         Remove-Item $summaryFile -ErrorAction SilentlyContinue
