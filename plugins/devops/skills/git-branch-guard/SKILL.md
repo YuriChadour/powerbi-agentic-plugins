@@ -68,3 +68,28 @@ skill the resulting `ticket_key` + `short_description` to build the branch
 name. If neither MCP server is connected, `jira-workflow` falls back to
 asking the user directly for ticket type + description, which are passed to
 this skill unchanged.
+
+## Note: assets/pbip-pr-summary/
+
+This folder holds a standalone PBIP/PBIR change-summary tool (not part of
+branch validation). It lives here only because skills are the unit that
+gets distributed on install — a top-level repo `assets/` folder is not
+scanned by the skill-loading mechanism, so tooling has to live inside a
+skill's own folder to travel with it.
+
+The tool is consumed in two ways:
+
+1. **Automatic workflow** (jira-workflow Step 4.3.2): After a commit, when
+   the user approves posting a summary comment to Jira, the tool generates
+   a deterministic PBIP change summary.
+   
+2. **Explicit trigger** (devops agent Step 4): When the user requests
+   "generate commit summary" or "generate PR summary" (case-insensitive),
+   the devops agent routes to `.github/prompts/pbip-commit-or-pr-message.prompt.md`,
+   which invokes this tool to synthesize a Jira-prefixed commit message
+   or PR description. The user must explicitly request the generation
+   or explicitly approve posting — no auto-posting in this mode.
+
+See `plugins/devops/skills/jira-workflow/SKILL.md` for the automatic flow
+and `devops.agent.md` Step 4 for the explicit trigger.
+
