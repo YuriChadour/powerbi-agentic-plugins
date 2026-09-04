@@ -1,19 +1,11 @@
 ---
 name: semantic-model-authoring
 description: >
-  Develops and manages Power BI semantic models across Desktop, PBIP projects, and Fabric Service. Handles:
-  (1) creating new models (Import, DirectQuery, Direct Lake),
-  (2) editing existing models (e.g. measures, tables, columns, relationships),
-  (3) deploying models to Fabric workspaces,
-  (4) working with PBIP project files,
-  (5) refreshing semantic models,
-  (6) configuring data sources and permissions,
-  (7) DAX performance optimization.
-  Supports both Power BI Desktop and Fabric Service development workflows. For read-only DAX query guidance, see `references/dax-query-guidelines.md`.
+  Develops and manages Power BI semantic models across Desktop, PBIP, and Fabric Service. Handles creating models; editing measures, tables, columns, and relationships; renaming/removing entities and checking local PBIP report dependencies; deployment; refresh; data sources and permissions; and DAX performance optimization.
   Does NOT handle report layout/visual authoring, workspace administration, or RLS/OLS role membership management.
-  Triggers: "create semantic model", "edit semantic model", "add a DAX measure to semantic model", "refresh semantic model", "set semantic model permissions", "Prepare semantic model for AI/Copilot".
+  Triggers: "create semantic model", "edit semantic model", "add a DAX measure", "rename a model table", "rename or remove a column or measure", "check report dependencies", "refresh semantic model", "set semantic model permissions", "Prepare semantic model for AI/Copilot".
 metadata:
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 > **Update Check — explicit only**
@@ -61,6 +53,7 @@ Load these references on demand when a workflow step requires them. Do not load 
 | DAX Performance Decision Guide   | [dax-perf-decision-guide.md](./references/dax-perf-decision-guide.md)              | Start here when optimizing DAX                                                             |
 | DAX Performance Pattern Catalog  | [dax-perf-patterns.md](./references/dax-perf-patterns.md)                          | Load on demand after the decision guide identifies candidate patterns                       |
 | Best Practice Analysis (BPA)     | [scripts/bpa.ps1](./scripts/bpa.ps1)                                                | Running BPA rules via Tabular Editor 2.0 against a semantic model                            |
+| Local PBIP reference scan        | [report_reference_scan.ps1](../powerbi-report-authoring/scripts/report_reference_scan.ps1) | Before renaming/removing a table, column, or measure when on-disk PBIP files are the working source |
 | Semantic Model AI Readiness                | [semantic-model-ai-readiness.md](./references/semantic-model-ai-readiness.md)                          | When preparing a model for Copilot or Data Agents                                           |
 | Semantic Model REST API          | [semantic-model-rest-api.md](./references/semantic-model-rest-api.md)              | When using `az rest` for TMDL CRUD, refresh, parameters, permissions, or property retrieval |
 | Connection Binding               | [connection-binding.md](./references/connection-binding.md)                        | When binding/unbinding a semantic model to a Fabric data connection (gateway, cloud, VNet, automatic, none) |
@@ -143,12 +136,12 @@ Steps:
 
 1. **Connect & discover** - per [Connecting to a Semantic Model](#connecting-to-a-semantic-model). List tables, relationships, existing measures, and identify storage mode (it dictates which guidelines apply).
 2. **Load applicable guidelines** - [modeling-guidelines.md](./references/modeling-guidelines.md) always; [direct-lake-guidelines.md](./references/direct-lake-guidelines.md) if Direct Lake; [tmdl-guidelines.md](./references/tmdl-guidelines.md) when editing TMDL directly; [dax-guidelines.md](./references/dax-guidelines.md) for any DAX changes (includes UDF refactoring).
-3. **Plan changes** - identify exactly what to add, modify, or remove. Check for naming conflicts and duplicates.
+3. **Plan changes** - identify exactly what to add, modify, or remove. Check for naming conflicts and duplicates. For a rename or removal when on-disk local PBIP files are the working source, resolve the PBIP root containing sibling `*.SemanticModel` and `*.Report` folders, run `../powerbi-report-authoring/scripts/report_reference_scan.ps1 -Root "<pbip-root>" -Terms "<old-name>"`, and review every TMDL and PBIR hit before editing. Do not prescribe this file scan for a live MCP or service-only model: local files may be stale or absent, so retain [Tool Selection Priority](#tool-selection-priority) and inspect the live model instead.
 4. **Execute** in correct order:
    - **Adding tables** - partitions -> columns -> relationships -> measures.
    - **Adding relationships** - ensure key columns exist on both sides with matching data types;
-   - **Adding measures** - verify referenced columns/tables exist;
-5. **Save & validate** - per [Saving Changes to a Semantic Model](#saving-changes-to-a-semantic-model) and [Validation Checklist](#validation-checklist).
+   - **Adding measures** - classify per [modeling-guidelines.md § Measures & DAX](./references/modeling-guidelines.md#measures--dax) (`_Measures` vs `_ReportMeasures`) and verify referenced columns/tables exist;
+5. **Save & validate** - per [Saving Changes to a Semantic Model](#saving-changes-to-a-semantic-model) and [Validation Checklist](#validation-checklist). For the local PBIP rename/removal path, make all required model and report edits, rerun the scanner for the old name, and require zero remaining hits before completing validation.
 
 ---
 
@@ -174,7 +167,7 @@ Steps:
 
 1. **Connect & inventory** - per [Connecting to a Semantic Model](#connecting-to-a-semantic-model). Capture all tables, columns, relationships, measures, and storage mode.
 2. **Load applicable guidelines** - [modeling-guidelines.md](./references/modeling-guidelines.md) always; [direct-lake-guidelines.md](./references/direct-lake-guidelines.md) if Direct Lake; [naming-conventions.md](./references/naming-conventions.md) when assessing naming; [dax-guidelines.md](./references/dax-guidelines.md) when assessing DAX.
-3. **Evaluate** - compare the model against the loaded guidelines (star schema, naming, relationship cardinality and cross-filter, explicit measures with `formatString`, column data types and `sourceColumn`, hidden FK columns, calculated-column-vs-measure choices, Direct Lake constraints, etc.).
+3. **Evaluate** - compare the model against the loaded guidelines (star schema, naming, relationship cardinality and cross-filter, explicit measures with `formatString`, column data types and `sourceColumn`, hidden FK columns, calculated-column-vs-measure choices, Direct Lake constraints, measures misplaced outside `_Measures`/`_ReportMeasures`, etc.).
 4. **Present findings** grouped by severity (critical, recommended, optional). For each item state the rule violated and the proposed fix. Wait for user approval.
 5. **Apply approved fixes** via [Modify an Existing Model](#workflow-modify-an-existing-model).
 6. **Save & validate** - per [Saving Changes to a Semantic Model](#saving-changes-to-a-semantic-model) and [Validation Checklist](#validation-checklist).

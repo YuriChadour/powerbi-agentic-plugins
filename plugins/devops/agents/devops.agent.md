@@ -68,6 +68,20 @@ blocking error.
    1. Invoke `jira-workflow`'s Step 4 (post-commit comment) flow, which asks
       the user for confirmation before posting anything to Jira.
 
+4. **On an explicit PBIP commit/PR summary request** — match the user's
+   message (case-insensitive) against trigger phrases: "generate commit summary",
+   "generate pr summary", or close natural language variants asking to
+   summarize PBIP changes:
+   1. Parse the user's args to determine the mode (commit vs pr) and ref range
+      (or ask the user if unclear).
+   2. Route to `.github/prompts/pbip-commit-or-pr-message.prompt.md` with
+      the chosen mode and refs.
+   3. The prompt will invoke
+      `.\github\scripts\pbip-pr-summary\commit_diff_summary.ps1` to generate
+      a deterministic PBIP diff, then synthesize a Jira-prefixed commit message
+      or PR description.
+   4. Return the drafted message; only commit/post if the user explicitly asks.
+
 Never skip Step 0 of `jira-workflow` (tool discovery). Never hardcode a Jira
 MCP tool name directly in this agent's own logic — always delegate Jira MCP
 calls to the `jira-workflow` skill so the discovery step is respected.
