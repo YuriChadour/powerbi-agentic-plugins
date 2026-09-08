@@ -4,7 +4,7 @@
 **Ticket:** FIN-1787 ("Glasslake Testing Framework"), branch `feature/FIN-1787-glasslake-testing-framework`
 **Source spec reviewed (not in repo, was a chat attachment):** `GATE-001-measure-certification.prompt.md` — BI COE's "Measure Certification & Testing" gate, originally from `c:\Users\IOURICHADOUR\Downloads\GATE-001-measure-certification.prompt (1).md`. Re-attach it if a future session needs to re-verify section numbers (§5, §7, §8, §14 are cited throughout the plan).
 
-This file tracks the PQL.Assert planning work, the resulting OpenSpec change, and decisions that future implementation work must preserve.
+This file tracks the PQL.Assert planning work, the separate dependency-checking OpenSpec change, and decisions that future implementation work must preserve.
 
 ---
 
@@ -40,14 +40,22 @@ The original plan's mandatory business-approval checkpoint was replaced in the O
 
 `ApprovalSource` is intentionally separate from `Status`: `Status=Approved` means eligible for generation/execution, not necessarily business-signed-off. Coverage reporting must independently show Structural, developer-certified, and business-certified coverage rather than collapsing them into one percentage.
 
-## 3. Next steps when resuming
+## 3. Separate Power BI dependency-checking change
 
-1. Start implementation with `/opsx-apply` for `integrate-pql-assert-dax-testing`.
-2. Follow the task order in [tasks.md](../openspec/changes/integrate-pql-assert-dax-testing/tasks.md), preserving §§2a-2c above.
+- [OpenSpec change](../openspec/changes/add-python-powerbi-dependency-checking) is complete and passes `openspec validate --strict --changes "add-python-powerbi-dependency-checking"`. It contains the proposal, design, tasks, and a new `powerbi/dependency-checking` capability spec.
+- It adds a standalone `powerbi-dependency-checking` skill, not a subfeature of `dax-unit-testing`. The planned Python static scanner analyzes local PBIP/TMDL/PBIR source offline, builds a typed dependency graph, supports impact queries, identifies potentially unused objects, and returns stable human-readable/JSON/quiet outputs suitable for CI.
+- The design is informed by ripbi's local-PBIP static-analysis approach but implements an independent Python tool, rather than vendoring or requiring ripbi's Rust binary.
+- Route architecture, semantic-model authoring, report authoring, and DAX-unit-testing workflows to it before rename/removal, dependency-sensitive changes, or test-coverage impact review. Findings are advisory evidence only; the tool never changes PBIP source or deletes objects.
+- Keep the existing `powerbi-report-authoring` report-term scanner unchanged. It serves targeted raw-text searches; dependency checking provides the complete cross-model graph.
+
+## 4. Next steps when resuming
+
+1. Start implementation with `/opsx-apply` for `integrate-pql-assert-dax-testing` or `add-python-powerbi-dependency-checking`, depending on the priority.
+2. Follow the selected change's task order; preserve §§2a-2c for PQL.Assert implementation and §3's standalone ownership boundary for dependency checking.
 3. Do not add an `interaction-playbook.md`/`examples/` pair modeled after the DQ skills; any future supporting files for `dax-unit-testing` must be independently authored.
 4. `plan-skillMigrationReview.prompt.md` remains an unrelated migration plan and was not touched by this work.
 
-## 4. Unrelated addition this session: `spec-lifecycle` plugin scaffolded
+## 5. Unrelated addition this session: `spec-lifecycle` plugin scaffolded
 
 Not part of the PQL.Assert/GATE-001 plan above — scaffolded in a separate conversation (paired with
 Glasslake-1's OpenSpec pilot on the same `feature/FIN-1787-glasslake-testing-framework` branch) and
