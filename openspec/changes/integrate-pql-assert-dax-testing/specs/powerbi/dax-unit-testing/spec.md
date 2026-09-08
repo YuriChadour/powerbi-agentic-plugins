@@ -1,0 +1,105 @@
+## Purpose
+
+Provides a DAX Query View unit-testing skill for Power BI semantic models: a CSV-based measure certification registry contract, deterministic validation/generation/reporting automation, and a coverage-statistics workflow that let agents and developers test and certify measures without fabricating business-approved values.
+
+## ADDED Requirements
+
+### Requirement: Measure Certification Registry Schema
+Every target semantic model project's `Certification/MeasureCertification.csv` SHALL use the exact column schema, in order: `MeasureName, TestName, TestCategory, FilterExpression, ExpectedValue, Tolerance, Owner, Status, ApprovalSource, ApprovedBy, ApprovedOn, Severity, RequirementId, LastReviewed`.
+
+#### Scenario: Registry header matches schema
+- **WHEN** a `Certification/MeasureCertification.csv` file is read by any registry-aware tool
+- **THEN** the tool SHALL treat a header that does not match the schema exactly (name, order, or count of columns) as invalid input
+
+### Requirement: TestCategory Classification
+Each registry row SHALL declare a `TestCategory` of exactly one of `Structural` (integrity only, no business value), `Certification` (business-approved value plus non-empty `FilterExpression`), `Aggregation` (parts sum to whole), or `Regression` (a previously certified period stays unchanged).
+
+#### Scenario: Structural row requires no business value
+- **WHEN** a row's `TestCategory` is `Structural`
+- **THEN** the row is permitted to have an empty `FilterExpression` and does not require a business-supplied `ExpectedValue`
+
+#### Scenario: Non-Structural row requires a filter expression
+- **WHEN** a row's `TestCategory` is `Certification`, `Aggregation`, or `Regression`
+- **THEN** the row SHALL have a non-empty `FilterExpression` that is valid DAX droppable directly into `CALCULATE`
+
+### Requirement: Status Lifecycle
+Each registry row's `Status` SHALL be one of `Pending` (placeholder, not eligible for generation), `Approved` (eligible for test generation and execution), or `Retired` (excluded from generation and execution, retained for audit). An `Approved` row SHALL declare an `ApprovalSource` of `Structural`, `Developer`, or `Business`; `ApprovedBy` and `ApprovedOn` SHALL identify the approving person and ISO date for `Developer` and `Business` rows.
+
+#### Scenario: Pending row is excluded from generation
+- **WHEN** a row's `Status` is `Pending`
+- **THEN** test generation SHALL skip the row and report it under the `CERTIFICATION_PENDING` error type
+
+#### Scenario: Developer-certified row is eligible for generation
+- **WHEN** a row has `Status=Approved` and `ApprovalSource=Developer`
+- **THEN** test generation SHALL include the row without requiring a separate business approval
+
+#### Scenario: Retired row is excluded but retained
+- **WHEN** a row's `Status` is `Retired`
+- **THEN** test generation and execution SHALL skip the row without deleting it from the registry
+
+### Requirement: Registry Validation
+A registry validation tool SHALL enforce every integrity rule from the schema contract — header match, `MeasureName`+`TestName` uniqueness, `MeasureName` existing in the model, permitted `TestCategory`/`Status`/`ApprovalSource`/`Severity` values, non-empty `FilterExpression` unless `Structural`, `ExpectedValue` numeric or one of `NOT_BLANK`/`>=0`/`>0` when `Approved` (never `TBD`), `Tolerance` numeric and `>= 0`, and valid ISO `ApprovedOn`/`LastReviewed` dates where required — and SHALL report any violation distinctly as error type `REGISTRY_INVALID` rather than a generic failure.
+
+#### Scenario: Approved row left at placeholder value fails validation
+- **WHEN** a registry row has `Status=Approved` and `ExpectedValue=TBD`
+- **THEN** validation SHALL fail that row with error type `REGISTRY_INVALID`
+
+#### Scenario: Duplicate MeasureName and TestName pair fails validation
+- **WHEN** two rows share the same `MeasureName` and `TestName`
+- **THEN** validation SHALL fail with error type `REGISTRY_INVALID`
+
+### Requirement: Deterministic Test Generation
+Generating `.dax` test files from `Status=Approved` registry rows SHALL be idempotent — identical registry input SHALL produce byte-identical output — and SHALL never silently overwrite a file whose content no longer matches the last generated hash.
+
+#### Scenario: Repeated generation from unchanged input is byte-identical
+- **WHEN** test generation runs twice against the same `Approved` registry rows with no other changes
+- **THEN** the two generated `.dax` outputs SHALL be byte-identical
+
+#### Scenario: Hand-edited generated file blocks regeneration
+- **WHEN** a previously generated `.dax` file has been modified by hand and generation runs again for the same measure
+- **THEN** generation SHALL fail that file with error type `GENERATED_FILE_MODIFIED` instead of overwriting it
+
+### Requirement: Model Scan and Sync
+Scanning a semantic model SHALL produce a read-only metadata compliance report (description, format string, display folder, home table, registry coverage) without modifying the registry or model. Syncing the registry against the model SHALL auto-generate and auto-approve `Structural` rows for measures lacking them, append a `Status=Pending` placeholder `Certification` row for measures lacking one, and flag — never auto-delete — registry rows whose measure no longer exists in the model. A developer SHALL be able to certify an existing non-Structural row from an explicit, reproducible baseline by setting its `ApprovalSource=Developer`, recording the developer and approval date, and setting `Status=Approved`.
+
+#### Scenario: New measure gets an auto-approved Structural row on sync
+- **WHEN** sync runs against a measure with no existing registry rows
+- **THEN** sync SHALL add a `Structural` row with `Status=Approved` and `ApprovalSource=Structural` for that measure without requiring human input
+
+#### Scenario: New measure gets a pending certification placeholder on sync
+- **WHEN** sync runs against a measure with no existing `Certification`/`Aggregation`/`Regression` row
+- **THEN** sync SHALL append a row with `Status=Pending`, `ExpectedValue=TBD`, and `Owner=TBD` for that measure
+
+#### Scenario: Orphaned row is flagged, not deleted
+- **WHEN** sync finds a registry row whose `MeasureName` no longer exists in the model
+- **THEN** sync SHALL flag the row as orphaned and SHALL NOT remove it from the registry
+
+#### Scenario: Sync never guesses a business value
+- **WHEN** sync processes a `Certification`, `Aggregation`, or `Regression` row and no explicit value was supplied in the same request
+- **THEN** sync SHALL leave `FilterExpression`, `ExpectedValue`, `Owner`, and `RequirementId` unset rather than inferring a value
+
+#### Scenario: Sync records an explicitly supplied business value
+- **WHEN** a human explicitly supplies `FilterExpression`, `ExpectedValue`, and `Owner` for a `Certification`/`Aggregation`/`Regression` row in the same request
+- **THEN** sync SHALL write the supplied values into that row and SHALL be permitted to set `Status=Approved` with `ApprovalSource=Business`
+
+#### Scenario: Developer certifies a reproducible baseline
+- **WHEN** a developer explicitly approves a measured, reproducible expected value for a `Certification`, `Aggregation`, or `Regression` row
+- **THEN** the tooling SHALL record the value with `Status=Approved`, `ApprovalSource=Developer`, `ApprovedBy`, and `ApprovedOn` and SHALL permit it to be generated and executed before business certification is available
+
+### Requirement: Test Coverage Statistics
+A coverage-reporting tool SHALL compute, read-only, the fraction of a semantic model's measures with at least one registry row (vs. measures with zero rows), the fraction with an executable `Structural` row, the fraction with a developer-certified non-Structural row, the fraction with a business-certified non-Structural row, and a breakdown by `TestCategory` × `Status` × `ApprovalSource`, and SHALL emit both a machine-readable and a human-readable coverage artifact without writing to the registry or the model.
+
+#### Scenario: Coverage report identifies untested measures
+- **WHEN** coverage reporting runs against a model containing measures with zero registry rows
+- **THEN** the emitted report SHALL list each such measure as untested
+
+#### Scenario: Coverage report is read-only
+- **WHEN** coverage reporting completes
+- **THEN** the registry file and the semantic model SHALL be unmodified
+
+### Requirement: Error Type Vocabulary
+Registry and test-execution tooling SHALL classify every failure using one of a fixed, machine-readable set of error types: `VALUE_MISMATCH`, `BLANK_RESULT`, `DAX_ERROR`, `MEASURE_NOT_FOUND`, `CERTIFICATION_PENDING`, `METADATA_INCOMPLETE`, `REGISTRY_INVALID`, `GENERATED_FILE_MODIFIED`, `CONNECTION_ERROR`.
+
+#### Scenario: Unclassifiable failure still uses the fixed vocabulary
+- **WHEN** any registry validation, generation, scan/sync, or test-execution operation fails
+- **THEN** the failure SHALL be reported using one of the fixed error type values, not a free-form message alone

@@ -55,6 +55,18 @@
                 "evals",
                 "anthropic"
             ]
+        },
+        {
+            "name": "spec-lifecycle",
+            "description": "Optional OpenSpec bridge for powerbi-architect specs — adds change-tracking, status, and archive history on top of specs/<Name>.spec.md without altering how those specs are authored.",
+            "source": "./plugins/spec-lifecycle",
+            "version": "0.1.0",
+            "keywords": [
+                "openspec",
+                "spec-tracking",
+                "archive",
+                "change-management"
+            ]
         }
     ]
 }
