@@ -103,3 +103,42 @@ Registry and test-execution tooling SHALL classify every failure using one of a 
 #### Scenario: Unclassifiable failure still uses the fixed vocabulary
 - **WHEN** any registry validation, generation, scan/sync, or test-execution operation fails
 - **THEN** the failure SHALL be reported using one of the fixed error type values, not a free-form message alone
+
+### Requirement: Legacy Registry Migration
+
+The skill SHALL provide an explicit migration path for target projects using a legacy
+11-column registry schema
+(`MeasureName, TestName, TestCategory, FilterExpression, ExpectedValue, Tolerance, Owner, Status,
+Severity, RequirementId, LastReviewed`) before adopting the extended approval-audit schema. The
+migration SHALL preserve all existing values, SHALL require an explicit mapping for approval
+provenance fields, and SHALL reject ambiguous approved rows rather than inferring business or
+developer approval.
+
+#### Scenario: Structural legacy row can be mapped automatically
+- **WHEN** a legacy row is `Status=Approved` and `TestCategory=Structural`
+- **THEN** migration MAY set `ApprovalSource=Structural` and SHALL leave business/developer identity fields explicitly marked as not applicable
+
+#### Scenario: Ambiguous approved legacy row is blocked
+- **WHEN** a legacy non-Structural row is `Status=Approved` without explicit provenance
+- **THEN** migration SHALL stop with a clear migration error and SHALL not label the row as Business or Developer
+
+#### Scenario: Pending and retired legacy rows remain auditable
+- **WHEN** a legacy row is `Pending` or `Retired`
+- **THEN** migration SHALL preserve its values and status while adding the extended columns without enabling execution
+
+### Requirement: Onboarding Template Assets
+
+The skill SHALL ship a starter `MeasureCertification.template.csv` (the exact 14-column schema header
+plus one illustrative row per `TestCategory`/`Status`/`ApprovalSource` combination, using only
+placeholder values) and a generalized `TESTING.template.md` (a project-agnostic testing guide covering
+PQL.Assert deployment, naming conventions, running tests locally and via the Python framework, and the
+measure-certification handoff). Neither template SHALL contain a source-project's model name, measure
+names, or live business values.
+
+#### Scenario: Template CSV matches the registry schema
+- **WHEN** `MeasureCertification.template.csv` is validated by `validate_registry.py`
+- **THEN** it SHALL pass header and row-level validation without modification
+
+#### Scenario: Template contains no source-project data
+- **WHEN** the two onboarding templates are inspected
+- **THEN** they SHALL contain only generic placeholder names and values, with no measure names, business figures, or file paths traceable to any specific target project

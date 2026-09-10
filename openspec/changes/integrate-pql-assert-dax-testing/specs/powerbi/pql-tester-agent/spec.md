@@ -5,7 +5,7 @@ Defines the dedicated `pql-tester` agent's explicit operating modes and guardrai
 ## ADDED Requirements
 
 ### Requirement: Explicit Operating Modes
-The agent SHALL expose separately-invoked operating modes — `scan`, `sync`, `generate`, `run`, `report`, `diagnose` — and SHALL NOT perform `sync` or `generate` as a silent side effect of `scan`, `run`, or `report`.
+The agent SHALL expose separately-invoked operating modes — `setup`, `scan`, `sync`, `generate`, `run`, `report`, `diagnose` — and SHALL NOT perform `setup`, `sync`, or `generate` as a silent side effect of `scan`, `run`, or `report`.
 
 #### Scenario: Report mode does not trigger sync or generate
 - **WHEN** the agent is invoked in `report` mode
@@ -14,6 +14,22 @@ The agent SHALL expose separately-invoked operating modes — `scan`, `sync`, `g
 #### Scenario: Scan mode makes no writes
 - **WHEN** the agent is invoked in `scan` mode
 - **THEN** it SHALL only produce a read-only metadata compliance report and SHALL NOT write to the registry, the model, or the file system
+
+### Requirement: One-Time Project Setup Mode
+
+The agent SHALL provide a `setup` mode that deploys the selected PQL.Assert assertion functions into
+the target semantic model and scaffolds `Certification/MeasureCertification.csv` and `TESTING.md` in
+the semantic model project from the `dax-unit-testing` skill's templates. `setup` SHALL be idempotent:
+it SHALL create each of `Certification/MeasureCertification.csv` and `TESTING.md` only if the file does
+not already exist, and SHALL NEVER overwrite either file once present.
+
+#### Scenario: Setup scaffolds both files on an unequipped project
+- **WHEN** `setup` runs against a semantic model project with no `Certification/MeasureCertification.csv` and no `TESTING.md`
+- **THEN** the agent SHALL create both files from the skill's templates and deploy the PQL.Assert functions
+
+#### Scenario: Setup never overwrites existing project files
+- **WHEN** `setup` runs against a project where `Certification/MeasureCertification.csv` or `TESTING.md` already exists
+- **THEN** the agent SHALL leave the existing file(s) unmodified and SHALL report that they already existed
 
 ### Requirement: Progressive Certification Guardrails
 The agent SHALL NOT invent, estimate, or guess an `ExpectedValue`, `Owner`, `FilterExpression`, or `RequirementId` for a `Certification`, `Aggregation`, or `Regression` registry row. The agent MAY self-approve `Structural` rows with `ApprovalSource=Structural`. The agent MAY record a developer-certified, reproducible baseline with `ApprovalSource=Developer` only when a developer explicitly supplies or approves the value in the same request, and MAY record `ApprovalSource=Business` only when a business owner explicitly supplies or approves the value in the same request.
@@ -46,7 +62,11 @@ The agent SHALL support executing generated tests against a `DEV` profile (local
 - **THEN** it SHALL read `PBI_WORKSPACE`, `PBI_MODEL`, `PBI_CLIENT_ID`, `PBI_TENANT_ID`, and `PBI_CLIENT_SECRET` from environment variables only, and SHALL NOT print or write them to any output artifact
 
 ### Requirement: Restricted Write Scope
-The agent SHALL only write within the `Certification/`, `DAXQueries/`, and `reports/` directories and `TESTING.md`, and SHALL NEVER modify semantic model objects (measures, tables, relationships, or model logic).
+The agent SHALL only write within the `Certification/`, `DAXQueries/`, and `reports/` directories, `TESTING.md`, and the model's assertion-library definition file (e.g. `definition/functions.tmdl`, written only to deploy or update PQL.Assert UDFs during `setup`), and SHALL NEVER modify any other semantic model object (measures, tables, relationships, or model logic).
+
+#### Scenario: Setup may write the assertion-library definition file
+- **WHEN** the agent runs `setup` and the PQL.Assert functions are not yet deployed
+- **THEN** the agent MAY write the selected PQL.Assert UDFs into the model's assertion-library definition file, and SHALL NOT modify any other model object in the same operation
 
 #### Scenario: Agent refuses to modify a production measure
 - **WHEN** the agent detects a failing test caused by a measure's DAX expression

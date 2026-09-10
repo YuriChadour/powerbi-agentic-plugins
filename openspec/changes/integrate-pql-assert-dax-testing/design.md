@@ -1,12 +1,58 @@
 ## Context
 
-See [proposal.md](proposal.md) for motivation. This is a cross-cutting change: it adds a new skill (`dax-unit-testing`), a new agent (`pql-tester`), and modifies an existing agent's planning behavior (`powerbi-architect`), all coordinated around a shared external contract (the `Certification/MeasureCertification.csv` registry) that lives in *target* semantic model projects, not in this skills repo. The source library being integrated is PQL.Assert 0.6.0 (`C:\Development\PQL.Assert`), and the work is governed by the BI COE's GATE-001 "Measure Certification & Testing" gate, which this change supplies the reusable tooling for without implementing GATE-001's own CI/PR enforcement.
+See [proposal.md](proposal.md) for motivation. This is a cross-cutting change: it adds two skills (`dax-unit-testing` and `dax-test-framework`), a new agent (`pql-tester`), and modifies existing routing and planning behavior. The design is grounded in an external reference implementation of `dax_test_helpers.py`, a standalone runner, a pytest wrapper, DEV/CLOUD notebooks, a certification generator, and a testing guide. Those files are behavioral references, not plugin assets to copy verbatim. The target-project registry lives outside this repository, while the plugin repository supplies reusable contracts, scripts, prompts, templates, an HTML viewer, and sanitized sample artifacts.
+
+The reference implementation has an 11-column certification CSV and a generator that validates live DAX before atomically replacing the generated suite and query-tab registration. The generalized skill adds approval-audit fields and progressive certification; it therefore needs a deliberate legacy migration boundary rather than silently interpreting existing approvals.
+
+## Architecture Diagram
+
+```mermaid
+flowchart LR
+    subgraph Plugin["plugins/powerbi (this repository)"]
+        Architect["powerbi-architect\n(plans test tasks)"]
+        Developer["powerbi-developer\n(routes test requests)"]
+        SMA["semantic-model-authoring\nskill"]
+        Tester["pql-tester agent\nsetup / scan / sync / generate\nrun / report / diagnose"]
+        DUT["dax-unit-testing skill\nassertion lib staging, registry\ncontract, MeasureCertification\n+ TESTING.md templates,\nvalidate/generate/certify/coverage"]
+        DTF["dax-test-framework skill\ntransport, DEV/CLOUD execution,\nCLI/pytest/notebooks, JUnit/MD\nreports, HTML dashboard"]
+    end
+
+    subgraph Target["Target *.SemanticModel project (outside this repo)"]
+        Fn["definition/functions.tmdl\n(PQL.Assert UDFs)"]
+        Cert["Certification/\nMeasureCertification.csv"]
+        Dax["DAXQueries/\n*.Tests.dax + daxQueries.json"]
+        Testing["TESTING.md"]
+        Reports["reports/\nJUnit XML + Markdown + coverage"]
+    end
+
+    Architect -->|"plans setup + sync/certify/generate/run tasks"| Tester
+    Developer -->|"delegates DQV test work"| Tester
+    SMA -->|"routes test requests"| DUT
+
+    Tester -->|"composes"| DUT
+    Tester -->|"composes"| DTF
+
+    DUT -.->|"schema + scripts + templates"| Cert
+    DUT -.->|"templates"| Testing
+    DUT -.->|"assertion functions"| Fn
+    DUT -.->|"generated suites"| Dax
+    DTF -.->|"executes suites, writes"| Reports
+    DTF -.->|"reads"| Dax
+
+    classDef plugin fill:#eef2ff,stroke:#4338ca,color:#333;
+    classDef target fill:#fef9c3,stroke:#a16207,color:#333;
+    class Architect,Developer,SMA,Tester,DUT,DTF plugin;
+    class Fn,Cert,Dax,Testing,Reports target;
+```
+
+*Solid arrows are plan/delegate/compose relationships between agents and skills inside this repository; dashed arrows are the artifacts each skill reads or writes in a target semantic model project once adopted.*
 
 ## Workflow Diagram
 
 ```mermaid
 flowchart TD
-    A["powerbi-architect: plan progressive certification chain"] --> B["pql-tester: sync"]
+    Z["powerbi-architect: plan one-time setup task\n(unequipped model only)"] --> A0["pql-tester: setup\n(deploy PQL.Assert; scaffold\nMeasureCertification.csv + TESTING.md\nonly if absent)"]
+    A0 --> A["powerbi-architect: plan progressive certification chain"] --> B["pql-tester: sync"]
 
     B --> C{"Registry row exists?"}
     C -->|"No Structural row"| D["Auto-generate + auto-approve Structural row\n(no business input needed)"]
@@ -45,7 +91,7 @@ flowchart TD
 - Give any downstream automation a fixed, machine-readable error-type vocabulary instead of free-form failure text.
 
 **Non-Goals:**
-- Executing tests against live customer models (e.g., Glasslake) as part of this change.
+- Executing tests against live customer models as part of this change.
 - Implementing GATE-001's own CI/PR publication or blocking-merge plumbing — that is a downstream consumer's responsibility.
 - Replacing or modifying `dax-data-quality` (Power Query row-level checks stay a separate concern from DAX Query View unit assertions).
 - Retrofitting the new task-planning requirement into specs already drafted or approved before this change lands.
@@ -70,13 +116,41 @@ Without an explicit planning-side change, nothing forces a test task to exist pe
 **Business certification remains additive even when its value is known during planning.**
 When a business value is known during requirements gathering, the plan records a business-certification task alongside the executable developer baseline rather than replacing it. This allows subsequent developer checks to be added without reopening business approval, while retaining an explicit record of the business-provided test.
 
+**Two skills rather than one overloaded skill.**
+The execution framework and registry lifecycle have different inputs, failure modes, and reuse boundaries. `dax-test-framework` owns transport, discovery, execution, filtering, reports, and the HTML viewer; `dax-unit-testing` owns assertion-library staging, registry integrity, generation, certification, and coverage. The `pql-tester` agent composes them explicitly. Alternative considered: place all scripts and notebooks under one skill — rejected because consumers that only need execution would inherit business-certification rules and because the runner can be reused with non-registry DAX suites.
+
+**Onboarding templates delivered by a dedicated `setup` mode, not authored ad hoc per project.**
+A user adopting this capability on an existing model needs two concrete starting artifacts, not just schema documentation: a `MeasureCertification.csv` they can immediately open and fill in, and a `TESTING.md` that explains the workflow in their own project. `dax-unit-testing` ships both as templates (`MeasureCertification.template.csv`, `TESTING.template.md`), and `pql-tester` gains a `setup` mode — invoked once by the `powerbi-architect`-planned setup task — that deploys the PQL.Assert library and copies both templates into the target project only if the destination files do not already exist. This keeps the behavior identical for a user working with the Copilot CLI or with Claude Code: both `AGENTS.md` and `CLAUDE.md` document the same `setup` step and the same resulting `TESTING.md`/registry files, so onboarding does not diverge by agent surface. Alternative considered: only document the schema in `references/certification-registry-schema.md` and let the user hand-author their own CSV and `TESTING.md` — rejected because it re-creates avoidable boilerplate per project and produces inconsistent onboarding docs across models.
+
+**DAX-native tests plus Python transport, not Python-generated assertions.**
+The reference pattern keeps assertions in `.dax` Query View files and uses Python only to send the unchanged query text, parse typed result rows, and publish reports. This preserves Desktop parity and avoids a second assertion language. Alternative considered: translate DAX assertions into Python checks — rejected because it would diverge from the model's PQL.Assert behavior.
+
+**Explicit legacy registry migration.**
+The reference 11-column CSV cannot be safely promoted to the 14-column audit contract by positional defaults. A migration command or documented import path must require an explicit mapping for approved rows and may only auto-fill fields whose meaning is unambiguous (`ApprovalSource=Structural` for structural rows). Ambiguous approvals remain blocked and visible. Alternative considered: infer all legacy `Approved` rows as business-approved — rejected because it would fabricate audit provenance.
+
+**Runtime XML loading instead of embedded report data.**
+The HTML dashboard is a static, shareable asset. It fetches a configurable JUnit XML artifact with a cache-busting query parameter, parses both a single `testsuite` and a `testsuites` wrapper, and falls back to a local file picker when browser file access or HTTP serving prevents automatic loading. This keeps generated results in the test framework's XML artifacts and lets the same dashboard render new runs without regeneration. Alternative considered: embed JSON results into the HTML — rejected because it produces stale, repository-specific copies and prevents artifact substitution.
+
+**Sanitized report fixtures.**
+The repository includes representative CLI JUnit XML, pytest JUnit XML, and Markdown failure-summary samples with generic suite/test names. They are used to validate parsing and to make the skill's output contract reviewable without requiring a live semantic model. Alternative considered: commit a real project's reports — rejected because that would leak model names, business values, and machine-specific metadata.
+
+**Skill-creator evaluation after implementation, with deterministic assertions and human review.**
+The skills are workflow-heavy and can under-trigger or silently broaden scope, so evaluation is part of completion rather than optional polish. Three prompts will compare no-skill/baseline behavior to each skill, grade objective assertions, aggregate timing/token/pass-rate data, and render the results with `generate_review.py`; human feedback then drives one revision cycle before description optimization is considered.
+
 ## Risks / Trade-offs
 
 - **[Risk]** A registry contract with four cooperating scripts spread across `validate`/`generate`/`certify`/`coverage` increases the surface a consuming project must wire up correctly. → **Mitigation**: each script has a single, narrow read/write contract (documented in `certification-registry-schema.md`) and the error-type vocabulary is shared across all four, so partial adoption (e.g., validate + generate only) still works without coverage or sync.
 - **[Risk]** Developer-certified baselines can diverge from the business definition. → **Mitigation**: `ApprovalSource`, `ApprovedBy`, and `ApprovedOn` make that distinction machine-readable; coverage reports separately show developer and business coverage rather than collapsing them into one percentage.
 - **[Risk]** `pql-tester`'s guardrail against fabricating baselines or business values depends on prompt-level discipline, not a hard technical control — a model could still hallucinate a value if instructions are ambiguous. → **Mitigation**: the agent writes a non-Structural approved row only after an explicit developer or business approval in the same request; `validate_registry.py` independently rejects any approved row still carrying a `TBD` placeholder.
 - **[Risk]** Coverage statistics can create a false sense of completeness. → **Mitigation**: the skill documentation states coverage is a registry snapshot, not proof tests pass, and reports separately distinguish `Pending`, executable developer-certified, and business-certified rows.
+- **[Risk]** The generalized registry schema may be mistaken for a drop-in replacement for an existing 11-column CSV. → **Mitigation**: add a migration task and fixture tests that reject ambiguous approval provenance instead of guessing.
+- **[Risk]** Static HTML viewers opened directly from disk may be blocked from fetching adjacent XML by browser file-origin rules. → **Mitigation**: document serving the report folder over a local HTTP server and retain the manual XML file-picker fallback.
+- **[Risk]** Python transport dependencies are Windows- and ADOMD.NET-sensitive. → **Mitigation**: retain `uv`-only invocation, dynamic Desktop-port discovery, environment-only CLOUD credentials, profile-specific diagnostics, and a smoke gate before suite execution.
 
 ## Migration Plan
 
-This is an additive documentation/tooling change with no runtime system to migrate — no existing skill or agent is removed or broken by landing it. Rollout is: (1) stage skill/agent files and registry scripts, (2) wire routing updates into `powerbi-developer`, `semantic-model-authoring`, and `powerbi-architect`, (3) update root registries (`AGENTS.md`, `CLAUDE.md`, `plugins/powerbi/README.md`). Because `powerbi-architect`'s new task-planning requirement applies going-forward only, no existing in-flight or archived spec needs to be revisited. Rollback, if needed, is a straightforward revert of the added files and the routing-table edits, since nothing outside this change depends on the new capabilities yet.
+This is an additive documentation/tooling change with no runtime system to migrate in this repository. Rollout is: (1) stage the two skills, reusable scripts/templates, HTML viewer, and agent, (2) wire routing updates into `powerbi-developer`, `semantic-model-authoring`, and `powerbi-architect`, (3) update root registries (`AGENTS.md`, `CLAUDE.md`) so both the Copilot CLI and Claude Code document the same `pql-tester setup` step, (4) validate against fixture models, generic legacy registries, and sanitized report artifacts, and (5) run the skill-creator evaluation loop. A target semantic model adopts the capability by running `pql-tester setup` once — deploying its selected PQL.Assert subset and scaffolding `Certification/MeasureCertification.csv` and `TESTING.md` from the skill's templates only where absent — then configuring its model path/profile and explicitly migrating any legacy registry. Rollback is a revert of the added files and routing edits; target model artifacts remain untouched unless a consuming project opts in.
+
+## Open Questions
+
+None that change the scope or contract. The exact three evaluation prompts may be refined after the first skill draft, but their coverage areas and objective assertions are fixed in the task list.
