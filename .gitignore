@@ -9,3 +9,7 @@ chats/
 
 **/scripts/_tools
 
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

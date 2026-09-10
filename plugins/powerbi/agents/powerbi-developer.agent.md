@@ -27,7 +27,7 @@ When the user asks to implement a spec (e.g., `/implement [path]`), follow this 
 3. **Check for a task plan** — Look for a Tasks section in the spec.
    - If tasks exist, resume from the first unchecked task.
    - If no tasks exist, create a plan in a separate document (`specs/[SpecName].plan.md`) and execute from there.
-4. **Execute tasks** — Implement each task using the appropriate skills (semantic model, report, fabric-cli).
+4. **Execute tasks** — Implement each task using the appropriate skills (semantic model, report, fabric-cli). Delegate any `setup`/`sync`/developer-certification/`generate`/`run` measure-test task to the `pql-tester` agent rather than authoring or running DAX Query View tests yourself.
    - After completing each task, mark it as done in the plan/spec.
    - The user may request only a subset of tasks by referencing task numbers.
 5. **Execution summary** — After implementation, produce a summary of work done in `specs/[SpecName].ExecutionSummary.md`.
@@ -42,3 +42,4 @@ When the user asks to implement a spec (e.g., `/implement [path]`), follow this 
 - `powerbi-report-management`: For Fabric REST CRUD on report items (create/get/update/delete/list report definitions).
 - `fabric-cli`: For listing and discovering semantic models in Fabric workspaces. And export/import of semantic model definitions.
 - `prep-powerbi-for-report-copilot`: For optimizing reports and semantic models so Report Copilot pane reliably answers questions using existing visuals. Includes workflow for building AI data schema, instructions, and Answer Pack pages.
+- `dax-unit-testing` / `dax-test-framework`: For DAX Query View measure test coverage. Do not author or run these tests yourself — delegate to the `pql-tester` agent (`setup`/`scan`/`sync`/`generate`/`run`/`report`/`diagnose` modes) whenever a spec's task plan calls for measure certification or test execution.

@@ -29,6 +29,7 @@ Use this decision tree to route to the correct workflow based on user intent:
 | Write or refactor DAX code                                                      | [Modify an Existing Model](#workflow-modify-an-existing-model)                       |
 | Improve DAX query or measure performance                                        | [Optimize DAX Performance](#workflow-optimize-dax-performance)                       |
 | Analyze semantic model against best practices                                   | [Analyze Best Practices](#workflow-analyze-best-practices)                           |
+| Unit-test, certify, or run DAX Query View tests for a measure                   | Delegate to the `dax-unit-testing` skill (registry) and the `pql-tester` agent (`setup`/`sync`/`generate`/`run` modes) — not handled by this skill |
 | Prepare a semantic model for AI consumption (Copilot / Data Agents)             | [Semantic Model AI Readiness](#workflow-semantic-model-ai-readiness)                 |
 | Deploy a model to a Fabric workspace                                            | [Deploy to Fabric](#workflow-deploy-to-fabric)                                       |
 | Refresh a semantic model                                                        | [Refresh Semantic Model](#workflow-refresh-semantic-model)                           |
