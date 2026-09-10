@@ -53,6 +53,7 @@ Fabric REST APIs: https://learn.microsoft.com/en-us/rest/api/fabric/articles/
 - Activator for Reflex alerts, notifications, and automated actions over Fabric events and data
 - DAX for Semantic Model measures
 - Semantic model development (see `plugins/powerbi/skills/semantic-model-authoring/SKILL.md`)
+- DAX Query View measure testing: `plugins/powerbi/skills/dax-unit-testing/SKILL.md` (registry) and `plugins/powerbi/skills/dax-test-framework/SKILL.md` (DEV/CLOUD execution), orchestrated by the `pql-tester` agent (`plugins/powerbi/agents/pql-tester.agent.md`). A one-time `pql-tester setup` step scaffolds a target project's `TESTING.md` and starter `MeasureCertification.csv` — the same behavior whether invoked from the Copilot CLI or Claude Code.
 - Power BI report design skill: `plugins/powerbi/skills/powerbi-report-design/SKILL.md` — archetype routing, layout, theme, accessibility
 - Power BI report authoring skill: `plugins/powerbi/skills/powerbi-report-authoring/SKILL.md` — PBIR/PBIP file mechanics, Desktop reload/screenshot
 

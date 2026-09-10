@@ -38,7 +38,14 @@ process environment. Credentials SHALL never be printed or written to reports.
 Before executing a suite, the framework SHALL run a PQL.Assert smoke assertion and require one
 passing result. A connection failure, missing PQL.Assert library, query execution error, assertion
 failure, and indeterminate blank `Passed` value SHALL remain distinct outcomes with non-zero
-process status when applicable.
+process status when applicable. Every such failure SHALL be labelled with the shared machine-readable
+error type vocabulary defined by the `powerbi/dax-unit-testing` capability (`VALUE_MISMATCH`,
+`BLANK_RESULT`, `DAX_ERROR`, `MEASURE_NOT_FOUND`, `CERTIFICATION_PENDING`, `METADATA_INCOMPLETE`,
+`REGISTRY_INVALID`, `GENERATED_FILE_MODIFIED`, `CONNECTION_ERROR`) rather than a free-form label.
+
+#### Scenario: Execution failures use the shared error vocabulary
+- **WHEN** a run fails to connect, a query raises a DAX error, or an assertion reports a value mismatch
+- **THEN** the console output, JUnit XML, and Markdown artifacts SHALL each carry the corresponding fixed error type value (`CONNECTION_ERROR`, `DAX_ERROR`, `VALUE_MISMATCH`)
 
 #### Scenario: Missing assertion library stops the suite
 - **WHEN** the transport connects but the smoke assertion cannot execute or does not pass
