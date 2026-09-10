@@ -10,6 +10,7 @@ Plugins that turn GitHub Copilot into a specialist for Power BI and Microsoft Fa
 | **[fabric](./plugins/fabric)**   | Navigate workspaces, import/export item definitions, call Fabric & Power BI REST APIs, run jobs, and manage OneLake files.        |
 | **[devops](./plugins/devops)**   | Enforce branch hygiene, standard Azure DevOps branch policies, and team-safe Git workflows.                                      |
 | **[skill-creator](./plugins/skill-creator)** | Official Anthropic skill-authoring toolkit — create new skills, run with-skill/baseline benchmark evals, optimize trigger descriptions, and package `.skill` files. Vendored unmodified from [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official). |
+| **[spec-lifecycle](./plugins/spec-lifecycle)** | Optional OpenSpec bridge for `powerbi-architect` specs — adds change-tracking, status, and archive history on top of `specs/<Name>.spec.md` without altering how those specs are authored. |
 
 Every plugin follows the same structure:
 

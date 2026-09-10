@@ -4,16 +4,19 @@ description: >-
   Create and modify Power BI report files in PBIR/PBIP format with the
   `powerbi-report-author` and `powerbi-desktop` CLIs. Use for approved report
   specs; pages, visuals, filters, themes, and formatting; PBIR validation and
-  Desktop rendering; template scaffolding; BPA; and scanning local PBIP report
-  references before model entity renames or removals. Use
-  `powerbi-report-design` for open-ended design and `powerbi-report-planning`
-  for requirements and build sequencing. Triggers: "edit PBIR", "create Power
-  BI report page", "format report visual", "validate Power BI report", "reload
-  Desktop screenshot", "scaffold from template", "BPA report", "scan report
-  references", "assess PBIP rename impact", "check report dependencies before
-  removing a model entity".
+  Desktop rendering; template scaffolding; BPA; finding all references to a
+  table, column, or measure and where a field is used across local PBIP
+  reports and semantic models; and scanning local PBIP report references
+  before model entity renames or removals. Use `powerbi-report-design` for
+  open-ended design and `powerbi-report-planning` for requirements and build
+  sequencing. Triggers: "edit PBIR", "create Power BI report page", "format
+  report visual", "validate Power BI report", "reload Desktop screenshot",
+  "scaffold from template", "BPA report", "scan report references", "find all
+  references", "where is this field used", "find reports using", "scan PBIP
+  dependencies", "assess PBIP rename impact", "check report dependencies
+  before removing a model entity".
 metadata:
-  version: 0.3.0
+  version: 0.4.0
 ---
 
 > **Update Check — explicit only**
@@ -49,6 +52,45 @@ definition files in the **PBIR (Power BI Report)** format used by **PBIP
 
 - Do not guess PBIR JSON from memory when CLI metadata or reference files are available.
 - Do not use only this skill for open-ended design, report planning, or Fabric report item CRUD; pair it with `powerbi-report-design`, `powerbi-report-planning`, or `powerbi-report-management`.
+
+## Reference Search Routing
+
+Treat any request about references, usages, dependencies, or rename/removal
+impact for a table, column, measure, field, visual, or filter in a **local
+PBIP project** as a PBIP reference scan — not as a generic repository search.
+This applies whether or not the user names the scanner or this skill, and
+whether the phrasing is "find all references to X", "where is this field
+used?", "find reports using X", "scan PBIP dependencies", or
+rename/removal-impact framing.
+
+- **Select the scanner first.** Before issuing any generic text search, run
+  `scripts/report_reference_scan.ps1` (which wraps
+  `scripts/report_reference_scan.py`) against the PBIP root. Generic text
+  search is permitted only *afterward*, to inspect or verify the exact
+  surrounding context of a specific scanner hit — it must never be the first
+  tool used for a reference-search request, and it must never replace running
+  the scanner.
+- **Use an explicit array for multi-term scans.** When the request names both
+  a table/entity and a field/measure, build an explicit PowerShell array
+  variable and pass it as `-Terms`:
+
+  ```powershell
+  $terms = @('<Table>', '<Field>')
+  scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms $terms
+  ```
+
+  `-Terms` is a mandatory `[string[]]` parameter. Do **not** pass multiple bare
+  values directly after `-Terms` (e.g. `-Terms "<Table>", "<Field>" -MaxItems
+  25`) — always bind an explicit array variable to `-Terms` first, so a
+  multi-value term list cannot bind to another parameter such as `-MaxItems`.
+- **Single-term requests remain valid.** A request naming only a table/entity
+  or only a field/measure does not require a second term; run the scanner for
+  that one term and report every resulting hit directly (see
+  [Result Interpretation](#result-interpretation)).
+
+See [Task: Scan references before renaming or removing an entity](#task-scan-references-before-renaming-or-removing-an-entity)
+for the full invocation reference and [Result Interpretation](#result-interpretation)
+for how to classify and report multi-term scan results.
 
 ## Quick Start Workflow
 
@@ -469,10 +511,15 @@ contains sibling `*.SemanticModel` and `*.Report` folders:
 
 ```powershell
 scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales"
-scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales", "Net Amount" -MaxItems 25
-scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales", "Net Amount" -Json
+$terms = @('Sales', 'Net Amount')
+scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms $terms -MaxItems 25
+scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms $terms -Json
 scripts/report_reference_scan.ps1 -Root "<path-to-pbip-root>" -Terms "Sales" -Output "<path-to-scan.md>"
 ```
+
+> Always bind a multi-term list to `-Terms` through an explicit array
+> variable (as shown above), never as bare comma-separated values after
+> `-Terms` — see [Reference Search Routing](#reference-search-routing).
 
 Wrapper parameters:
 
@@ -496,6 +543,49 @@ references, scan the old name again and require zero hits, then run
 `powerbi-report-author validate <path-to-.Report-dir>`. The scan does not
 replace semantic-model validation, PBIR validation, Desktop reload, or rendered
 screenshot review.
+
+### Result Interpretation
+
+When a reference-search request names **both a table/entity and a
+field/measure**, classify every scanner hit into exactly one of these three
+categories before reporting it — never present a table-only or unrelated hit
+as an exact qualified reference:
+
+- **Exact qualified reference** — the field is directly paired with the
+  requested table in the same artifact.
+  - TMDL: a field/measure/calculated-column hit whose `SemanticHit.table`
+    value (already recorded by `report_reference_scan.py` for every semantic
+    hit) equals the requested table, case-insensitive.
+  - PBIR: a `queryRef` hit whose `line_text` contains the qualified form
+    `"<table>.<field>"` (or the hierarchy-qualified form
+    `"<table>.<hierarchy>.<level>"`) where `<table>` equals the requested
+    table and `<field>`/`<level>` equals the requested field. Per
+    `template-report-kb.md`, `queryRef` is always rendered as
+    `"[table name].[column or measure name]"`, so this pairing can be
+    confirmed directly from the matched line text — e.g. a hit with
+    `"queryRef": "Sims HFI_ClientInfo.Region"` when the request is for
+    `Region` on table `Sims HFI_ClientInfo` is an exact qualified reference.
+- **Table-only reference** — the requested table/entity matches in a file,
+  but no hit in that same file satisfies the exact-qualified condition above
+  for the requested field. This includes the case where a file has both an
+  `Entity` match for the table and a separate `Property` match for the field
+  on different lines with **no** corresponding `queryRef` pairing them as
+  `<table>.<field>` — that combination must be downgraded to table-only, not
+  treated as exact, pending a `queryRef` pairing or direct file inspection.
+- **Unrelated match** — the requested field name matches, but its paired
+  `queryRef` table or its TMDL `SemanticHit.table` is a *different* table
+  than the one requested (e.g. a same-named `Region` column that belongs to
+  table `Geography` instead of the requested `Sims HFI_ClientInfo`).
+
+Report exact qualified references first, grouped by report/page/visual (or by
+semantic-model table) where available, in their own clearly labeled section.
+Report table-only references and unrelated matches afterward, each in its own
+clearly labeled section — do not merge any of the three categories together.
+
+When the request names **only a table/entity or only a field/measure**, skip
+this classification entirely: run the scanner for that single term and report
+every resulting hit directly, without inventing an exact/table-only/unrelated
+split that a single-term request gives no basis to make.
 
 ---
 
