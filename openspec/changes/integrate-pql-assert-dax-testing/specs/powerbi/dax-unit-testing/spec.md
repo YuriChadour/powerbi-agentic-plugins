@@ -22,8 +22,16 @@ Each registry row SHALL declare a `TestCategory` of exactly one of `Structural` 
 - **WHEN** a row's `TestCategory` is `Certification`, `Aggregation`, or `Regression`
 - **THEN** the row SHALL have a non-empty `FilterExpression` that is valid DAX droppable directly into `CALCULATE`
 
+#### Scenario: ApprovalSource=Structural is reserved for Structural rows
+- **WHEN** a row declares `ApprovalSource=Structural`
+- **THEN** its `TestCategory` SHALL also be `Structural`, and a `Structural` row SHALL NOT declare `ApprovalSource=Developer` or `ApprovalSource=Business`
+
 ### Requirement: Status Lifecycle
-Each registry row's `Status` SHALL be one of `Pending` (placeholder, not eligible for generation), `Approved` (eligible for test generation and execution), or `Retired` (excluded from generation and execution, retained for audit). An `Approved` row SHALL declare an `ApprovalSource` of `Structural`, `Developer`, or `Business`; `ApprovedBy` and `ApprovedOn` SHALL identify the approving person and ISO date for `Developer` and `Business` rows.
+Each registry row's `Status` SHALL be one of `Pending` (placeholder, not eligible for generation), `Approved` (eligible for test generation and execution), or `Retired` (excluded from generation and execution, retained for audit). An `Approved` row SHALL declare an `ApprovalSource` of `Structural`, `Developer`, or `Business`; `ApprovedBy` and `ApprovedOn` SHALL identify the approving person and ISO date for `Developer` and `Business` rows, and SHALL both carry the literal sentinel `N/A` for `ApprovalSource=Structural` rows.
+
+#### Scenario: Structural approval carries the not-applicable sentinel
+- **WHEN** a row is auto-approved with `ApprovalSource=Structural`
+- **THEN** its `ApprovedBy` and `ApprovedOn` SHALL be written as `N/A` rather than left empty or filled with an agent identity or date
 
 #### Scenario: Pending row is excluded from generation
 - **WHEN** a row's `Status` is `Pending`
@@ -38,7 +46,13 @@ Each registry row's `Status` SHALL be one of `Pending` (placeholder, not eligibl
 - **THEN** test generation and execution SHALL skip the row without deleting it from the registry
 
 ### Requirement: Registry Validation
-A registry validation tool SHALL enforce every integrity rule from the schema contract — header match, `MeasureName`+`TestName` uniqueness, `MeasureName` existing in the model, permitted `TestCategory`/`Status`/`ApprovalSource`/`Severity` values, non-empty `FilterExpression` unless `Structural`, `ExpectedValue` numeric or one of `NOT_BLANK`/`>=0`/`>0` when `Approved` (never `TBD`), `Tolerance` numeric and `>= 0`, and valid ISO `ApprovedOn`/`LastReviewed` dates where required — and SHALL report any violation distinctly as error type `REGISTRY_INVALID` rather than a generic failure.
+A registry validation tool SHALL enforce every integrity rule from the schema contract — header match, `MeasureName`+`TestName` uniqueness, `MeasureName` existing in the model, permitted `TestCategory`/`Status`/`ApprovalSource`/`Severity` values, the `ApprovalSource=Structural` ⇔ `TestCategory=Structural` pairing, non-empty `FilterExpression` unless `Structural`, `ExpectedValue` numeric or one of `NOT_BLANK`/`>=0`/`>0` when `Approved` (never `TBD`), `Tolerance` numeric and `>= 0`, and valid ISO `ApprovedOn`/`LastReviewed` dates (or the `N/A` sentinel where the schema permits it) — and SHALL report any violation distinctly as error type `REGISTRY_INVALID` rather than a generic failure.
+
+The tool SHALL additionally offer a schema-only mode that applies every rule not requiring a live semantic model, so a registry or template can be validated in CI without a model connection.
+
+#### Scenario: Schema-only validation runs without a model
+- **WHEN** validation is invoked in schema-only mode against a registry file with no model available
+- **THEN** it SHALL apply all structural, vocabulary, uniqueness, and value rules, SHALL skip only the `MeasureName`-exists-in-model rule, and SHALL report that the model-existence rule was not evaluated
 
 #### Scenario: Approved row left at placeholder value fails validation
 - **WHEN** a registry row has `Status=Approved` and `ExpectedValue=TBD`
@@ -49,11 +63,15 @@ A registry validation tool SHALL enforce every integrity rule from the schema co
 - **THEN** validation SHALL fail with error type `REGISTRY_INVALID`
 
 ### Requirement: Deterministic Test Generation
-Generating `.dax` test files from `Status=Approved` registry rows SHALL be idempotent — identical registry input SHALL produce byte-identical output — and SHALL never silently overwrite a file whose content no longer matches the last generated hash.
+Generating `.dax` test files from `Status=Approved` registry rows SHALL be idempotent — identical registry input SHALL produce byte-identical output — and SHALL never silently overwrite a file whose content no longer matches the last generated hash. Generation SHALL also register every generated file in the project's `daxQueries.json` deterministically, preserving existing unrelated entries.
 
 #### Scenario: Repeated generation from unchanged input is byte-identical
 - **WHEN** test generation runs twice against the same `Approved` registry rows with no other changes
 - **THEN** the two generated `.dax` outputs SHALL be byte-identical
+
+#### Scenario: Generated files are registered without disturbing existing entries
+- **WHEN** generation writes or refreshes a `.dax` test file in a project whose `daxQueries.json` already lists hand-authored queries
+- **THEN** the generated file SHALL be present in `daxQueries.json` exactly once, the pre-existing entries SHALL be preserved, and a second identical run SHALL leave `daxQueries.json` byte-identical
 
 #### Scenario: Hand-edited generated file blocks regeneration
 - **WHEN** a previously generated `.dax` file has been modified by hand and generation runs again for the same measure
@@ -129,16 +147,37 @@ developer approval.
 ### Requirement: Onboarding Template Assets
 
 The skill SHALL ship a starter `MeasureCertification.template.csv` (the exact 14-column schema header
-plus one illustrative row per `TestCategory`/`Status`/`ApprovalSource` combination, using only
-placeholder values) and a generalized `TESTING.template.md` (a project-agnostic testing guide covering
+plus one illustrative row per `TestCategory`/`Status`/`ApprovalSource` combination) and a generalized
+`TESTING.template.md` (a project-agnostic testing guide covering
 PQL.Assert deployment, naming conventions, running tests locally and via the Python framework, and the
-measure-certification handoff). Neither template SHALL contain a source-project's model name, measure
+measure-certification handoff). Template rows SHALL use only illustrative, obviously synthetic values;
+rows shown as `Approved` SHALL carry a validation-legal `ExpectedValue` (for example `NOT_BLANK`,
+`>=0`, or a synthetic numeric) rather than the `TBD` placeholder, which SHALL appear only on `Pending`
+rows. Neither template SHALL contain a source-project's model name, measure
 names, or live business values.
 
 #### Scenario: Template CSV matches the registry schema
-- **WHEN** `MeasureCertification.template.csv` is validated by `validate_registry.py`
+- **WHEN** `MeasureCertification.template.csv` is validated by the registry validation tool in schema-only mode
 - **THEN** it SHALL pass header and row-level validation without modification
 
 #### Scenario: Template contains no source-project data
 - **WHEN** the two onboarding templates are inspected
 - **THEN** they SHALL contain only generic placeholder names and values, with no measure names, business figures, or file paths traceable to any specific target project
+
+### Requirement: Idempotent Project Scaffolding
+
+The skill SHALL provide a deterministic, separately-invocable scaffolding entry point that deploys the
+selected PQL.Assert assertion functions into a target semantic model's assertion-library definition
+file and copies `MeasureCertification.template.csv` to `Certification/MeasureCertification.csv` and
+`TESTING.template.md` to the semantic model project's `TESTING.md`. Scaffolding SHALL create each
+destination file only if it does not already exist, SHALL NEVER overwrite an existing file, SHALL
+report which destinations already existed, and SHALL NOT write to any semantic model object other than
+the assertion-library definition file.
+
+#### Scenario: Second scaffolding run makes no changes
+- **WHEN** scaffolding runs against a project that has already been scaffolded
+- **THEN** it SHALL leave every destination file byte-identical and SHALL report each destination as already present
+
+#### Scenario: Partially scaffolded project is completed, not overwritten
+- **WHEN** scaffolding runs against a project that has `Certification/MeasureCertification.csv` but no `TESTING.md`
+- **THEN** it SHALL create only `TESTING.md` and SHALL leave the existing registry unmodified
