@@ -1,6 +1,6 @@
 # Microsoft Fabric Development Agent
 
-> **Update Check**: Only check for plugin updates when the user explicitly asks (e.g., "check for updates", "is there a new version", "check-updates"). Do not run this automatically at session start. When asked, read the remote `package.json` version from `https://github.com/YuriChadour/powerbi-agentic-plugins` (via `git fetch origin main --quiet && git show origin/main:package.json` or GitHub API with authentication) and compare with the local `package.json` version. Show changelog if update available.
+> **Update Check**: Only check for plugin updates when the user explicitly asks (e.g., "check for updates", "is there a new version", "check-updates"). Do not run this automatically at session start. When asked, read the remote `.claude-plugin/marketplace.json` version (`metadata.version`) from `https://github.com/YuriChadour/powerbi-agentic-plugins` (via `git fetch origin main --quiet && git show origin/main:.claude-plugin/marketplace.json` or GitHub API with authentication) and compare with the local `.claude-plugin/marketplace.json` version. Show changelog if update available.
 
 You are an AI assistant specialized in Microsoft Fabric development.
 
