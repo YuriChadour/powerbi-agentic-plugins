@@ -74,3 +74,40 @@ noted here only because it's the repo's only `RESUME.md`.
   Glasslake-1's `specs/Python-MCP-DAX-Test-Framework.spec.md` (already has a hand-built OpenSpec
   change at `openspec/changes/add-dax-test-framework` in that repo — good candidate to verify the
   skill's mapping instructions produce equivalent output).
+
+## 6. Unrelated addition this session: `skill-merge-planner` scored via `skill-creator`'s eval loop
+
+Also unrelated to the PQL.Assert/GATE-001 work above — a separate `/skill-creator` invocation to
+evaluate and score `plugins/powerbi/skills/skill-merge-planner`. Noted here only because it's the
+repo's only `RESUME.md`.
+
+- Ran `quick_validate.py` (from the sibling `skill-creator` skill) against `skill-merge-planner`'s
+  `SKILL.md`: **fails** — frontmatter `description` is 1144 chars, over the 1024-char limit. This
+  is an objective defect independent of behavior; not yet fixed.
+- Ran the full with-skill vs. no-skill baseline eval loop (2 test cases from the skill's existing
+  `evals/evals.json`, graded against their existing `expectations`). Results saved under
+  `plugins/powerbi/skills/skill-merge-planner-workspace/iteration-1/` (`benchmark.json`/`.md`,
+  per-eval `grading.json`, and a static `review.html` viewer already generated and opened).
+  - **With-skill: 90% pass rate. No-skill baseline: 100% pass rate** (skill currently *underperforms*
+    a plain agent on one of the two test cases).
+  - Eval 1 (explicit reference path pointing at `skill-creator`, which has no Power BI counterpart):
+    with-skill scored 4/5 — it correctly found zero functionally-matched skill pairs but then, per
+    Step 4's literal wording ("score every compared pair"), left the entire 7-dimension rubric table
+    `N/A` instead of scoring anything. The baseline agent, unconstrained by that wording, used
+    judgment to benchmark the nearest adjacent pair anyway (`skill-merge-planner` 32/35 vs.
+    `skill-creator` 23/35) and produced a materially more complete, more useful plan from the same
+    input.
+  - Eval 2 (missing default sibling reference path): both configurations handled it identically and
+    correctly (detected the missing path, refused to fabricate results, asked for the right input,
+    preserved the plan-only scope). Non-discriminating — keep as a regression guard, not as primary
+    evidence of skill value.
+  - Both configurations respected the read-only/plan-only scope boundary in every run — no repo
+    files were touched (verified via `git status`).
+- **Two fixes identified but not yet applied** (paused for user confirmation before proceeding):
+  1. Trim the frontmatter `description` under 1024 chars.
+  2. Add guidance to Step 2/4 for the zero-functional-match case: still offer an architecture-only
+     benchmark of the nearest adjacent skill for informational value, rather than leaving the rubric
+     table empty.
+- Next step if resuming this thread: apply the two fixes above, bump `metadata.version`, re-run the
+  same 2-eval loop into `iteration-2/` (with `--previous-workspace iteration-1`), and confirm the
+  with-skill pass rate closes the gap with (or exceeds) the 100% baseline.
