@@ -43,7 +43,7 @@ A valid development branch must:
 ## Script to run
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File check_git_branch_guard.txt
+powershell -ExecutionPolicy Bypass -File check_git_branch_guard.ps1
 ```
 
 ## Example valid branches
@@ -92,4 +92,14 @@ The tool is consumed in two ways:
 
 See `plugins/devops/skills/jira-workflow/SKILL.md` for the automatic flow
 and `devops.agent.md` Step 4 for the explicit trigger.
+
+## Note: assets/azure-devops-cli-setup.md
+
+One-time, per-machine setup steps for the Azure CLI (`az`) + `azure-devops`
+extension that PR-creation tooling in this skill depends on (extension
+install, `az login`, `az devops configure --defaults organization=...`).
+It lives here — not in a top-level repo `plans/` folder — for the same
+distribution reason as `assets/pbip-pr-summary/` above: only files inside a
+skill's own folder travel with the plugin when installed elsewhere. The
+accompanying `assets/setup_azure_cli.ps1` automates it end to end.
 

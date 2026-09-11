@@ -87,11 +87,10 @@ MCP tool name directly in this agent's own logic — always delegate Jira MCP
 calls to the `jira-workflow` skill so the discovery step is respected.
 
 ## Windows execution convention
-All helper scripts are stored with a `.txt` extension for portability.
-Run them with PowerShell using:
+All helper scripts use the standard `.ps1` extension. Run them with:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File <script>.txt
+powershell -ExecutionPolicy Bypass -File <script>.ps1
 ```
 
 ## Required behavior
