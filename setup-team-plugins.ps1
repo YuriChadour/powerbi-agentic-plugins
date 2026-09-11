@@ -622,6 +622,131 @@ function Install-DesktopBridgeCli {
     }
 }
 
+function Install-Uv {
+    # Provisions `uv` (https://astral.sh/uv) so DAX testing skills' Python scripts are runnable
+    # without a manual install step. Non-fatal: failure here never blocks plugin installation.
+    Write-Header "Provisioning uv (Python tool manager)"
+
+    $existing = Get-Command uv -ErrorAction SilentlyContinue
+    if ($existing) {
+        Write-Success "uv already installed ✓ ($($existing.Source))"
+        return $true
+    }
+
+    Write-Info "uv not found. Installing via the official standalone installer (no admin rights required)..."
+    try {
+        Invoke-Expression (Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1")
+
+        # The installer updates the user PATH for future sessions; refresh it for this process too.
+        $uvUserBin = Join-Path $env:USERPROFILE ".local\bin"
+        if ((Test-Path $uvUserBin) -and ($env:PATH -notlike "*$uvUserBin*")) {
+            $env:PATH = "$uvUserBin;$env:PATH"
+        }
+
+        $installed = Get-Command uv -ErrorAction SilentlyContinue
+        if ($installed) {
+            Write-Success "uv installed ✓ ($($installed.Source))"
+            return $true
+        }
+
+        Write-Warning-Custom "uv installer completed but 'uv' was not found on PATH. You may need to restart your shell. Manual install: irm https://astral.sh/uv/install.ps1 | iex"
+        return $false
+    } catch {
+        Write-Warning-Custom "Failed to install uv: $_. Manual install: irm https://astral.sh/uv/install.ps1 | iex"
+        return $false
+    }
+}
+
+# Pinned to a known-good release; update deliberately via PR rather than always resolving "latest".
+$Script:AdomdClientVersion = "19.117.0"
+$Script:AdomdClientPackageId = "microsoft.analysisservices.adomdclient"
+
+function Test-AdomdClientPresent {
+    # Mirrors dax-test-framework/scripts/dax_test_helpers.py's _ensure_adomd_on_sys_path() search
+    # order so this script's detection agrees with what the Python transport will actually find.
+    $candidates = @()
+
+    if ($env:ADOMD_DIR -and (Test-Path $env:ADOMD_DIR)) {
+        $candidates += $env:ADOMD_DIR
+    }
+
+    $programFilesRoot = Join-Path $env:ProgramFiles "Microsoft.NET\ADOMD.NET"
+    if (Test-Path $programFilesRoot) {
+        $candidates += (Get-ChildItem -Path $programFilesRoot -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -ExpandProperty FullName)
+    }
+
+    foreach ($base in @($env:LOCALAPPDATA, $env:USERPROFILE)) {
+        if (-not $base) { continue }
+        foreach ($nugetSubdir in @("NuGet\packages", ".nuget\packages")) {
+            $pkgDir = Join-Path $base "$nugetSubdir\$($Script:AdomdClientPackageId)"
+            if (-not (Test-Path $pkgDir)) { continue }
+            $versionDirs = Get-ChildItem -Path $pkgDir -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+            foreach ($versionDir in $versionDirs) {
+                $libRoot = Join-Path $versionDir.FullName "lib"
+                if (-not (Test-Path $libRoot)) { continue }
+                $candidates += (Get-ChildItem -Path $libRoot -Directory -Filter "net*" -ErrorAction SilentlyContinue |
+                    Select-Object -ExpandProperty FullName)
+            }
+        }
+    }
+
+    foreach ($candidate in $candidates) {
+        $dll = Join-Path $candidate "Microsoft.AnalysisServices.AdomdClient.dll"
+        if (Test-Path $dll) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Install-AdomdClient {
+    param([bool]$Force)
+
+    # Provisions the Windows-only ADOMD.NET client library that dax-test-framework's transport
+    # needs, without admin rights. Non-fatal: failure here never blocks plugin installation.
+    Write-Header "Provisioning ADOMD.NET Client Library"
+
+    $existing = Test-AdomdClientPresent
+    if ($existing -and -not $Force) {
+        Write-Success "ADOMD.NET client already available ✓ ($existing)"
+        return $true
+    }
+
+    $version = $Script:AdomdClientVersion
+    $packageId = $Script:AdomdClientPackageId
+    $nupkgUrl = "https://api.nuget.org/v3-flatcontainer/$packageId/$version/$packageId.$version.nupkg"
+    $destRoot = Join-Path $env:LOCALAPPDATA "NuGet\packages\$packageId\$version"
+
+    Write-Info "Downloading $packageId $version from nuget.org (no admin rights required)..."
+    try {
+        $tempNupkg = Join-Path ([System.IO.Path]::GetTempPath()) "$packageId.$version.zip"
+        Invoke-WebRequest -Uri $nupkgUrl -OutFile $tempNupkg -UseBasicParsing
+
+        if (Test-Path $destRoot) {
+            Remove-Item -Path $destRoot -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $destRoot -Force | Out-Null
+
+        Expand-Archive -Path $tempNupkg -DestinationPath $destRoot -Force
+        Remove-Item -Path $tempNupkg -Force -ErrorAction SilentlyContinue
+
+        $found = Test-AdomdClientPresent
+        if ($found) {
+            Write-Success "ADOMD.NET client installed ✓ ($found)"
+            Write-Info "If a project needs a different ADOMD.NET location, set the ADOMD_DIR environment variable."
+            return $true
+        }
+
+        Write-Warning-Custom "Download completed but no Microsoft.AnalysisServices.AdomdClient.dll was found under $destRoot\lib\net*. Manual install: download $nupkgUrl, extract it, and set ADOMD_DIR to the folder containing the DLL."
+        return $false
+    } catch {
+        Write-Warning-Custom "Failed to install ADOMD.NET client: $_. Manual install: download $nupkgUrl, extract it, and set ADOMD_DIR to the folder containing the DLL."
+        return $false
+    }
+}
+
 function Validate-Installation {
     param(
         [string]$ExtensionsPath,
@@ -729,7 +854,10 @@ try {
         Write-Error-Custom "Prerequisites not met. Please fix the issues above and try again."
         exit 1
     }
-    
+
+    # Provision uv unconditionally (generic Python tooling, no plugin affinity); non-fatal on failure
+    Install-Uv | Out-Null
+
     # Find or clone repository
     $repoPath = Find-Repository -ProvidedPath $RepositoryPath
     if (-not $repoPath) {
@@ -771,9 +899,11 @@ try {
     }
 
     # Install Power BI Desktop Bridge CLI (needed for the powerbi-report-authoring skill's
-    # Desktop reload/screenshot verification loop)
+    # Desktop reload/screenshot verification loop) and provision the ADOMD.NET client library
+    # (needed by the dax-test-framework skill's transport); both are non-fatal on failure.
     if ($targetPlugins -contains "powerbi") {
         Install-DesktopBridgeCli -Force $Force | Out-Null
+        Install-AdomdClient -Force $Force | Out-Null
     }
 
     # Register plugins in Copilot config and settings

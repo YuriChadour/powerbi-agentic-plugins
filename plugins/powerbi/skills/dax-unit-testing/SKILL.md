@@ -27,13 +27,21 @@ For the agent that orchestrates this skill end-to-end (`setup`/`scan`/`sync`/`ge
 `report`/`diagnose`), see
 [`plugins/powerbi/agents/pql-tester.agent.md`](../../agents/pql-tester.agent.md).
 
+## Prerequisites
+
+- **`uv`** is provisioned automatically by `setup-team-plugins.ps1` — no admin rights required.
+  This skill's scripts resolve from their own [`pyproject.toml`](pyproject.toml) via
+  `uv run --project plugins/powerbi/skills/dax-unit-testing <script>.py ...` (or run from inside
+  this skill's directory and omit `--project`).
+
 ## Getting Started: One-Time Project Setup
 
 Run once per target semantic model project (idempotent — safe to re-run; never overwrites an
 existing file):
 
 ```powershell
-uv run plugins/powerbi/skills/dax-unit-testing/assets/scripts/setup_project.py \
+uv run --project plugins/powerbi/skills/dax-unit-testing \
+  plugins/powerbi/skills/dax-unit-testing/assets/scripts/setup_project.py \
   --project-dir "<path to YourModel.SemanticModel>"
 ```
 
