@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Protocol
 
@@ -30,8 +31,9 @@ ERROR_TYPES = frozenset({
 
 REQUIRED_CLOUD_ENV_VARS = ("PBI_WORKSPACE", "PBI_MODEL", "PBI_CLIENT_ID", "PBI_TENANT_ID", "PBI_CLIENT_SECRET")
 
-SMOKE_QUERY = 'EVALUATE ROW("TestName", "Smoke Test", "Expected", "TRUE", "Actual", "TRUE", ' \
-              '"Passed", PQL.Assert.ShouldBeTrue("Smoke Test", TRUE())[Passed])'
+# PQL.Assert.* functions return a table (TestName/Expected/Actual/Passed columns) directly, so
+# the smoke query must EVALUATE the call itself rather than try to index a scalar out of it.
+SMOKE_QUERY = 'EVALUATE PQL.Assert.ShouldEqual("Smoke Test", 4, 2 + 2)'
 
 _SCRATCH_FILE_RE = re.compile(r"^Query \d+$", re.IGNORECASE)
 _TEST_FILE_RE = re.compile(r".*(Tests?)$", re.IGNORECASE)
@@ -84,7 +86,9 @@ def discover_desktop_port(workspaces_root: Path) -> int:
     )
     if not candidates:
         raise FileNotFoundError(f"No msmdsrv.port.txt found under {workspaces_root}")
-    text = candidates[0].read_text(encoding="utf-16").strip()
+    # Power BI Desktop writes this file as raw UTF-16LE, without a BOM, so it must be decoded
+    # with the explicit little-endian codec rather than the BOM-sensing "utf-16" alias.
+    text = candidates[0].read_text(encoding="utf-16-le").strip().lstrip("\ufeff")
     return int(text)
 
 
@@ -185,11 +189,13 @@ def rows_to_assertion_results(test_file: str, raw_rows: list[dict]) -> list[Asse
     """Convert raw typed rows (as returned by a Transport) into AssertionResult objects.
 
     Each raw row is expected to have TestName/Expected/Actual/Passed keys (case-insensitive).
-    This function performs no I/O and is fully unit-testable without a live model connection.
+    ADOMD.NET returns DAX-generated column names wrapped in brackets (e.g. `[TestName]`), so
+    those are stripped before matching. This function performs no I/O and is fully unit-testable
+    without a live model connection.
     """
     results = []
     for raw in raw_rows:
-        lower = {k.lower(): v for k, v in raw.items()}
+        lower = {k.strip("[]").lower(): v for k, v in raw.items()}
         test_name = str(lower.get("testname", "")).strip()
         expected = normalize_blank(lower.get("expected"))
         actual = normalize_blank(lower.get("actual"))
@@ -211,6 +217,53 @@ def rows_to_assertion_results(test_file: str, raw_rows: list[dict]) -> list[Asse
 
 # --- Real ADOMD.NET transport (lazy import) ----------------------------------------------------
 
+_ADOMD_SEARCHED = False
+
+
+def _ensure_adomd_on_sys_path() -> None:
+    """Make `Microsoft.AnalysisServices.AdomdClient.dll` resolvable before `pyadomd` is imported.
+
+    `pyadomd` calls `clr.AddReference("Microsoft.AnalysisServices.AdomdClient")` at import time;
+    pythonnet resolves that reference by searching `sys.path`, not the OS `PATH`. Respect an
+    explicit `ADOMD_DIR` override, then fall back to the well-known install locations (the
+    on-machine ADOMD.NET client install and NuGet package caches) used previously by this repo's
+    local test runner.
+    """
+    global _ADOMD_SEARCHED
+    if _ADOMD_SEARCHED:
+        return
+    _ADOMD_SEARCHED = True
+
+    candidates: list[Path] = []
+    adomd_dir = os.environ.get("ADOMD_DIR", "")
+    if adomd_dir:
+        candidates.append(Path(adomd_dir))
+
+    program_files_root = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Microsoft.NET" / "ADOMD.NET"
+    if program_files_root.is_dir():
+        candidates.extend(sorted(program_files_root.glob("*"), reverse=True))
+
+    for nuget_root_env in ("LOCALAPPDATA", "USERPROFILE"):
+        base = os.environ.get(nuget_root_env, "")
+        if not base:
+            continue
+        nuget_pkg_dirs = [
+            Path(base) / "NuGet" / "packages" / "microsoft.analysisservices.adomdclient",
+            Path(base) / ".nuget" / "packages" / "microsoft.analysisservices.adomdclient",
+        ]
+        for pkg_dir in nuget_pkg_dirs:
+            if pkg_dir.is_dir():
+                candidates.extend(sorted(pkg_dir.glob("*/lib/net*"), reverse=True))
+
+    for candidate in candidates:
+        dll = candidate / "Microsoft.AnalysisServices.AdomdClient.dll"
+        if dll.is_file():
+            path_str = str(candidate)
+            if path_str not in sys.path:
+                sys.path.append(path_str)
+            return
+
+
 class AdomdTransport:
     """ADOMD.NET-backed transport for DEV (Desktop) and CLOUD (Fabric XMLA) profiles.
 
@@ -222,6 +275,7 @@ class AdomdTransport:
         self.connection_string = connection_string
 
     def execute(self, dax_query: str) -> list[dict]:
+        _ensure_adomd_on_sys_path()
         try:
             from pyadomd import Pyadomd  # type: ignore
         except ImportError as exc:  # pragma: no cover - exercised only without the dependency
