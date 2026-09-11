@@ -57,7 +57,7 @@ Before making any changes, ALWAYS:
 ## Script to run
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File apply_standard_branch_policies.txt `
+powershell -ExecutionPolicy Bypass -File apply_standard_branch_policies.ps1 `
   -Repo "<repo-name>" `
   -Branches "<dev,main>" `
   -Org "<https://dev.azure.com/yourorg>" `

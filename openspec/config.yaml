@@ -2,6 +2,15 @@ schema: spec-driven
 githubCopilot:
   cloudAgent: false
 
+rules:
+  design:
+    - >
+      Always include an "## Architecture Diagram" section containing a
+      Mermaid diagram (a fenced ```mermaid code block) that visualizes the
+      change's key architecture, flow, or sequence — pick the diagram type
+      (flowchart, sequence, state, etc.) that best fits the design. Place it
+      near the top of the Decisions section or right after Context.
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.

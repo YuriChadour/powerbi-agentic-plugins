@@ -32,12 +32,14 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 The script will:
 - ✓ Set execution policy to Bypass for the current PowerShell session only
 - ✓ Validate your system (PowerShell 5.1+, Git, GitHub Copilot CLI or VS Code)
+- ✓ Install `uv` (Python tool manager) under your user profile if it isn't already on `PATH` — no admin rights required
 - ✓ Copy all plugins to `$env:USERPROFILE\.copilot\installed-plugins\powerbi-agentic-plugins\` and mirror them to `extensions\` for discovery
 - ✓ Register plugins in `config.json` and `settings.json` so Copilot CLI picks them up on next start
 - ✓ Register plugins with GitHub Copilot CLI (if installed)
 - ✓ Configure plugins for VS Code (if installed)
 - ✓ Set up MCP servers
 - ✓ Install the Power BI Desktop Bridge CLI (`@microsoft/powerbi-desktop-bridge-cli`) globally via npm, when the `powerbi` plugin is included
+- ✓ Provision the ADOMD.NET client library (needed by `dax-test-framework`'s DAX test transport) into your user-profile NuGet package cache, when the `powerbi` plugin is included — no admin rights required
 - ✓ Validate the installation
 
 ### Step 3: Verify Installation
@@ -147,12 +149,14 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 **What the script does:**
 
 1. **Validates prerequisites** — checks PowerShell version, Git, Node.js, Copilot CLI/VS Code
-2. **Finds the repository** — uses the current directory or searches common locations
-3. **Copies plugins** — installs all plugins by default, or just one when `-PluginName` is provided, to `~\.copilot\installed-plugins\powerbi-agentic-plugins\`
-4. **Registers plugins** — writes entries into `config.json` and `settings.json` so Copilot CLI discovers them on next start
-5. **Mirrors to extensions** — copies plugins to `~\.copilot\extensions\` for VS Code discovery
-6. **Configures MCP servers** — sets up Model Context Protocol servers from `.mcp.json` files
-7. **Validates installation** — verifies all plugins loaded correctly
+2. **Provisions `uv`** — installs it under your user profile (no admin rights) if not already on `PATH`
+3. **Finds the repository** — uses the current directory or searches common locations
+4. **Copies plugins** — installs all plugins by default, or just one when `-PluginName` is provided, to `~\.copilot\installed-plugins\powerbi-agentic-plugins\`
+5. **Registers plugins** — writes entries into `config.json` and `settings.json` so Copilot CLI discovers them on next start
+6. **Mirrors to extensions** — copies plugins to `~\.copilot\extensions\` for VS Code discovery
+7. **Configures MCP servers** — sets up Model Context Protocol servers from `.mcp.json` files
+8. **Provisions the ADOMD.NET client library** (Windows-only, `powerbi` plugin only) — detects an existing install or downloads it from the public NuGet feed into your user-profile NuGet package cache, no admin rights required
+9. **Validates installation** — verifies all plugins loaded correctly
 
 #### 4. Restart Your Tools
 
@@ -292,6 +296,29 @@ git --version
 **Impact:** This is a warning, not an error. MCP servers may not fully initialize. To fix:
 - Install Node.js from https://nodejs.org (18+ recommended)
 - Restart your tools after installing
+
+### Issue: `uv` or ADOMD.NET provisioning warnings during setup
+
+**Impact:** These are warnings, not errors — the rest of setup still completes and plugins still
+install. They typically mean the setup script couldn't reach the network (`astral.sh` for `uv`,
+`api.nuget.org` for ADOMD.NET), for example behind a restrictive corporate proxy/firewall.
+
+**Solutions:**
+- **`uv` missing:** install it manually once network access is available:
+  ```powershell
+  irm https://astral.sh/uv/install.ps1 | iex
+  ```
+  This installs `uv` under `%USERPROFILE%\.local\bin` — no admin rights needed. Restart your
+  shell afterward so `PATH` picks it up.
+- **ADOMD.NET client missing:** download
+  `Microsoft.AnalysisServices.AdomdClient` manually from
+  https://www.nuget.org/packages/Microsoft.AnalysisServices.AdomdClient, extract the `.nupkg`
+  (it's a zip file), and either place it under
+  `%LOCALAPPDATA%\NuGet\packages\microsoft.analysisservices.adomdclient\<version>\` (the same
+  location `dax-test-framework`'s discovery already searches) or point the `ADOMD_DIR`
+  environment variable at the folder containing `Microsoft.AnalysisServices.AdomdClient.dll`.
+- Re-run `.\setup-team-plugins.ps1 -PluginName powerbi -Force` once network access is restored to
+  let the script provision both automatically.
 
 ### Issue: VS Code plugins not auto-discovered
 
