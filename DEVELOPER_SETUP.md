@@ -40,6 +40,7 @@ The script will:
 - ✓ Set up MCP servers
 - ✓ Install the Power BI Desktop Bridge CLI (`@microsoft/powerbi-desktop-bridge-cli`) globally via npm, when the `powerbi` plugin is included
 - ✓ Provision the ADOMD.NET client library (needed by `dax-test-framework`'s DAX test transport) into your user-profile NuGet package cache, when the `powerbi` plugin is included — no admin rights required
+- ✓ Install the Microsoft Python VS Code extension (`ms-python.python`) when VS Code is available and the `powerbi` plugin is included
 - ✓ Validate the installation
 
 ### Step 3: Verify Installation
@@ -156,7 +157,8 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 6. **Mirrors to extensions** — copies plugins to `~\.copilot\extensions\` for VS Code discovery
 7. **Configures MCP servers** — sets up Model Context Protocol servers from `.mcp.json` files
 8. **Provisions the ADOMD.NET client library** (Windows-only, `powerbi` plugin only) — detects an existing install or downloads it from the public NuGet feed into your user-profile NuGet package cache, no admin rights required
-9. **Validates installation** — verifies all plugins loaded correctly
+9. **Installs the Python VS Code extension** (`ms-python.python`) when VS Code is available and the `powerbi` plugin is included
+10. **Validates installation** — verifies all plugins loaded correctly
 
 #### 4. Restart Your Tools
 
