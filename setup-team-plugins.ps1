@@ -244,8 +244,13 @@ function Register-CodexMcp {
         $name = $definition.Name
         if ($existing -match "(?m)^\[mcp_servers\.$([regex]::Escape($name))\]") {
             $managedMarker = "# BEGIN powerbi-agentic-plugins: $name"
-            if (-not $Force -or $existing -notmatch [regex]::Escape($managedMarker)) { throw "Codex MCP server '$name' already exists and is not installer-owned; remove or rename it before installing." }
-            $existing = [regex]::Replace($existing, "(?ms)^\[mcp_servers\.$([regex]::Escape($name))\].*?(?=^\[|\z)", "")
+            $serverBlock = [regex]::Match($existing, "(?ms)^\[mcp_servers\.$([regex]::Escape($name))\].*?(?=^\[|\z)").Value
+            $isInstallerOwned = $existing -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$" -or
+                $serverBlock -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$"
+            if (-not $Force) { throw "Codex MCP server '$name' already exists; re-run with -Force to update it." }
+            if (-not $isInstallerOwned) { throw "Codex MCP server '$name' already exists and is not installer-owned; remove or rename it before installing." }
+            $managedBlockPattern = "(?ms)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*\r?\n\[mcp_servers\.$([regex]::Escape($name))\].*?^\# END powerbi-agentic-plugins: $([regex]::Escape($name))\s*\r?\n?"
+            $existing = [regex]::Replace($existing, $managedBlockPattern, "")
         }
         $serverArgs = ($definition.Value.PSObject.Properties['args'].Value | ForEach-Object { '"' + ($_ -replace '"','\\"') + '"' }) -join ', '
         $blocks += "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`ncommand = `"$($definition.Value.command)`"`nargs = [$serverArgs]`n# END powerbi-agentic-plugins: $name`n"
