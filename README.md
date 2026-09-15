@@ -4,6 +4,18 @@ Plugins that turn GitHub Copilot into a specialist for Power BI and Microsoft Fa
 
 ## 📦 Plugins
 
+### Team setup (Codex, Copilot, or both)
+
+Run the unified installer from a checkout. With no target specified it installs both harnesses:
+
+```powershell
+.\setup-team-plugins.ps1
+.\setup-team-plugins.ps1 -Target Codex
+.\setup-team-plugins.ps1 -Target Copilot -PluginName powerbi
+```
+
+Codex skills are projected to `$env:USERPROFILE\.codex\skills`, agents to `.codex\agents`, and source MCP definitions are registered in `.codex\config.toml`. Copilot remains under `.copilot`; the two targets do not share configuration. Use `-Force` to update installer-owned files; backups are timestamped under the selected target's directory. Verify Codex by restarting Codex and checking the projected skill/agent paths; verify Copilot with `copilot /plugin list`.
+
 | Plugin                           | What it does                                                                                                                      | 
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | 
 | **[powerbi](./plugins/powerbi)** | Create semantic models, author reports in PBIR, write DAX queries, explore published datasets, apply modeling best practices, and **optimize reports for Report Copilot pane readiness**. | 
