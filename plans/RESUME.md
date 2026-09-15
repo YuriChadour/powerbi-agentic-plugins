@@ -1,8 +1,8 @@
 # Resume Notes: PQL.Assert / GATE-001 Integration Plan
 
 **Plan file:** [plan-pqlAssertIntegration.prompt.md](plan-pqlAssertIntegration.prompt.md)
-**Ticket:** FIN-1787 ("Glasslake Testing Framework"), branch `feature/FIN-1787-glasslake-testing-framework`
-**Source spec reviewed (not in repo, was a chat attachment):** `GATE-001-measure-certification.prompt.md` — BI COE's "Measure Certification & Testing" gate, originally from `c:\Users\IOURICHADOUR\Downloads\GATE-001-measure-certification.prompt (1).md`. Re-attach it if a future session needs to re-verify section numbers (§5, §7, §8, §14 are cited throughout the plan).
+**Ticket:** FIN-1787 ("Glasslake Testing Framework"), original working branch `feature/FIN-1787-glasslake-testing-framework` (the current checkout must be verified before implementation).
+**Source spec reviewed (not in repo, was a chat attachment):** `GATE-001-measure-certification.prompt.md` — BI COE's "Measure Certification & Testing" gate. Re-attach it if a future session needs to re-verify section numbers (§5, §7, §8, §14 are cited throughout the plan).
 
 This file tracks the PQL.Assert planning work, the separate dependency-checking OpenSpec change, and decisions that future implementation work must preserve.
 
@@ -10,7 +10,7 @@ This file tracks the PQL.Assert planning work, the separate dependency-checking 
 
 ## 1. Completed planning work
 
-- [OpenSpec change](../openspec/changes/integrate-pql-assert-dax-testing) is complete and passes `openspec validate --strict --changes "integrate-pql-assert-dax-testing"`. It contains `proposal.md`, `design.md`, `tasks.md`, and three new capability specs: `powerbi/dax-unit-testing`, `powerbi/pql-tester-agent`, and `powerbi/architect-test-planning`.
+- [OpenSpec change](../openspec/changes/archive/2026-09-10-integrate-pql-assert-dax-testing) is implemented and archived. Its completed artifacts passed strict validation and include `proposal.md`, `design.md`, `tasks.md`, and three capability specs: `powerbi/dax-unit-testing`, `powerbi/pql-tester-agent`, and `powerbi/architect-test-planning`.
 - Full GATE-001 CSV registry model is planned: `Certification/MeasureCertification.csv` schema reference, four automation scripts (`validate_registry.py`, `generate_measure_tests.py`, `certify_measures.py`, `coverage_report.py`), registry-driven `SKILL.md` workflow, model-wide coverage statistics, and the fixed error-type vocabulary.
 - `pql-tester.agent.md` is planned with the full mode set (`scan`/`sync`/`generate`/`run`/`report`/`diagnose`), DEV/CLOUD execution, a restricted write scope, and no-silent-failure-suppression guardrails.
 - `powerbi-architect.agent.md` is planned to include the progressive measure-testing chain: `sync` (automated Structural coverage) → developer certification of an explicit, reproducible baseline → `generate`+`run`; business certification is an optional additive step, never a blocking prerequisite.
@@ -42,7 +42,7 @@ The original plan's mandatory business-approval checkpoint was replaced in the O
 
 ## 3. Separate Power BI dependency-checking change
 
-- [OpenSpec change](../openspec/changes/add-python-powerbi-dependency-checking) is complete and passes `openspec validate --strict --changes "add-python-powerbi-dependency-checking"`. It contains the proposal, design, tasks, and a new `powerbi/dependency-checking` capability spec.
+- [OpenSpec change](../openspec/changes/add-python-powerbi-dependency-checking) is planned and passes `openspec validate --strict --changes "add-python-powerbi-dependency-checking"`; implementation tasks remain unchecked. It contains the proposal, design, tasks, and a new `powerbi/dependency-checking` capability spec.
 - It adds a standalone `powerbi-dependency-checking` skill, not a subfeature of `dax-unit-testing`. The planned Python static scanner analyzes local PBIP/TMDL/PBIR source offline, builds a typed dependency graph, supports impact queries, identifies potentially unused objects, and returns stable human-readable/JSON/quiet outputs suitable for CI.
 - The design is informed by ripbi's local-PBIP static-analysis approach but implements an independent Python tool, rather than vendoring or requiring ripbi's Rust binary.
 - Route architecture, semantic-model authoring, report authoring, and DAX-unit-testing workflows to it before rename/removal, dependency-sensitive changes, or test-coverage impact review. Findings are advisory evidence only; the tool never changes PBIP source or deletes objects.
@@ -50,24 +50,36 @@ The original plan's mandatory business-approval checkpoint was replaced in the O
 
 ## 4. Next steps when resuming
 
-1. Start implementation with `/opsx-apply` for `integrate-pql-assert-dax-testing` or `add-python-powerbi-dependency-checking`, depending on the priority.
-2. Follow the selected change's task order; preserve §§2a-2c for PQL.Assert implementation and §3's standalone ownership boundary for dependency checking.
-3. Do not add an `interaction-playbook.md`/`examples/` pair modeled after the DQ skills; any future supporting files for `dax-unit-testing` must be independently authored.
-4. `plan-skillMigrationReview.prompt.md` remains an unrelated migration plan and was not touched by this work.
+1. Before changing files, verify the checkout is the intended FIN-1787 feature branch; this resume was last inspected while the checkout was `DEV`.
+2. For dependency checking, start implementation with `/opsx-apply` for `add-python-powerbi-dependency-checking` and follow its task order.
+3. Treat the archived PQL.Assert change as completed; use its artifacts as implementation reference rather than attempting to apply it again.
+4. Preserve §§2a-2c for any PQL.Assert follow-up and §3's standalone ownership boundary for dependency checking.
+5. Do not add an `interaction-playbook.md`/`examples/` pair modeled after the DQ skills; any future supporting files for `dax-unit-testing` must be independently authored.
+6. `plan-skillMigrationReview.prompt.md` remains an unrelated migration plan and was not touched by this work.
 
-## 5. Unrelated addition this session: `spec-lifecycle` plugin scaffolded
+## 5. Other pending work: `spec-lifecycle` plugin and historical backfill workflow
 
-Not part of the PQL.Assert/GATE-001 plan above — scaffolded in a separate conversation (paired with
-Glasslake-1's OpenSpec pilot on the same `feature/FIN-1787-glasslake-testing-framework` branch) and
-noted here only because it's the repo's only `RESUME.md`.
+Not part of the PQL.Assert/GATE-001 plan above — developed separately on the same
+`feature/FIN-1787-glasslake-testing-framework` branch and noted here only because this is the
+repo's shared `RESUME.md`.
 
 - New plugin: [plugins/spec-lifecycle](../plugins/spec-lifecycle) — one skill
-  (`openspec-bridge`), no agent. Bridges an existing `powerbi-architect` `specs/<Name>.spec.md`
-  into OpenSpec's proposal/specs/design/tasks change-tracking and archive lifecycle, with an
-  explicit rule for when that's worth doing (iteratively-revised specs) vs. not (one-shot/
-  implemented specs).
-- Fully additive: does not touch `plugins/powerbi/*`, so `check-updates`/`skill-merge-planner`
-  diffs against the upstream `skills-for-fabric` marketplace stay unaffected.
+  (`openspec-bridge`), no agent. It bridges an existing `powerbi-architect`
+  `specs/<Name>.spec.md` into OpenSpec artifacts and archive history without changing how the
+  source spec is authored.
+- The bridge now has a deliberately narrow two-outcome rule: **Backfill now** for a completed,
+  stable, unarchived spec; **Skip** for work still in progress or work the user does not want
+  tracked. It does not leave an ongoing OpenSpec change open alongside an actively edited
+  `spec.md`.
+- The backfill workflow maps the source into `proposal.md`, the delta spec, `design.md`, and a
+  fully checked `tasks.md`, then hands off to `openspec-archive-change` so delta sync and
+  date-prefixed archive naming follow the repository contract.
+- The planning change is
+  [add-openspec-bridge-historical-backfill](../openspec/changes/add-openspec-bridge-historical-backfill)
+  and passes `openspec validate "add-openspec-bridge-historical-backfill" --strict`.
+- Fully additive: it does not touch `plugins/powerbi/*`, so `check-updates`/
+  `skill-merge-planner` diffs against the upstream `skills-for-fabric` marketplace stay
+  unaffected.
 - Registered in `.claude-plugin/marketplace.json` and the top-level `README.md` plugin table.
 - Not yet installed/tested via `setup-team-plugins.ps1 -PluginName spec-lifecycle`; not yet used
   against a real spec end-to-end. Next step if resuming this thread: dogfood it against
