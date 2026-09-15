@@ -758,8 +758,6 @@ function Install-VSCodePythonExtension {
         return $true
     }
 
-    Write-Header "Installing Python VS Code Extension"
-
     $codeCmd = Get-Command code -ErrorAction SilentlyContinue
     if (-not $codeCmd) {
         Write-Warning-Custom "VS Code CLI not found - skipping Python extension install. Install manually from the VS Code Extensions view: ms-python.python"
@@ -767,6 +765,13 @@ function Install-VSCodePythonExtension {
     }
 
     try {
+        $installedExtensions = @(& $codeCmd.Source --list-extensions 2>$null)
+        if ($installedExtensions | Where-Object { $_.Trim() -ieq "ms-python.python" }) {
+            Write-Success "Python VS Code extension already installed ✓"
+            return $true
+        }
+
+        Write-Header "Installing Python VS Code Extension"
         Write-Info "Installing ms-python.python..."
         & $codeCmd.Source --install-extension "ms-python.python"
         if ($LASTEXITCODE -ne 0) {
@@ -785,8 +790,6 @@ function Install-VSCodePythonExtension {
 function Install-DesktopBridgeCli {
     param([bool]$Force)
 
-    Write-Header "Installing Power BI Desktop Bridge CLI"
-
     $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
     if (-not $npmCmd) {
         Write-Warning-Custom "npm not found - skipping powerbi-desktop-bridge-cli install. Install Node.js from https://nodejs.org, then run: npm install -g @microsoft/powerbi-desktop-bridge-cli"
@@ -794,11 +797,12 @@ function Install-DesktopBridgeCli {
     }
 
     $existing = Get-Command powerbi-desktop -ErrorAction SilentlyContinue
-    if ($existing -and -not $Force) {
+    if ($existing) {
         Write-Success "powerbi-desktop CLI already installed ✓ ($($existing.Source))"
         return $true
     }
 
+    Write-Header "Installing Power BI Desktop Bridge CLI"
     Write-Info "Running: npm install -g @microsoft/powerbi-desktop-bridge-cli"
     try {
         npm install -g "@microsoft/powerbi-desktop-bridge-cli" 2>&1 | ForEach-Object { Write-Verbose "$_" }
@@ -902,14 +906,13 @@ function Install-AdomdClient {
 
     # Provisions the Windows-only ADOMD.NET client library that dax-test-framework's transport
     # needs, without admin rights. Non-fatal: failure here never blocks plugin installation.
-    Write-Header "Provisioning ADOMD.NET Client Library"
-
     $existing = Test-AdomdClientPresent
-    if ($existing -and -not $Force) {
+    if ($existing) {
         Write-Success "ADOMD.NET client already available ✓ ($existing)"
         return $true
     }
 
+    Write-Header "Provisioning ADOMD.NET Client Library"
     $version = $Script:AdomdClientVersion
     $packageId = $Script:AdomdClientPackageId
     $nupkgUrl = "https://api.nuget.org/v3-flatcontainer/$packageId/$version/$packageId.$version.nupkg"
@@ -1036,6 +1039,8 @@ function Show-NextSteps {
 
     Write-Header "Power BI Agentic Plugins - $Target setup"
     $targetPlugins = Get-TargetPlugins -PluginName $PluginName
+    # Provision uv unconditionally; failure is non-fatal.
+    Install-Uv | Out-Null
     $repoPath = Find-Repository -ProvidedPath $RepositoryPath
     if (-not $repoPath) { throw "Could not locate repository. Provide -RepositoryPath to a valid checkout." }
     Test-SourceCatalog -RepositoryPath $repoPath -Plugins $targetPlugins | Out-Null
@@ -1074,6 +1079,13 @@ function Show-NextSteps {
             Write-Info "Recovery: restore the latest backup under $env:USERPROFILE\.copilot\backups"
             if ($Target -eq "Copilot") { exit 1 }
         }
+    }
+    # Power BI's local DAX test workflow uses the Python VS Code extension.
+    # Keep dependency provisioning non-fatal when VS Code is unavailable.
+    if ($targetPlugins -contains "powerbi") {
+        Install-VSCodePythonExtension | Out-Null
+        Install-DesktopBridgeCli -Force $Force | Out-Null
+        Install-AdomdClient -Force $Force | Out-Null
     }
     Write-Header "Setup Summary"
     $targetResults | Format-Table -AutoSize | Out-Host
