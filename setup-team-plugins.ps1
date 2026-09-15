@@ -1,4 +1,4 @@
-﻿﻿#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Setup script for installing Power BI Agentic Plugins for the team
@@ -67,6 +67,7 @@ param(
     [switch]$SkipCopilotCLI,
     [switch]$SkipVSCode,
     [switch]$Force,
+    [switch]$AllowGitMetadataWrites,
     [switch]$Verbose
 )
 
@@ -247,6 +248,27 @@ function Register-CodexMcp {
     ($existing.TrimEnd() + ($blocks -join "`n") + "`n") | Set-Content $configPath -Encoding UTF8
     Write-Success "Codex MCP configuration updated: $configPath ($($definitions.Name -join ', '))"
     return @($definitions.Name)
+}
+
+function Enable-CodexGitMetadataWrites {
+    $codexRoot = Get-CodexRoot
+    $configPath = Join-Path $codexRoot "config.toml"
+    $backupRoot = Join-Path (Join-Path $codexRoot "backups") (Get-Date -Format 'yyyyMMdd-HHmmss')
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    if (Test-Path $configPath) {
+        Copy-Item $configPath (Join-Path $backupRoot "config.toml") -Force
+        $config = Get-Content $configPath -Raw
+    } else { $config = "" }
+    if ($config -match '(?m)^allow_git_metadata_writes\s*=') {
+        $config = [regex]::Replace($config, '(?m)^allow_git_metadata_writes\s*=\s*[^\r\n]+', 'allow_git_metadata_writes = true')
+    } elseif ($config -match '(?m)^\[windows\]\s*$') {
+        $config = [regex]::Replace($config, '(?m)^(\[windows\]\s*\r?\n)', '$1' + "allow_git_metadata_writes = true`r`n", 1)
+    } else {
+        $config = $config.TrimEnd() + "`r`n`r`n[windows]`r`nallow_git_metadata_writes = true`r`n"
+    }
+    Set-Content -LiteralPath $configPath -Value $config -Encoding UTF8
+    Write-Success "Enabled Git metadata writes in Codex config: $configPath"
+    Write-Info "Config backup: $backupRoot\config.toml"
 }
 
 function Get-MarketplaceName {
@@ -1013,6 +1035,7 @@ function Show-NextSteps {
         try {
             $codex = Install-CodexProjection -RepositoryPath $repoPath -Plugins $targetPlugins -Force $Force
             $mcp = Register-CodexMcp -RepositoryPath $repoPath -Plugins $targetPlugins -Force $Force
+            if ($AllowGitMetadataWrites) { Enable-CodexGitMetadataWrites }
             $targetResults += [PSCustomObject]@{ Target="Codex"; Status="Ready"; Path=$codex.Root; MCP=($mcp -join ', ') ; Backup=$codex.Backup }
         } catch {
             Write-Error-Custom "Codex failed: $_"
