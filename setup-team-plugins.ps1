@@ -1031,6 +1031,8 @@ function Show-NextSteps {
 
     Write-Header "Power BI Agentic Plugins - $Target setup"
     $targetPlugins = Get-TargetPlugins -PluginName $PluginName
+    # Provision uv unconditionally; failure is non-fatal.
+    Install-Uv | Out-Null
     $repoPath = Find-Repository -ProvidedPath $RepositoryPath
     if (-not $repoPath) { throw "Could not locate repository. Provide -RepositoryPath to a valid checkout." }
     Test-SourceCatalog -RepositoryPath $repoPath -Plugins $targetPlugins | Out-Null
@@ -1069,6 +1071,13 @@ function Show-NextSteps {
             Write-Info "Recovery: restore the latest backup under $env:USERPROFILE\.copilot\backups"
             if ($Target -eq "Copilot") { exit 1 }
         }
+    }
+    # Power BI's local DAX test workflow uses the Python VS Code extension.
+    # Keep dependency provisioning non-fatal when VS Code is unavailable.
+    if ($targetPlugins -contains "powerbi") {
+        Install-VSCodePythonExtension | Out-Null
+        Install-DesktopBridgeCli -Force $Force | Out-Null
+        Install-AdomdClient -Force $Force | Out-Null
     }
     Write-Header "Setup Summary"
     $targetResults | Format-Table -AutoSize | Out-Host
