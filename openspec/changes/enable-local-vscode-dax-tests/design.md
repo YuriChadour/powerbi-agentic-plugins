@@ -135,6 +135,13 @@ assert that collection does not construct a transport. A final Windows integrati
 the installed `.venv`, inherited `ADOMD_DIR`, and a scaffolded fixture project; a live DEV model is
 required only for the execution check, not for discovery tests.
 
+### Make dependency provisioning idempotent
+
+Capability detection runs before the Desktop Bridge, ADOMD.NET, and VS Code Python extension
+installers. Force-enabled plugin updates replace plugin projections and create backups, but do not
+reinstall dependencies that are already resolvable. This keeps reruns fast and avoids unnecessary
+network or package-manager changes.
+
 ## Risks / Trade-offs
 
 - [A running VS Code instance does not receive user environment changes] → State this explicitly,
