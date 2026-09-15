@@ -8,7 +8,7 @@ description: |
   - Validate PBIR JSON schemas and entity/property consistency
   - Detect orphaned references after renames
   - Fix issues when unambiguous; report when human judgment is needed
-model: Claude Haiku 4.5 (copilot)
+model: gpt-5.6-luna
 color: yellow
 tools: ["Read", "Grep", "Glob", "Bash", "Edit"]
 ---
