@@ -4,6 +4,20 @@ Expose the repository's shared plugin catalog to Codex while preserving the exis
 
 ## ADDED Requirements
 
+### Requirement: Installer-owned MCP blocks are updated idempotently
+Codex MCP registration SHALL recognize an installer ownership marker whether it appears
+immediately before or within the corresponding server block. With explicit force enabled, setup
+SHALL replace only the complete installer-owned block; it SHALL never overwrite a same-name MCP
+server that lacks the ownership marker.
+
+#### Scenario: Previously installed MCP block is refreshed
+- **WHEN** Codex configuration contains a marked Fabric or Power BI server block and setup runs with force enabled
+- **THEN** setup replaces that complete marked block with the current source-derived definition and leaves one current marker pair
+
+#### Scenario: Unknown same-name MCP server is protected
+- **WHEN** Codex configuration contains a Fabric or Power BI server name without an installer ownership marker
+- **THEN** setup fails with actionable remediation and leaves the existing server definition unchanged
+
 ### Requirement: The repository catalog is the shared content source
 The repository SHALL retain `plugins/**`, its marketplace catalog, `.agent.md` files, and `.mcp.json` definitions as the single authoritative source for platform-neutral skills, references, scripts, templates, agent instructions, and MCP server declarations. A Codex projection SHALL be traceable to those source artifacts and SHALL add an adapter only where the installed Codex runtime requires host-specific discovery, role invocation, or MCP registration behavior.
 

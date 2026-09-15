@@ -27,13 +27,13 @@
 
 ## 5. Documentation and Installer UX
 
-- [ ] 5.1 Update `DEVELOPER_SETUP.md` and installer next-step/troubleshooting output to explain persisted `ADOMD_DIR`, installed runtime provisioning, required VS Code restart, retry commands, and non-Power-BI behavior, and verify every documented path/command matches the implementation.
+- [ ] 5.1 Update `DEVELOPER_SETUP.md` and installer next-step/troubleshooting output to explain persisted `ADOMD_DIR`, idempotent checks for ADOMD.NET, Power BI Desktop Bridge, and the VS Code Python extension, installed runtime provisioning, required VS Code restart, retry commands, and non-Power-BI behavior, and verify every documented path/command matches the implementation.
 - [ ] 5.2 Update the `dax-unit-testing` setup guide and generated `TESTING.md` template to document the new local adapter, VS Code Test Explorer flow, safe settings conflicts, and terminal fallback, and verify a freshly scaffolded guide contains runnable project-relative commands.
 - [ ] 5.3 Update the `dax-test-framework` skill documentation to distinguish discovery from execution prerequisites and describe framework-path/ADOMD overrides without requiring project-local DLLs or global Python packages, and verify links and referenced files resolve.
 
 ## 6. End-to-End Verification
 
 - [ ] 6.1 Run the repository's DAX framework and unit-testing Python suites through their respective locked `uv` projects and verify all existing and new tests pass.
-- [ ] 6.2 In an isolated Windows user/test environment, run `setup-team-plugins.ps1 -PluginName powerbi -Force`, verify user and child-process `ADOMD_DIR`, the installed framework `.venv`, and dependency imports, then restart VS Code and verify the Python Test Explorer discovers a scaffolded project's DAX tests without manual configuration.
+- [ ] 6.2 In an isolated Windows user/test environment, run `setup-team-plugins.ps1 -PluginName powerbi -Force`, verify user and child-process `ADOMD_DIR`, the installed framework `.venv`, and dependency imports, confirm already-installed external tooling is not reinstalled, then restart VS Code and verify the Python Test Explorer discovers a scaffolded project's DAX tests without manual configuration.
 - [ ] 6.3 With a scaffolded semantic model open in Power BI Desktop and PQL.Assert deployed, run one discovered DEV test from VS Code and the equivalent direct pytest command, and verify both use the same files, smoke gate, assertion result, and error classification.
 - [ ] 6.4 Run `openspec validate --strict --changes "enable-local-vscode-dax-tests"` and verify all proposal, design, delta-spec, and task artifacts pass validation before requesting implementation approval.

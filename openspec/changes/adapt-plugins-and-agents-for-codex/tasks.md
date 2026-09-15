@@ -19,7 +19,7 @@
 - [ ] 3.2 Implement target-specific destination resolution and projection of selected shared assets; verify default `All`, `Codex`, `Copilot`, and single-plugin installs in isolated temporary user profiles
 - [ ] 3.3 Implement target-owned manifests, timestamped backup, non-force behavior, and force/reinstall behavior; verify unrelated user assets and the other target's files/configuration remain unchanged
 - [x] 3.4 Register Fabric and Power BI MCP servers from their source `.mcp.json` definitions using each runtime's supported schema; verify server commands, arguments, names, tool exposure, unavailable-runtime outcomes, and safe same-name conflict handling
-- [ ] 3.5 Add capability- and target-scoped checks/provisioning for Node/npm, `uv`, Power BI Desktop Bridge, ADOMD.NET, VS Code's Python extension, and other selected-plugin dependencies; verify optional failures are warnings and required failures are actionable target errors
+- [ ] 3.5 Add capability- and target-scoped checks/provisioning for Node/npm, `uv`, Power BI Desktop Bridge, ADOMD.NET, VS Code's Python extension, and other selected-plugin dependencies; verify existing capabilities are reported and skipped even with `-Force`, optional failures are warnings, and required failures are actionable target errors
 - [ ] 3.6 Add unified post-install output with per-target paths, plugins, skills, agents, MCP status, backups, restart/discovery actions, update commands, and recovery paths; verify it never claims unavailable capabilities or a failed target are ready
 
 ## 4. Validate target behavior and compatibility

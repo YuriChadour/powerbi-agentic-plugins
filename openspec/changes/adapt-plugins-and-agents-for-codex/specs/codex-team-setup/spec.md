@@ -4,6 +4,24 @@ Give team members and agents one safe, repeatable setup workflow for Codex, Copi
 
 ## ADDED Requirements
 
+### Requirement: External setup dependencies are provisioned idempotently
+When a selected plugin requires external tooling, setup SHALL detect the installed capability
+before attempting installation. A force-enabled plugin update SHALL not reinstall an already
+available Power BI Desktop Bridge CLI, ADOMD.NET client, or VS Code Python extension; missing
+capabilities SHALL be installed or reported with actionable remediation.
+
+#### Scenario: Existing Power BI dependencies are reused
+- **WHEN** setup targets the `powerbi` plugin and the Desktop Bridge CLI and ADOMD.NET client are already resolvable
+- **THEN** setup reports them as already available and does not invoke their installers
+
+#### Scenario: Existing VS Code extension is reused
+- **WHEN** VS Code is available and `ms-python.python` is present in the installed extension list
+- **THEN** setup reports the extension as already installed and does not invoke the extension installer
+
+#### Scenario: Missing optional dependency is handled safely
+- **WHEN** a selected external dependency is unavailable or its installer cannot run
+- **THEN** setup reports the affected capability and remediation without claiming that capability is ready
+
 ### Requirement: Setup selects one or both harness targets
 `setup-team-plugins.ps1` SHALL accept `-Target Codex`, `-Target Copilot`, or `-Target All`. When `-Target` is omitted, it SHALL default to `All`. The workflow SHALL process the shared source catalog once per run and report the selected target and plugin set before making changes.
 
