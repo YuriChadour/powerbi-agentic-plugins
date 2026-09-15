@@ -81,14 +81,13 @@ repo's shared `RESUME.md`.
   `skill-merge-planner` diffs against the upstream `skills-for-fabric` marketplace stay
   unaffected.
 - Registered in `.claude-plugin/marketplace.json` and the top-level `README.md` plugin table.
-- Dogfooding is complete for the single scoped source:
-  `C:\Development\Glasslake-1\specs\Python-MCP-DAX-Test-Framework.spec.md` was backfilled and
-  archived at `openspec/changes/archive/2026-09-14-add-dax-test-framework/`; its delta is synced
-  under `openspec/specs/powerbi/dax-test-framework/`, strict validation passes, and the original
-  source remains present with only the tracking pointer added. The remaining six specs are a
-  separate follow-up.
+- Not yet installed/tested via `setup-team-plugins.ps1 -PluginName spec-lifecycle`; not yet used
+  against a real spec end-to-end. Next step if resuming this thread: dogfood it against
+  Glasslake-1's `specs/Python-MCP-DAX-Test-Framework.spec.md` (already has a hand-built OpenSpec
+  change at `openspec/changes/add-dax-test-framework` in that repo — good candidate to verify the
+  skill's mapping instructions produce equivalent output).
 
-## 6. Other pending work: `skill-merge-planner` scored via `skill-creator`'s eval loop
+## 6. Unrelated addition this session: `skill-merge-planner` scored via `skill-creator`'s eval loop
 
 Also unrelated to the PQL.Assert/GATE-001 work above — a separate `/skill-creator` invocation to
 evaluate and score `plugins/powerbi/skills/skill-merge-planner`. Noted here only because it's the
@@ -124,11 +123,3 @@ repo's only `RESUME.md`.
 - Next step if resuming this thread: apply the two fixes above, bump `metadata.version`, re-run the
   same 2-eval loop into `iteration-2/` (with `--previous-workspace iteration-1`), and confirm the
   with-skill pass rate closes the gap with (or exceeds) the 100% baseline.
-
-## 7. Other completed work: setup script dependency provisioning
-
-- `setup-team-plugins.ps1` now installs the Microsoft Python VS Code extension (`ms-python.python`)
-  when the `powerbi` plugin is targeted and VS Code setup is enabled. The install uses
-  `code --install-extension`, is non-fatal on failure, and is skipped with `-SkipVSCode`.
-- The setup guide documents this behavior. PowerShell parsing of the installer succeeds; existing
-  Markdown lint findings in `DEVELOPER_SETUP.md` predate this change and are unrelated.

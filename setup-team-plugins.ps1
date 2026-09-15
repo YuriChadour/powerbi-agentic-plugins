@@ -906,13 +906,14 @@ function Install-AdomdClient {
 
     # Provisions the Windows-only ADOMD.NET client library that dax-test-framework's transport
     # needs, without admin rights. Non-fatal: failure here never blocks plugin installation.
+    Write-Header "Provisioning ADOMD.NET Client Library"
+
     $existing = Test-AdomdClientPresent
-    if ($existing) {
+    if ($existing -and -not $Force) {
         Write-Success "ADOMD.NET client already available ✓ ($existing)"
         return $true
     }
 
-    Write-Header "Provisioning ADOMD.NET Client Library"
     $version = $Script:AdomdClientVersion
     $packageId = $Script:AdomdClientPackageId
     $nupkgUrl = "https://api.nuget.org/v3-flatcontainer/$packageId/$version/$packageId.$version.nupkg"
@@ -1037,10 +1038,26 @@ function Show-NextSteps {
 #endregion
 #region Main
 
-    Write-Header "Power BI Agentic Plugins - $Target setup"
-    $targetPlugins = Get-TargetPlugins -PluginName $PluginName
-    # Provision uv unconditionally; failure is non-fatal.
+try {
+    Write-Host "
+╔════════════════════════════════════════════════════════════════════════════╗
+║         Power BI Agentic Plugins — Team Setup Script                      ║
+║                                                                            ║
+║  This script installs all plugins, or a single selected plugin, to your    ║
+║  user profile for use with GitHub Copilot CLI and/or VS Code.             ║
+╚════════════════════════════════════════════════════════════════════════════╝
+" -ForegroundColor $ColorInfo
+    
+    # Test prerequisites
+    if (-not (Test-Prerequisites)) {
+        Write-Error-Custom "Prerequisites not met. Please fix the issues above and try again."
+        exit 1
+    }
+
+    # Provision uv unconditionally (generic Python tooling, no plugin affinity); non-fatal on failure
     Install-Uv | Out-Null
+
+    # Find or clone repository
     $repoPath = Find-Repository -ProvidedPath $RepositoryPath
     if (-not $repoPath) { throw "Could not locate repository. Provide -RepositoryPath to a valid checkout." }
     Test-SourceCatalog -RepositoryPath $repoPath -Plugins $targetPlugins | Out-Null
@@ -1080,8 +1097,10 @@ function Show-NextSteps {
             if ($Target -eq "Copilot") { exit 1 }
         }
     }
-    # Power BI's local DAX test workflow uses the Python VS Code extension.
-    # Keep dependency provisioning non-fatal when VS Code is unavailable.
+
+    # Install Power BI Desktop Bridge CLI (needed for the powerbi-report-authoring skill's
+    # Desktop reload/screenshot verification loop) and provision the ADOMD.NET client library
+    # (needed by the dax-test-framework skill's transport); both are non-fatal on failure.
     if ($targetPlugins -contains "powerbi") {
         Install-VSCodePythonExtension | Out-Null
         Install-DesktopBridgeCli -Force $Force | Out-Null
