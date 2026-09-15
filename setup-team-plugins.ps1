@@ -95,22 +95,22 @@ function Write-Header {
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "[OK] $Message" -ForegroundColor $ColorSuccess
+    Write-Host "$([char]0x2713) $Message" -ForegroundColor $ColorSuccess
 }
 
 function Write-Error-Custom {
     param([string]$Message)
-    Write-Host "[FAIL] $Message" -ForegroundColor $ColorError
+    Write-Host "$([char]0x2717) $Message" -ForegroundColor $ColorError
 }
 
 function Write-Warning-Custom {
     param([string]$Message)
-    Write-Host "âš  $Message" -ForegroundColor $ColorWarning
+    Write-Host "$([char]0x26A0) $Message" -ForegroundColor $ColorWarning
 }
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "[INFO] $Message" -ForegroundColor $ColorInfo
+    Write-Host "$([char]0x2139) $Message" -ForegroundColor $ColorInfo
 }
 
 function Get-TargetPlugins {
@@ -186,20 +186,26 @@ function Install-CodexProjection {
     $backupPath = Backup-CodexState -CodexRoot $codexRoot -Plugins $Plugins -Force $Force
     $skillsRoot = Join-Path $codexRoot "skills"
     $agentsRoot = Join-Path $codexRoot "agents"
-    $manifestPath = Join-Path $codexRoot "powerbi-agentic-plugins.manifest.json"
-    $ownedSkills = @()
-    if (Test-Path $manifestPath) {
-        $previous = Get-Content $manifestPath -Raw | ConvertFrom-Json
-        $ownedSkills = @($previous.skills | ForEach-Object { ($_ -split '/', 2)[1] })
-    }
     New-Item -ItemType Directory -Path $skillsRoot,$agentsRoot -Force | Out-Null
     $skills = @(); $agents = @(); $mcp = @()
     foreach ($plugin in $Plugins) {
         $sourcePlugin = Join-Path $RepositoryPath "plugins\$plugin"
         foreach ($skill in Get-ChildItem (Join-Path $sourcePlugin "skills") -Directory) {
             $destination = Join-Path $skillsRoot $skill.Name
-            if ((Test-Path $destination) -and (($ownedSkills -notcontains $skill.Name) -or -not $Force)) { throw "Codex skill already exists and is not installer-owned (or -Force was omitted): $destination" }
-            if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
+            if (Test-Path $destination) {
+                if (-not $Force) { throw "Codex skill already exists (use -Force): $destination" }
+
+                # Match the Copilot force/reinstall behavior: preserve any existing
+                # skill, including one not installed by this script, before replacing it.
+                if (-not $backupPath) {
+                    $backupPath = Join-Path (Join-Path $codexRoot "backups") (Get-Date -Format 'yyyyMMdd-HHmmss')
+                    New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
+                }
+                $skillBackup = Join-Path $backupPath "skills-$($skill.Name)"
+                Copy-Item $destination $skillBackup -Recurse -Force
+                Write-Info "Backed up existing Codex skill to: $skillBackup"
+                Remove-Item $destination -Recurse -Force
+            }
             Copy-CodexSourceTree -Source $skill.FullName -Destination $destination
             $skills += "$plugin/$($skill.Name)"
         }
@@ -215,7 +221,7 @@ function Install-CodexProjection {
         schema = 1; owner = "powerbi-agentic-plugins"; source = $RepositoryPath
         installed_at = (Get-Date).ToUniversalTime().ToString("o"); plugins = $Plugins
         skills = $skills; agents = $agents; mcp_sources = $mcp
-        policy = "Only this manifest and listed projections are installer-owned; unknown Codex assets are preserved."
+        policy = "Only this manifest and listed projections are installer-owned; unknown Codex assets are preserved unless -Force explicitly replaces a colliding skill, in which case it is backed up."
     }
     $manifest | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $codexRoot "powerbi-agentic-plugins.manifest.json") -Encoding UTF8
     Write-Success "Codex projection installed: $skillsRoot ($($skills.Count) skills, $($agents.Count) agents)"
@@ -371,14 +377,14 @@ function Test-Prerequisites {
         Write-Error-Custom "PowerShell 5.1 or later required. Current: $($PSVersionTable.PSVersion)"
         $prereqsMet = $false
     } else {
-        Write-Success "PowerShell 5.1+ [OK]"
+        Write-Success "PowerShell 5.1+ ✓"
     }
     
     # Check Git
     try {
         $gitVersion = git --version 2>&1
         Write-Info "Git: $gitVersion"
-        Write-Success "Git installed [OK]"
+        Write-Success "Git installed ✓"
     } catch {
         Write-Error-Custom "Git not found. Please install Git from https://git-scm.com"
         $prereqsMet = $false
@@ -388,7 +394,7 @@ function Test-Prerequisites {
     try {
         $nodeVersion = node --version 2>&1
         Write-Info "Node.js: $nodeVersion"
-        Write-Success "Node.js installed [OK]"
+        Write-Success "Node.js installed ✓"
     } catch {
         Write-Warning-Custom "Node.js not found. MCP servers may not work. Install from https://nodejs.org"
     }
@@ -398,7 +404,7 @@ function Test-Prerequisites {
     $vsCodeExists = $null -ne (Get-Command code -ErrorAction SilentlyContinue)
     
     if ($copilotCLIExists) {
-        Write-Success "GitHub Copilot CLI found [OK]"
+        Write-Success "GitHub Copilot CLI found ✓"
     } else {
         if (-not $SkipCopilotCLI) {
             Write-Warning-Custom "GitHub Copilot CLI not found in PATH"
@@ -406,7 +412,7 @@ function Test-Prerequisites {
     }
     
     if ($vsCodeExists) {
-        Write-Success "VS Code found [OK]"
+        Write-Success "VS Code found ✓"
     } else {
         if (-not $SkipVSCode) {
             Write-Warning-Custom "VS Code not found in PATH"
@@ -532,7 +538,7 @@ function Install-Plugins {
         
         # Verify key files exist
         if (Test-Path "$destPath_Local\skills") {
-            Write-Success "$pluginName plugin installed [OK]"
+            Write-Success "$pluginName plugin installed ✓"
             $successCount++
         } else {
             Write-Error-Custom "$pluginName plugin missing skills directory"
@@ -632,7 +638,7 @@ function Register-PluginsInCopilotConfig {
     }
 
     $config | ConvertTo-Json -Depth 20 | Set-Content $configPath -Encoding UTF8
-    Write-Success "Plugin registrations saved to config.json [OK]"
+    Write-Success "Plugin registrations saved to config.json ✓"
     return $true
 }
 
@@ -671,7 +677,7 @@ function Register-PluginsInSettings {
 
     $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath -Encoding UTF8
 
-    Write-Success "Plugin settings saved to settings.json [OK]"
+    Write-Success "Plugin settings saved to settings.json ✓"
     return $true
 }
 
@@ -700,7 +706,7 @@ function Register-CopilotCLI {
         # Try to list plugins to verify
         Write-Info "Verifying plugins are discoverable..."
         $listOutput = copilot /plugin list 2>&1
-        Write-Success "GitHub Copilot CLI registration verified [OK]"
+        Write-Success "GitHub Copilot CLI registration verified ✓"
         return $true
     } catch {
         Write-Warning-Custom "Could not verify GitHub Copilot CLI registration: $_"
@@ -733,7 +739,7 @@ function Register-VSCode {
         Write-Info "  2. Search for 'chat.useAgentSkills'"
         Write-Info "  3. Enable the setting"
         
-        Write-Success "VS Code integration ready [OK]"
+        Write-Success "VS Code integration ready ✓"
         return $true
     } catch {
         Write-Error-Custom "Failed to integrate with VS Code: $_"
@@ -763,7 +769,7 @@ function Install-VSCodePythonExtension {
             return $false
         }
 
-        Write-Success "Python VS Code extension installed [OK]"
+        Write-Success "Python VS Code extension installed ✓"
         return $true
     } catch {
         Write-Warning-Custom "Failed to install the Python VS Code extension: $_"
@@ -784,7 +790,7 @@ function Install-DesktopBridgeCli {
 
     $existing = Get-Command powerbi-desktop -ErrorAction SilentlyContinue
     if ($existing -and -not $Force) {
-        Write-Success "powerbi-desktop CLI already installed [OK] ($($existing.Source))"
+        Write-Success "powerbi-desktop CLI already installed ✓ ($($existing.Source))"
         return $true
     }
 
@@ -795,7 +801,7 @@ function Install-DesktopBridgeCli {
         $installed = Get-Command powerbi-desktop -ErrorAction SilentlyContinue
         if ($installed) {
             $version = & powerbi-desktop --version 2>&1
-            Write-Success "powerbi-desktop CLI installed [OK] ($version)"
+            Write-Success "powerbi-desktop CLI installed ✓ ($version)"
             return $true
         }
 
@@ -814,7 +820,7 @@ function Install-Uv {
 
     $existing = Get-Command uv -ErrorAction SilentlyContinue
     if ($existing) {
-        Write-Success "uv already installed [OK] ($($existing.Source))"
+        Write-Success "uv already installed ✓ ($($existing.Source))"
         return $true
     }
 
@@ -830,7 +836,7 @@ function Install-Uv {
 
         $installed = Get-Command uv -ErrorAction SilentlyContinue
         if ($installed) {
-            Write-Success "uv installed [OK] ($($installed.Source))"
+            Write-Success "uv installed ✓ ($($installed.Source))"
             return $true
         }
 
@@ -895,7 +901,7 @@ function Install-AdomdClient {
 
     $existing = Test-AdomdClientPresent
     if ($existing -and -not $Force) {
-        Write-Success "ADOMD.NET client already available [OK] ($existing)"
+        Write-Success "ADOMD.NET client already available ✓ ($existing)"
         return $true
     }
 
@@ -919,7 +925,7 @@ function Install-AdomdClient {
 
         $found = Test-AdomdClientPresent
         if ($found) {
-            Write-Success "ADOMD.NET client installed [OK] ($found)"
+            Write-Success "ADOMD.NET client installed ✓ ($found)"
             Write-Info "If a project needs a different ADOMD.NET location, set the ADOMD_DIR environment variable."
             return $true
         }
@@ -957,8 +963,8 @@ function Validate-Installation {
         $hasMCP = Test-Path "$pluginPath\.mcp.json"
 
         if ($hasSkills) {
-            $agentStatus = if ($hasAgents) { "agents [OK]" } else { "agents (optional)" }
-            Write-Success "$plugin plugin: $agentStatus skills [OK] $(if ($hasMCP) { 'mcp [OK]' } else { 'mcp (optional)' })"
+            $agentStatus = if ($hasAgents) { "agents ✓" } else { "agents (optional)" }
+            Write-Success "$plugin plugin: $agentStatus skills ✓ $(if ($hasMCP) { 'mcp ✓' } else { 'mcp (optional)' })"
         } else {
             Write-Error-Custom "$plugin plugin missing required skills directory"
             $allValid = $false
