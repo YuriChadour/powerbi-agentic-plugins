@@ -1,5 +1,9 @@
 # Developer Setup Guide: Get the Team Plugins Running
 
+## Harness selection
+
+`setup-team-plugins.ps1` defaults to `-Target All`. Use `-Target Codex` for `%USERPROFILE%\.codex` only or `-Target Copilot` for the existing `.copilot` workflow. Use `-PluginName` for one of `powerbi`, `fabric`, `devops`, `skill-creator`, or `spec-lifecycle`; use `-Force` for an installer-owned update. Add `-AllowGitMetadataWrites` only for trusted repositories when agents need Git metadata operations; this backs up and updates the user-scoped `.codex\config.toml` without adding it to the repository. Codex MCP entries are written to `.codex\config.toml` from the plugin `.mcp.json` files, while Copilot configuration remains isolated. Backups are retained under each target's own backup directory.
+
 **Duration:** 5–10 minutes  
 **For:** All team members who want to use Power BI and Fabric plugins locally
 
