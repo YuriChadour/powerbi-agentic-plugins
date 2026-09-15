@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Setup script for installing Power BI Agentic Plugins for the team
@@ -25,7 +25,7 @@
 
 .PARAMETER PluginName
     Install only the specified plugin instead of all plugins.
-    Valid values: powerbi, fabric, devops, skill-creator
+    Valid values: powerbi, fabric, devops, skill-creator, spec-lifecycle
      
 .PARAMETER SkipCopilotCLI
     Skip GitHub Copilot CLI registration and verification.
@@ -60,7 +60,7 @@
 
 param(
     [string]$RepositoryPath,
-    [ValidateSet("powerbi", "fabric", "devops", "skill-creator")]
+    [ValidateSet("powerbi", "fabric", "devops", "skill-creator", "spec-lifecycle")]
     [string]$PluginName,
     [switch]$SkipCopilotCLI,
     [switch]$SkipVSCode,
@@ -586,6 +586,36 @@ function Register-VSCode {
     }
 }
 
+function Install-VSCodePythonExtension {
+    if ($SkipVSCode) {
+        Write-Info "Skipping Python VS Code extension install (--SkipVSCode)"
+        return $true
+    }
+
+    Write-Header "Installing Python VS Code Extension"
+
+    $codeCmd = Get-Command code -ErrorAction SilentlyContinue
+    if (-not $codeCmd) {
+        Write-Warning-Custom "VS Code CLI not found — skipping Python extension install. Install manually from the VS Code Extensions view: ms-python.python"
+        return $false
+    }
+
+    try {
+        Write-Info "Installing ms-python.python..."
+        & $codeCmd.Source --install-extension "ms-python.python"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning-Custom "VS Code failed to install ms-python.python (exit code $LASTEXITCODE). Install it manually from the VS Code Extensions view."
+            return $false
+        }
+
+        Write-Success "Python VS Code extension installed ✓"
+        return $true
+    } catch {
+        Write-Warning-Custom "Failed to install the Python VS Code extension: $_"
+        return $false
+    }
+}
+
 function Install-DesktopBridgeCli {
     param([bool]$Force)
 
@@ -904,6 +934,7 @@ try {
     if ($targetPlugins -contains "powerbi") {
         Install-DesktopBridgeCli -Force $Force | Out-Null
         Install-AdomdClient -Force $Force | Out-Null
+        Install-VSCodePythonExtension | Out-Null
     }
 
     # Register plugins in Copilot config and settings
