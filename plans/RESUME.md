@@ -81,10 +81,12 @@ repo's shared `RESUME.md`.
   `skill-merge-planner` diffs against the upstream `skills-for-fabric` marketplace stay
   unaffected.
 - Registered in `.claude-plugin/marketplace.json` and the top-level `README.md` plugin table.
-- Dogfooding remains pending: initialize OpenSpec in `C:\Development\Glasslake-1`, install the
-  `spec-lifecycle` plugin, and run the backfill workflow against only
-  `specs/Python-MCP-DAX-Test-Framework.spec.md`. Do not assume that repo already contains a
-  hand-built `openspec/changes/add-dax-test-framework` change; verify the actual state first.
+- Dogfooding is complete for the single scoped source:
+  `C:\Development\Glasslake-1\specs\Python-MCP-DAX-Test-Framework.spec.md` was backfilled and
+  archived at `openspec/changes/archive/2026-09-14-add-dax-test-framework/`; its delta is synced
+  under `openspec/specs/powerbi/dax-test-framework/`, strict validation passes, and the original
+  source remains present with only the tracking pointer added. The remaining six specs are a
+  separate follow-up.
 
 ## 6. Other pending work: `skill-merge-planner` scored via `skill-creator`'s eval loop
 

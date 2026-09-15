@@ -25,7 +25,7 @@
 
 .PARAMETER PluginName
     Install only the specified plugin instead of all plugins.
-    Valid values: powerbi, fabric, devops, skill-creator
+    Valid values: powerbi, fabric, devops, skill-creator, spec-lifecycle
      
 .PARAMETER SkipCopilotCLI
     Skip GitHub Copilot CLI registration and verification.
@@ -60,7 +60,7 @@
 
 param(
     [string]$RepositoryPath,
-    [ValidateSet("powerbi", "fabric", "devops", "skill-creator")]
+    [ValidateSet("powerbi", "fabric", "devops", "skill-creator", "spec-lifecycle")]
     [string]$PluginName,
     [switch]$SkipCopilotCLI,
     [switch]$SkipVSCode,
