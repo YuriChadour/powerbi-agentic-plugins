@@ -53,6 +53,21 @@ plugin setup; the script SHALL report a warning with actionable manual instructi
 
 ## ADDED Requirements
 
+### Requirement: Power BI external tooling checks are idempotent
+When setup targets the `powerbi` plugin, it SHALL detect the Power BI Desktop Bridge CLI,
+ADOMD.NET client, and VS Code Python extension before provisioning them. Re-running setup,
+including with force-enabled plugin replacement, SHALL reuse each resolvable dependency rather
+than reinstalling it, while missing dependencies remain actionable and non-fatal where the
+capability is optional.
+
+#### Scenario: Existing external tooling is reused
+- **WHEN** the Power BI plugin is targeted and the Desktop Bridge CLI, ADOMD.NET DLL, or `ms-python.python` extension is already available
+- **THEN** setup reports that dependency as already installed or available and skips its installer
+
+#### Scenario: Missing external tooling is provisioned
+- **WHEN** the Power BI plugin is targeted and one of the supported external dependencies is absent
+- **THEN** setup attempts to provision that dependency and reports a warning with manual remediation if provisioning fails
+
 ### Requirement: Installed DAX Test Runtime Provisioning
 When the `powerbi` plugin is targeted and `uv` is available, the setup script SHALL provision the
 locked Python environment for the installed `dax-test-framework` copy at its stable per-user plugin

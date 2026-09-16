@@ -62,6 +62,13 @@ Documentation and agent instructions SHALL identify `-Target Codex`, `-Target Co
 
 Node/npm, `uv`, Power BI Desktop Bridge, ADOMD.NET, and VS Code's Python extension are checked or provisioned only when the selected plugin and target require them. Missing optional tooling produces a warning and remediation; missing required tooling or invalid target MCP registration produces a failing status for that target.
 
+### Protect and replace only installer-owned MCP blocks
+
+Codex registration treats the ownership marker and the complete named server block as one managed
+unit. It recognizes markers written immediately before the server section as well as markers inside
+the matched block, removes only a marked block during a forced update, and rejects an unmarked
+same-name server. This preserves user-owned configuration while allowing repeatable updates.
+
 ### Validate at three levels
 
 1. Static catalog validation enumerates every plugin, skill, agent, reference, script, and MCP definition and verifies its source-to-projection mapping.
