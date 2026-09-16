@@ -136,6 +136,13 @@ def write_markdown(path: Path, results: list[AssertionResult]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows consoles often default stdout/stderr to a legacy codepage (e.g. cp1252) that can't
+    # encode characters like "→" that appear in measure/test names; force UTF-8 with a safe
+    # fallback so a printable failure never crashes the run after reports have already been written.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--profile", choices=["DEV", "CLOUD"], required=True)
     parser.add_argument("--model-dir", type=Path, required=True, help="Semantic model project's DAXQueries/ folder")

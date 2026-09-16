@@ -25,11 +25,12 @@ see [`plugins/powerbi/agents/pql-tester.agent.md`](../../agents/pql-tester.agent
 
 ## Prerequisites
 
-- **`uv`** — all Python tooling in this skill is invoked with `uv run` so dependencies resolve from
-  [`pyproject.toml`](pyproject.toml) without polluting a global environment.
-- **ADOMD.NET transport** (Windows only) — `pythonnet` and `pyadomd`, declared in `pyproject.toml`.
-  `uv run` installs them automatically the first time a command is invoked from this skill's
-  directory (or pass `--project plugins/powerbi/skills/dax-test-framework` from elsewhere).
+- **`uv`** and **ADOMD.NET transport** (Windows only, `pythonnet`/`pyadomd` declared in
+  [`pyproject.toml`](pyproject.toml)) are provisioned automatically by `setup-team-plugins.ps1`
+  whenever the `powerbi` plugin is installed — no admin rights required. `uv run` resolves
+  `pyproject.toml` dependencies without polluting a global environment (or pass
+  `--project plugins/powerbi/skills/dax-test-framework` from elsewhere). If a project needs a
+  non-standard ADOMD.NET location, set the `ADOMD_DIR` environment variable to override discovery.
 - **DEV profile**: Power BI Desktop must have this project open (the tabular engine port is
   discovered dynamically — see [Desktop port discovery](#dev-profile-power-bi-desktop)).
 - **CLOUD profile**: a Fabric service principal with access to the target workspace/semantic model,

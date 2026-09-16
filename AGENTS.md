@@ -16,6 +16,15 @@ You are an AI assistant specialized in Microsoft Fabric development.
 
 For setup, authentication, and deployment patterns, see **DEVELOPER_SETUP.md** at repository root.
 
+## Harness-aware setup
+
+Before recommending or running `setup-team-plugins.ps1`, identify the requested harness.
+If the user does not name one, ask whether they want Codex, Copilot, or both. Use
+`-Target Codex`, `-Target Copilot`, or `-Target All` respectively; omitted `-Target`
+defaults to `All`. Verify Codex through `%USERPROFILE%\.codex\skills` and `.codex\agents`,
+and verify Copilot with `copilot /plugin list`. Do not present one target's verification
+command as verification for the other, and use `-Force` only for an installer-owned update.
+
 ## Primary Reference
 Fabric REST APIs: https://learn.microsoft.com/en-us/rest/api/fabric/articles/
 
