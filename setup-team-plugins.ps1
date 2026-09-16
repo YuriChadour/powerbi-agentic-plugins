@@ -1058,6 +1058,7 @@ try {
     Install-Uv | Out-Null
 
     # Find or clone repository
+    $targetPlugins = Get-TargetPlugins -PluginName $PluginName
     $repoPath = Find-Repository -ProvidedPath $RepositoryPath
     if (-not $repoPath) { throw "Could not locate repository. Provide -RepositoryPath to a valid checkout." }
     Test-SourceCatalog -RepositoryPath $repoPath -Plugins $targetPlugins | Out-Null
@@ -1111,5 +1112,10 @@ try {
     if ($Target -eq "All" -and $targetResults.Count -lt 2) { exit 1 }
     Write-Success "Setup complete for $Target. Restart the selected harness(es) to discover the projection."
     exit 0
+
+} catch {
+    Write-Error-Custom "Setup failed: $_"
+    exit 1
+}
 
 #endregion
