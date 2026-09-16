@@ -21,7 +21,7 @@ Codex skills are projected to `$env:USERPROFILE\.codex\skills`, agents to `.code
 
 | Plugin                           | What it does                                                                                                                      | 
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | 
-| **[powerbi](./plugins/powerbi)** | Create semantic models, author reports in PBIR, write DAX queries, explore published datasets, apply modeling best practices, and **optimize reports for Report Copilot pane readiness**. | 
+| **[powerbi](./plugins/powerbi)** | Create semantic models, author interactive PBIR/PBIP and paginated RDL reports, write DAX queries, explore published datasets, apply modeling best practices, and **optimize reports for Report Copilot pane readiness**. |
 | **[fabric](./plugins/fabric)**   | Navigate workspaces, import/export item definitions, call Fabric & Power BI REST APIs, run jobs, and manage OneLake files.        |
 | **[devops](./plugins/devops)**   | Enforce branch hygiene, standard Azure DevOps branch policies, and team-safe Git workflows.                                      |
 | **[skill-creator](./plugins/skill-creator)** | Official Anthropic skill-authoring toolkit — create new skills, run with-skill/baseline benchmark evals, optimize trigger descriptions, and package `.skill` files. Vendored unmodified from [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official). |
