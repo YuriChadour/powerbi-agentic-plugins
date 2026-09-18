@@ -127,6 +127,46 @@ function Get-CodexRoot {
     return (Join-Path $env:USERPROFILE ".codex")
 }
 
+function Get-AgentInstructionBody {
+    param([Parameter(Mandatory)][string]$Path)
+    $raw = Get-Content $Path -Raw
+    $match = [regex]::Match($raw, '(?s)\A---\r?\n.*?\r?\n---\r?\n(?<body>.*)\z')
+    if ($match.Success) { return (($match.Groups['body'].Value -replace "`r`n", "`n" -replace "`r", "`n") -replace "(?m)[ \t]+$", "").Trim() }
+    return (($raw -replace "`r`n", "`n" -replace "`r", "`n") -replace "(?m)[ \t]+$", "").Trim()
+}
+
+function Test-AgentAdapterParity {
+    param(
+        [Parameter(Mandatory)][string]$AgentPath,
+        [Parameter(Mandatory)][string]$AdapterPath
+    )
+
+    if (-not (Test-Path $AdapterPath -PathType Leaf)) {
+        throw "Codex agent adapter is missing: $AdapterPath"
+    }
+
+    $adapterText = Get-Content $AdapterPath -Raw
+    foreach ($field in @('name', 'description', 'developer_instructions')) {
+        if ($adapterText -notmatch "(?m)^$field\s*=") {
+            throw "Codex agent adapter is missing required field '$field': $AdapterPath"
+        }
+    }
+
+    $expectedName = [IO.Path]::GetFileNameWithoutExtension($AgentPath) -replace '\.agent$',''
+    $nameMatch = [regex]::Match($adapterText, '(?m)^name\s*=\s*"(?<value>[^"]+)"')
+    if (-not $nameMatch.Success -or $nameMatch.Groups['value'].Value -ne $expectedName) {
+        throw "Codex agent adapter name does not match source agent: $AdapterPath"
+    }
+
+    $instructionsMatch = [regex]::Match($adapterText, "(?s)developer_instructions\s*=\s*'''\r?\n(?<body>.*?)\r?\n'''\s*\z")
+    if (-not $instructionsMatch.Success) {
+        throw "Codex agent adapter has invalid developer_instructions: $AdapterPath"
+    }
+    if ($instructionsMatch.Groups['body'].Value.Trim() -ne (Get-AgentInstructionBody -Path $AgentPath)) {
+        throw "Codex agent adapter instructions are stale: $AdapterPath"
+    }
+}
+
 function Test-SourceCatalog {
     param([string]$RepositoryPath, [string[]]$Plugins)
 
@@ -146,6 +186,15 @@ function Test-SourceCatalog {
         foreach ($skill in Get-ChildItem $skillsPath -Directory) {
             if (-not (Test-Path (Join-Path $skill.FullName "SKILL.md"))) { throw "Skill is missing SKILL.md: $($skill.FullName)" }
         }
+        $agentFiles = @(Get-ChildItem (Join-Path $pluginPath "agents") -File -Filter "*.md" -ErrorAction SilentlyContinue)
+        $expectedAdapterNames = @($agentFiles | ForEach-Object { "$( ([IO.Path]::GetFileNameWithoutExtension($_.Name) -replace '\.agent$','') ).toml" })
+        foreach ($adapter in Get-ChildItem (Join-Path $pluginPath "agents") -File -Filter "*.toml" -ErrorAction SilentlyContinue) {
+            if ($expectedAdapterNames -notcontains $adapter.Name) { throw "Orphaned Codex agent adapter: $($adapter.FullName)" }
+        }
+        foreach ($agent in $agentFiles) {
+            $adapterName = "$( ([IO.Path]::GetFileNameWithoutExtension($agent.Name) -replace '\.agent$','') ).toml"
+            Test-AgentAdapterParity -AgentPath $agent.FullName -AdapterPath (Join-Path $agent.DirectoryName $adapterName)
+        }
         foreach ($mcp in Get-ChildItem $pluginPath -Filter ".mcp.json" -File -ErrorAction SilentlyContinue) {
             try { Get-Content $mcp.FullName -Raw | ConvertFrom-Json | Out-Null } catch { throw "Invalid MCP definition: $($mcp.FullName)" }
         }
@@ -159,10 +208,13 @@ function Backup-CodexState {
     $manifestPath = Join-Path $CodexRoot "powerbi-agentic-plugins.manifest.json"
     $hasOwnedState = Test-Path $manifestPath
     if ($hasOwnedState -and -not $Force) { throw "Codex installation already exists at $CodexRoot. Re-run with -Force to update it." }
-    if (-not $hasOwnedState) { return $null }
+    $configPath = Join-Path $CodexRoot "config.toml"
+    $needsBackup = $hasOwnedState -or (Test-Path $configPath)
+    if (-not $needsBackup) { return $null }
     $backupRoot = Join-Path (Join-Path $CodexRoot "backups") (Get-Date -Format 'yyyyMMdd-HHmmss')
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-    Copy-Item $manifestPath (Join-Path $backupRoot (Split-Path $manifestPath -Leaf)) -Force
+    if ($hasOwnedState) { Copy-Item $manifestPath (Join-Path $backupRoot (Split-Path $manifestPath -Leaf)) -Force }
+    if (Test-Path $configPath) { Copy-Item $configPath (Join-Path $backupRoot (Split-Path $configPath -Leaf)) -Force }
     foreach ($plugin in $Plugins) {
         $entry = Join-Path $CodexRoot "skills\$plugin"
         if (Test-Path $entry) { Copy-Item $entry (Join-Path $backupRoot "skills-$plugin") -Recurse -Force }
@@ -209,10 +261,13 @@ function Install-CodexProjection {
             Copy-CodexSourceTree -Source $skill.FullName -Destination $destination
             $skills += "$plugin/$($skill.Name)"
         }
-        foreach ($agent in Get-ChildItem (Join-Path $sourcePlugin "agents") -File -Filter "*.agent.md" -ErrorAction SilentlyContinue) {
-            $destination = Join-Path $agentsRoot ($agent.Name -replace '\.agent\.md$','.md')
-            if ((Test-Path $destination) -and -not $Force) { throw "Codex agent already exists (use -Force): $destination" }
-            Copy-Item $agent.FullName $destination -Force
+        foreach ($agent in Get-ChildItem (Join-Path $sourcePlugin "agents") -File -Filter "*.md" -ErrorAction SilentlyContinue) {
+            $adapterName = "$( ([IO.Path]::GetFileNameWithoutExtension($agent.Name) -replace '\.agent$','') ).toml"
+            $sourceAdapter = Join-Path $agent.DirectoryName $adapterName
+            Test-AgentAdapterParity -AgentPath $agent.FullName -AdapterPath $sourceAdapter
+            $adapter = Join-Path $agentsRoot $adapterName
+            if ((Test-Path $adapter) -and -not $Force) { throw "Codex agent adapter already exists (use -Force): $adapter" }
+            Copy-Item $sourceAdapter $adapter -Force
             $agents += "$plugin/$($agent.Name)"
         }
         foreach ($definition in Get-ChildItem $sourcePlugin -Filter ".mcp.json" -File -ErrorAction SilentlyContinue) { $mcp += $definition.FullName }
@@ -424,12 +479,55 @@ function Test-Prerequisites {
         }
     }
     
-    if (-not $copilotCLIExists -and -not $vsCodeExists) {
+    if (-not $copilotCLIExists -and -not $vsCodeExists -and -not ($SkipCopilotCLI -and $SkipVSCode)) {
         Write-Error-Custom "Neither GitHub Copilot CLI nor VS Code found. Please install one of them."
         $prereqsMet = $false
     }
     
     return $prereqsMet
+}
+
+function Test-CopilotDestinations {
+    param(
+        [string]$InstallRoot,
+        [string]$DiscoveryRoot,
+        [string[]]$Plugins,
+        [bool]$Force
+    )
+
+    if ($Force) { return $true }
+    foreach ($plugin in $Plugins) {
+        $installPath = Join-Path $InstallRoot $plugin
+        $discoveryPath = Join-Path $DiscoveryRoot $plugin
+        if (Test-Path $installPath) { throw "Copilot plugin already exists at $installPath; re-run with -Force to update it." }
+        if (Test-Path $discoveryPath) { throw "Copilot discovery plugin already exists at $discoveryPath; re-run with -Force to update it." }
+    }
+    return $true
+}
+
+function Test-CodexCapabilities {
+    param([string[]]$Plugins)
+
+    Write-Header "Checking selected plugin capabilities"
+    if ($null -ne (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Success "Node.js available"
+    } else {
+        Write-Warning-Custom "Node.js is not available; MCP commands may require manual installation."
+    }
+    if ($Plugins -contains 'powerbi') {
+        if ($null -ne (Get-Command uv -ErrorAction SilentlyContinue)) {
+            Write-Success "uv available"
+        } else {
+            Write-Info "uv is not available yet; setup will attempt a user-scoped installation."
+        }
+        $bridge = Get-Command powerbi-desktop -ErrorAction SilentlyContinue
+        if ($bridge) { Write-Success "Power BI Desktop Bridge CLI available" }
+        else { Write-Warning-Custom "Power BI Desktop Bridge CLI is not available; setup will attempt installation." }
+        $adomd = Test-AdomdClientPresent
+        if ($adomd) { Write-Success "ADOMD.NET client available" }
+        else { Write-Warning-Custom "ADOMD.NET client is not available; setup will attempt installation." }
+    }
+    return $true
 }
 
 function Find-Repository {
@@ -1048,21 +1146,16 @@ try {
 ╚════════════════════════════════════════════════════════════════════════════╝
 " -ForegroundColor $ColorInfo
     
-    # Test prerequisites
-    if (-not (Test-Prerequisites)) {
-        Write-Error-Custom "Prerequisites not met. Please fix the issues above and try again."
-        exit 1
-    }
-
-    # Provision uv unconditionally (generic Python tooling, no plugin affinity); non-fatal on failure
-    Install-Uv | Out-Null
-
     # Find or clone repository
     $targetPlugins = Get-TargetPlugins -PluginName $PluginName
     $repoPath = Find-Repository -ProvidedPath $RepositoryPath
     if (-not $repoPath) { throw "Could not locate repository. Provide -RepositoryPath to a valid checkout." }
     Test-SourceCatalog -RepositoryPath $repoPath -Plugins $targetPlugins | Out-Null
     Write-Info "Target: $Target; plugins: $($targetPlugins -join ', '); source: $repoPath"
+    if ($targetPlugins -contains 'powerbi') {
+        Test-CodexCapabilities -Plugins $targetPlugins | Out-Null
+        Install-Uv | Out-Null
+    }
 
     $targetResults = @()
     if (@("Codex", "All") -contains $Target) {
@@ -1070,7 +1163,7 @@ try {
             $codex = Install-CodexProjection -RepositoryPath $repoPath -Plugins $targetPlugins -Force $Force
             $mcp = Register-CodexMcp -RepositoryPath $repoPath -Plugins $targetPlugins -Force $Force
             if ($AllowGitMetadataWrites) { Enable-CodexGitMetadataWrites }
-            $targetResults += [PSCustomObject]@{ Target="Codex"; Status="Ready"; Path=$codex.Root; MCP=($mcp -join ', ') ; Backup=$codex.Backup }
+            $targetResults += [PSCustomObject]@{ Target="Codex"; Status="Ready"; Path=$codex.Root; Plugins=($targetPlugins -join ', '); Skills=(@($codex.Manifest.skills).Count); Agents=(@($codex.Manifest.agents).Count); MCP=($mcp -join ', ') ; Backup=$codex.Backup }
         } catch {
             Write-Error-Custom "Codex failed: $_"
             Write-Info "Recovery: restore the latest backup under $(Join-Path (Get-CodexRoot) 'backups')"
@@ -1084,14 +1177,14 @@ try {
             $installRoot = Get-InstallRoot -MarketplaceName $marketplaceName
             $discoveryRoot = Get-DiscoveryRoot
             New-Item -ItemType Directory -Path $installRoot,$discoveryRoot -Force | Out-Null
-            if (-not $Force -and (Get-ChildItem $installRoot -ErrorAction SilentlyContinue | Where-Object { $targetPlugins -contains $_.Name })) { throw "Copilot plugins already exist; re-run with -Force to update." }
+            Test-CopilotDestinations -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins -Force $Force | Out-Null
             $backup = Backup-ExistingPlugins -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins
             if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $installRoot -Force $Force -Plugins $targetPlugins)) { throw "Copilot plugin installation failed." }
             if (-not (Sync-PluginsToDiscoveryRoot -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins -Force $Force)) { throw "Copilot discovery sync failed." }
             Register-PluginsInCopilotConfig -InstallRoot $installRoot -MarketplaceName $marketplaceName -Plugins $targetPlugins -RepositoryPath $repoPath | Out-Null
             Register-PluginsInSettings -MarketplaceName $marketplaceName -Plugins $targetPlugins | Out-Null
             Validate-Installation -ExtensionsPath $discoveryRoot -Plugins $targetPlugins | Out-Null
-            $targetResults += [PSCustomObject]@{ Target="Copilot"; Status="Ready"; Path=$discoveryRoot; MCP="source definitions retained"; Backup=$backup }
+            $targetResults += [PSCustomObject]@{ Target="Copilot"; Status="Ready"; Path=$discoveryRoot; Plugins=($targetPlugins -join ', '); Skills='projected'; Agents='projected'; MCP="source definitions retained"; Backup=$backup }
         } catch {
             Write-Error-Custom "Copilot failed: $_"
             Write-Info "Recovery: restore the latest backup under $env:USERPROFILE\.copilot\backups"
@@ -1103,12 +1196,17 @@ try {
     # Desktop reload/screenshot verification loop) and provision the ADOMD.NET client library
     # (needed by the dax-test-framework skill's transport); both are non-fatal on failure.
     if ($targetPlugins -contains "powerbi") {
-        Install-VSCodePythonExtension | Out-Null
+        if (@("Copilot", "All") -contains $Target) { Install-VSCodePythonExtension | Out-Null }
         Install-DesktopBridgeCli -Force $Force | Out-Null
         Install-AdomdClient -Force $Force | Out-Null
     }
     Write-Header "Setup Summary"
     $targetResults | Format-Table -AutoSize | Out-Host
+    foreach ($result in $targetResults) {
+        Write-Info "$($result.Target): plugins=$($result.Plugins); skills=$($result.Skills); agents=$($result.Agents); MCP=$($result.MCP)"
+        if ($result.Backup) { Write-Info "$($result.Target) backup: $($result.Backup)" }
+    }
+    Write-Info "Restart the selected harness(es) to discover the projection. Verify Codex with scripts\validate-codex-projection.ps1 or Copilot with copilot /plugin list."
     if ($Target -eq "All" -and $targetResults.Count -lt 2) { exit 1 }
     Write-Success "Setup complete for $Target. Restart the selected harness(es) to discover the projection."
     exit 0
