@@ -162,7 +162,8 @@ function Test-AgentAdapterParity {
     if (-not $instructionsMatch.Success) {
         throw "Codex agent adapter has invalid developer_instructions: $AdapterPath"
     }
-    if ($instructionsMatch.Groups['body'].Value.Trim() -ne (Get-AgentInstructionBody -Path $AgentPath)) {
+    $adapterBody = (($instructionsMatch.Groups['body'].Value -replace "`r`n", "`n" -replace "`r", "`n") -replace "(?m)[ \t]+$", "").Trim()
+    if ($adapterBody -ne (Get-AgentInstructionBody -Path $AgentPath)) {
         throw "Codex agent adapter instructions are stale: $AdapterPath"
     }
 }
