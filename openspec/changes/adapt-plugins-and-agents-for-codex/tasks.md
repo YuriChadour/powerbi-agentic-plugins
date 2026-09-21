@@ -29,6 +29,7 @@
 - [x] 4.3 Test an `All` run with an injected failure in one target; verify the successful target remains usable, the failed target provides a recovery path, and neither target mutates the other's configuration
 - [x] 4.4 Run the existing Copilot/Claude/VS Code setup and validation checks; verify the explicit Copilot target remains compatible and Codex projection files do not alter existing host locations or registration
 - [x] 4.5 Run the default all-target setup in a disposable user profile; verify Codex and Copilot discovery plus the complete MCP/tool inventory
+- [x] 4.6 Ensure `scripts\test-setup-team-plugins.ps1 -RunIntegration` exits `0` when all expected-success and expected-failure assertions pass; reset or explicitly set the final process exit code, and verify CI receives a successful result
 
 ## 5. Document direct and agent-guided setup
 

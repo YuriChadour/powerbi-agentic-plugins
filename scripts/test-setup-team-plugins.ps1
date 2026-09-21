@@ -157,3 +157,7 @@ try {
         if (Test-Path $profile) { Remove-Item -LiteralPath $profile -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+
+# Make the successful integration result explicit for CI callers. Terminating
+# assertion failures above still produce a nonzero process result.
+exit 0
