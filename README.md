@@ -15,7 +15,7 @@ Run the unified installer from a checkout. With no target specified it installs 
 .\setup-team-plugins.ps1 -Target Codex -AllowGitMetadataWrites
 ```
 
-Codex skills are projected to `$env:USERPROFILE\.codex\skills`, agents to `.codex\agents`, and source MCP definitions are registered in `.codex\config.toml`. Copilot remains under `.copilot`; the two targets do not share configuration. Use `-Force` to update installer-owned files; backups are timestamped under the selected target's directory. Verify Codex by restarting Codex and checking the projected skill/agent paths; verify Copilot with `copilot /plugin list`.
+Codex skills are projected to `$env:USERPROFILE\.codex\skills`, and checked-in Codex `.toml` adapters for top-level agent Markdown files are projected under `.codex\agents` (the source agent Markdown remains in the repository for Copilot/Claude). Source MCP definitions are registered in `.codex\config.toml`. Copilot remains under `.copilot`; the two targets do not share configuration. Use `-Force` to update installer-owned files; backups are timestamped under the selected target's directory. Restart Codex after installation. Custom agents are spawnable subagents, not replacements for the primary persona; ask Codex to spawn `powerbi-architect` or `powerbi-developer` by name, then use `/agent` to inspect or switch to the resulting thread.
 
 `-AllowGitMetadataWrites` is opt-in for trusted repositories. It backs up and updates the user-scoped Codex config so agents can perform Git metadata operations; it does not add the user config to this repository.
 
