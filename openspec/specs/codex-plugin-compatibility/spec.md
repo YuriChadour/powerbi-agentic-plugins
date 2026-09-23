@@ -8,7 +8,7 @@ Expose the repository's shared plugin catalog to Codex while preserving the exis
 
 ### Requirement: The repository catalog is the shared content source
 
-The repository SHALL retain `plugins/**`, its marketplace catalog, `.agent.md` files, and `.mcp.json` definitions as the single authoritative source for platform-neutral skills, references, scripts, templates, agent instructions, and MCP server declarations. A Codex projection SHALL be traceable to those source artifacts and SHALL add an adapter only where the installed Codex runtime requires host-specific discovery, role invocation, or MCP registration behavior.
+The repository SHALL retain `plugins/**`, its marketplace catalog, top-level agent Markdown files, checked-in Codex `.toml` adapters, and `.mcp.json` definitions as the source catalog for platform-neutral skills, references, scripts, templates, agent instructions, Codex agent metadata, and MCP server declarations. A Codex projection SHALL be traceable to those artifacts and SHALL add an adapter only where the installed Codex runtime requires host-specific discovery, role invocation, or MCP registration behavior.
 
 #### Scenario: Complete plugin inventory is projected
 - **WHEN** compatibility validation enumerates the marketplace catalog and plugin filesystem
@@ -29,6 +29,10 @@ Codex-facing exposure of agents SHALL preserve each source agent's role, scope, 
 #### Scenario: Agent instructions reference repository assets
 - **WHEN** an exposed agent refers to a skill, script, reference, or template
 - **THEN** the reference resolves from the installed projection or is reported as a validation error before release
+
+#### Scenario: Source agent is projected to Codex
+- **WHEN** a supported agent is installed for Codex
+- **THEN** Codex receives the checked-in `.toml` adapter and its source-preserving instruction payload without requiring installer-time Markdown conversion
 
 ### Requirement: MCP integrations remain source-derived and explicit
 
@@ -57,3 +61,15 @@ Codex exposure SHALL be additive or isolated such that existing GitHub Copilot C
 #### Scenario: Shared source content is updated
 - **WHEN** a platform-neutral skill or reference is changed for compatibility
 - **THEN** the change remains valid for the other supported hosts or has an explicit thin host-specific adapter rather than silently weakening their behavior
+
+### Requirement: Codex agent adapters are packaged and traceable
+
+Every packaged top-level agent Markdown file exposed to Codex SHALL have one corresponding checked-in `.toml` adapter under the same plugin's `agents/` directory. The adapter SHALL preserve the source agent's role, scope, required skills, safety constraints, workflow expectations, and instruction payload while adding only Codex-native metadata.
+
+#### Scenario: Complete agent adapter inventory is validated
+- **WHEN** compatibility validation enumerates plugin agent sources and Codex adapters
+- **THEN** each supported agent Markdown file has exactly one matching `.toml`, every `.toml` maps to a source agent, and missing, stale, or orphaned pairs fail validation
+
+#### Scenario: Codex adapter contents are reviewed
+- **WHEN** a maintainer changes a source agent or its Codex adapter
+- **THEN** the paired files are visible as version-controlled changes and validation reports any instruction or identity mismatch before release
