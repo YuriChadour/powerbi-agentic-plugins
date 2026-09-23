@@ -8,6 +8,39 @@ This file tracks the PQL.Assert planning work, the separate dependency-checking 
 
 ---
 
+## FIN-1810: Skills-for-Fabric migration (active)
+
+**Ticket:** FIN-1810 — “Merge updates from skills-for-fabric repo into Bayview”
+**Branch:** `feature/FIN-1810-merge-skills-for-fabric-powerbi-authoring`
+**Latest commit:** `b6f3263` — `FIN-1810 add skill migration OpenSpecs` (pushed to `origin`)
+**Jira:** Assigned and In Progress; a planning-status comment was posted after the commit.
+
+### Decisions that must be preserved
+
+- The main contract is [merge-powerbi-and-fabric-data-engineering](../openspec/changes/merge-powerbi-and-fabric-data-engineering), with two guarded companion changes: [add-fabriciq-consumption-skill](../openspec/changes/add-fabriciq-consumption-skill) and [port-fabric-data-engineering-capabilities](../openspec/changes/port-fabric-data-engineering-capabilities).
+- Keep the local Power BI suite as the default base. The current `skills-for-fabric` snapshot is a selective donor, never a wholesale replacement; preserve local scripts, templates, report-reference scanning, DAX testing, skills, and agents unless an approved disposition says otherwise.
+- Power BI ownership: report authoring owns PBIR/PBIP pages, visuals, formatting, templates, validation, rendering, and local reference scanning; report management owns Fabric report CRUD/definition transport; planning owns requirements/sequencing; design owns open-ended visual design; semantic-model authoring owns model changes and saved DAX.
+- FabricIQ is additive and uses the official endpoint `https://fabriciq.svc.cloud.microsoft/v1/mcp/fabriciq`, alongside the existing Fabric MCP server. Do not add a report-management or semantic-model FabricIQ redirect until its companion change has completed its configuration, `tools/list`, and smoke-test gates.
+- Scope the Fabric import to `FabricDataEngineer`, root-level `FabricMigrationEngineer`, and their declared skill closure only. Do not import FabricAdmin, FabricAppDev, FabricIQ persona, or unrelated Fabric skills.
+- Codex, Claude Code, and GitHub Copilot CLI must discover one shared source-owned skill body. Preserve progressive disclosure: routing metadata first, selected `SKILL.md` on trigger, and references/scripts/assets only when selected by the workflow.
+- Before merging any matched Power BI pair, run `skill-merge-planner`'s seven-dimension rubric and live `quick_validate.py` on both candidates, inventory references/scripts/assets, and obtain a user-confirmed disposition. Rubric totals guide the decision but never make it automatically.
+
+### Resume point
+
+1. Tasks 1.1 and 1.2 are complete: all ten candidate skill folders pass live `quick_validate.py` in UTF-8 mode, and the plan records the exact local/reference resource inventory, unique resources, unavailable dependencies, and proposed retain/graft/diff/exclude/adapt dispositions. The validator's default Windows codepage cannot decode Unicode in two pairs; use this PowerShell pattern (pass a **skill folder**, not `SKILL.md`) and do not record the symmetric decode error as a candidate defect:
+
+   ```powershell
+   $env:PYTHONUTF8 = '1'
+   py -3 plugins/skill-creator/skills/skill-creator/scripts/quick_validate.py plugins/powerbi/skills/<skill>
+   py -3 plugins/skill-creator/skills/skill-creator/scripts/quick_validate.py C:\Development\skills-for-fabric\plugins\powerbi-authoring\skills\<skill>
+   ```
+2. Tasks 1.3–1.5 are complete: the user confirmed all five matched-pair directions; the plan records the one-owner-per-scenario matrix and the path-based local capability-preservation inventory.
+3. Tasks 2.1–2.4 are complete: report-management routing/telemetry was updated, semantic-model metadata discovery was grafted, the design phantom redirect was adapted, local reference paths were repaired, and all five matched skills plus all local Markdown links passed their scoped checks. The pre-existing `skill-merge-planner` description-length validator failure remains a separate follow-up.
+4. Before task 3, verify the `add-fabriciq-consumption-skill` MCP connection/tools/smoke gates and the `port-fabric-data-engineering-capabilities` selected closure; keep their routing changes gated until those companion changes pass.
+5. Commit/push the resume and task-progress updates with the resulting work; post a Jira summary only when asked or after a subsequent commit per the Jira workflow.
+
+---
+
 ## 1. Completed planning work
 
 - [OpenSpec change](../openspec/changes/archive/2026-09-10-integrate-pql-assert-dax-testing) is implemented and archived. Its completed artifacts passed strict validation and include `proposal.md`, `design.md`, `tasks.md`, and three capability specs: `powerbi/dax-unit-testing`, `powerbi/pql-tester-agent`, and `powerbi/architect-test-planning`.

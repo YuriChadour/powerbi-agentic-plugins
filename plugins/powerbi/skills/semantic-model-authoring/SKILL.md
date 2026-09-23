@@ -5,7 +5,7 @@ description: >
   Does NOT handle report layout/visual authoring, workspace administration, or RLS/OLS role membership management.
   Triggers: "create semantic model", "edit semantic model", "add a DAX measure", "rename a model table", "rename or remove a column or measure", "check report dependencies", "refresh semantic model", "set semantic model permissions", "Prepare semantic model for AI/Copilot".
 metadata:
-  version: 0.2.0
+  version: 0.3.0
 ---
 
 > **Update Check — explicit only**
@@ -25,6 +25,7 @@ Use this decision tree to route to the correct workflow based on user intent:
 | User wants to...                                                                | Workflow                                                                             |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Create a semantic model from scratch                                            | [Create new semantic model](#workflow-create-new-semantic-model)                     |
+| Inspect or discover model metadata (tables, columns, measures, relationships)   | [Discover Semantic Model Metadata](#workflow-discover-semantic-model-metadata)      |
 | Add/edit semantic model objects (e.g. measures, tables, columns, relationships) | [Modify an Existing Model](#workflow-modify-an-existing-model)                       |
 | Write or refactor DAX code                                                      | [Modify an Existing Model](#workflow-modify-an-existing-model)                       |
 | Improve DAX query or measure performance                                        | [Optimize DAX Performance](#workflow-optimize-dax-performance)                       |
@@ -50,7 +51,8 @@ Load these references on demand when a workflow step requires them. Do not load 
 | PBIP Projects                    | [pbip.md](./references/pbip.md)                                                    | When working with PBIP folders                                                              |
 | DAX Language                     | [dax-guidelines.md](./references/dax-guidelines.md)                                | When writing or reviewing any DAX code                                                      |
 | DAX User-Defined Functions       | [dax-udf-functions-guidelines.md](./references/dax-udf-functions-guidelines.md)    | When authoring or refactoring DAX UDFs                                                      |
-| DAX Queries & Metadata Discovery | [dax-query-guidelines.md](./references/dax-query-guidelines.md)                    | Read-only DAX queries; use for post-creation validation                                     |
+| DAX Queries                    | [dax-query-guidelines.md](./references/dax-query-guidelines.md)                    | Read-only DAX queries; use for post-creation validation                                     |
+| Metadata Discovery (DAX INFO functions) | [metadata-discovery.md](./references/metadata-discovery.md)                 | When discovering model metadata via DAX INFO functions |
 | DAX Performance Decision Guide   | [dax-perf-decision-guide.md](./references/dax-perf-decision-guide.md)              | Start here when optimizing DAX                                                             |
 | DAX Performance Pattern Catalog  | [dax-perf-patterns.md](./references/dax-perf-patterns.md)                          | Load on demand after the decision guide identifies candidate patterns                       |
 | Best Practice Analysis (BPA)     | [scripts/bpa.ps1](./scripts/bpa.ps1)                                                | Running BPA rules via Tabular Editor 2.0 against a semantic model                            |
@@ -58,12 +60,12 @@ Load these references on demand when a workflow step requires them. Do not load 
 | Semantic Model AI Readiness                | [semantic-model-ai-readiness.md](./references/semantic-model-ai-readiness.md)                          | When preparing a model for Copilot or Data Agents                                           |
 | Semantic Model REST API          | [semantic-model-rest-api.md](./references/semantic-model-rest-api.md)              | When using `az rest` for TMDL CRUD, refresh, parameters, permissions, or property retrieval |
 | Connection Binding               | [connection-binding.md](./references/connection-binding.md)                        | When binding/unbinding a semantic model to a Fabric data connection (gateway, cloud, VNet, automatic, none) |
-| Finding Workspaces/Items         | [COMMON-CLI.md](../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric) | When resolving workspace/item IDs                                                           |
-| Fabric Control-Plane API         | [COMMON-CLI.md](../../common/COMMON-CLI.md#fabric-control-plane-api-via-az-rest)   | When using `az rest` patterns, LRO, pagination                                              |
-| Authentication                   | [COMMON-CLI.md](../../common/COMMON-CLI.md#authentication-recipes)                 | When authenticating with `az login`                                                         |
-| Authentication & Token Acquisition | [COMMON-CORE.md § Authentication & Token Acquisition](../../common/COMMON-CORE.md#authentication--token-acquisition) | Wrong audience = 401; read before any auth issue |
-| Core Control-Plane REST APIs | [COMMON-CORE.md § Core Control-Plane REST APIs](../../common/COMMON-CORE.md#core-control-plane-rest-apis) | Includes pagination, LRO polling, and rate-limiting patterns |
-| Definition Envelope              | [ITEM-DEFINITIONS-CORE.md](../../common/ITEM-DEFINITIONS-CORE.md#semanticmodel)    | When building TMDL definition payloads                                                      |
+| Finding Workspaces/Items         | [COMMON-CLI.md](../../../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric) | When resolving workspace/item IDs                                                           |
+| Fabric Control-Plane API         | [COMMON-CLI.md](../../../../common/COMMON-CLI.md#fabric-control-plane-api-via-az-rest)   | When using `az rest` patterns, LRO, pagination                                              |
+| Authentication                   | [COMMON-CLI.md](../../../../common/COMMON-CLI.md#authentication-recipes)                 | When authenticating with `az login`                                                         |
+| Authentication & Token Acquisition | [COMMON-CORE.md § Authentication & Token Acquisition](../../../../common/COMMON-CORE.md#authentication--token-acquisition) | Wrong audience = 401; read before any auth issue |
+| Core Control-Plane REST APIs | [COMMON-CORE.md § Core Control-Plane REST APIs](../../../../common/COMMON-CORE.md#core-control-plane-rest-apis) | Includes pagination, LRO polling, and rate-limiting patterns |
+| Definition Envelope              | [ITEM-DEFINITIONS-CORE.md](../../../../common/ITEM-DEFINITIONS-CORE.md#semanticmodel)    | When building TMDL definition payloads                                                      |
 | Examples                         | [Examples](#examples)                                                              | Reference end-to-end walkthroughs. |
 
 ---
@@ -91,7 +93,7 @@ Priority order (highest first):
 A semantic model can live in three locations. Resolve the connection per [Tool Selection Priority](#tool-selection-priority):
 
 - **Power BI Desktop**: Locate the running Power BI Desktop instance and connect to its local model.
-- **Fabric workspace**: First, find the workspace and semantic model using the [Finding Workspaces and Items](../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric) pattern: list workspaces to resolve the workspace ID by name, then list items of type `SemanticModel` in that workspace to resolve the model ID by name. Then connect to the model (live) or export its TMDL definition for local editing.
+- **Fabric workspace**: First, find the workspace and semantic model using the [Finding Workspaces and Items](../../../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric) pattern: list workspaces to resolve the workspace ID by name, then list items of type `SemanticModel` in that workspace to resolve the model ID by name. Then connect to the model (live) or export its TMDL definition for local editing.
 - **PBIP project**: Connect to the `[Name].SemanticModel/definition` folder. Load [pbip.md](./references/pbip.md) to understand the PBIP folder structure - only load the `[Name].SemanticModel/definition` folder that includes the TMDL code.
 
 ### Saving Changes to a Semantic Model
@@ -126,6 +128,32 @@ Steps:
    - **Direct Lake** - create a shared named expression for the Direct Lake connection using the `AzureStorage.DataLake` connector; use `EntityPartitionSource` with `directLake` mode mapped to the lakehouse table columns.
 6. **Deploy or save** - Fabric workspace available -> [Deploy to Fabric](#workflow-deploy-to-fabric); otherwise -> [Export to PBIP](#workflow-export-to-pbip). See [Saving Changes to a Semantic Model](#saving-changes-to-a-semantic-model).
 7. **Validate** - run [Validation Checklist](#validation-checklist).
+
+---
+
+## Workflow: Discover Semantic Model Metadata
+
+**When this applies:** The user asks to inspect, list, or discover the model's
+structure—tables, columns, measures, relationships, hierarchies, partitions,
+roles, or storage internals. Other workflows use this inventory step before
+editing or analyzing a model.
+
+Pick a discovery method, in this order:
+
+1. **`powerbi-modeling-mcp` list/get inspection** — use the structured object
+   model when the MCP is registered and connected with the access required for
+   metadata inspection. This stays synchronized with pending edits.
+2. **DAX `INFO.VIEW` functions** — use the read-only patterns in
+   [metadata-discovery.md](./references/metadata-discovery.md), especially when
+   the session has model query access but not the MCP authoring path.
+3. **PBIP/TMDL inspection** — when MCP is unavailable and the source is a local
+   PBIP project, follow [pbip.md](./references/pbip.md) and inspect the model
+   definition files. For a Fabric workspace source, use the semantic-model
+   REST definition workflow in [semantic-model-rest-api.md](./references/semantic-model-rest-api.md).
+
+Start narrow: run the scope-estimation query first, then project and filter the
+`INFO.VIEW.*` results to only the objects relevant to the request. Do not load
+the entire metadata catalog into context when a focused inventory is enough.
 
 ---
 
@@ -342,7 +370,7 @@ If any check fails, fix the issue and re-run validation.
 
 ## Examples
 
-> **Scope note** — examples use `az rest` for discovery to resolve ID's and discover Fabric metadata (see [COMMON-CLI.md § Finding Workspaces and Items](../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric)). Authoring of the semantic model definition is routed through [Tool Selection Priority](#tool-selection-priority): Tier 1 MCP `powerbi-modeling-mcp` when available, Tier 2 TMDL editing via `getDefinition` / `updateDefinition` otherwise.
+> **Scope note** — examples use `az rest` for discovery to resolve ID's and discover Fabric metadata (see [COMMON-CLI.md § Finding Workspaces and Items](../../../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric)). Authoring of the semantic model definition is routed through [Tool Selection Priority](#tool-selection-priority): Tier 1 MCP `powerbi-modeling-mcp` when available, Tier 2 TMDL editing via `getDefinition` / `updateDefinition` otherwise.
 
 ### Example 1: Modify an Existing Semantic Model
 
