@@ -83,6 +83,19 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 
 **See [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md) for full team setup guide including troubleshooting.**
 
+### End-of-session handoff
+
+After updating `MEMORY.md` and `SESSION_RESUME.md`, use the handoff script to validate OpenSpec, commit only the declared handoff files, push the current Jira branch, and create a pull request targeting `DEV`:
+
+```powershell
+.\scripts\end-session.ps1 `
+  -OpenSpecChange enable-local-vscode-dax-tests `
+  -ResumePath SESSION_RESUME.md `
+  -CommitMessage "docs: update session handoff"
+```
+
+The script reports unchecked OpenSpec tasks without marking them complete and prints a Jira-ready update containing the commit SHA, PR URL, change name, and remaining task count. Post that update through the configured Jira workflow; it does not embed Jira credentials or guess ticket transitions.
+
 ### GitHub Copilot CLI Setup (Individual Users)
 
 - Install [GitHub Copilot CLI](https://github.com/features/copilot/cli)
