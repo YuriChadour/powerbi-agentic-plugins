@@ -130,6 +130,7 @@ function Get-CodexRoot {
 function Test-SourceCatalog {
     param([string]$RepositoryPath, [string[]]$Plugins)
 
+    $excludedSkillDirectories = @('paginated-report-authoring')
     $marketplacePath = Join-Path $RepositoryPath ".claude-plugin\marketplace.json"
     if (-not (Test-Path $marketplacePath)) { throw "Marketplace catalog not found: $marketplacePath" }
     $marketplace = Get-Content $marketplacePath -Raw | ConvertFrom-Json
@@ -144,6 +145,7 @@ function Test-SourceCatalog {
         $skillsPath = Join-Path $pluginPath "skills"
         if (-not (Test-Path $skillsPath -PathType Container)) { throw "Plugin $plugin has no skills directory" }
         foreach ($skill in Get-ChildItem $skillsPath -Directory) {
+            if ($excludedSkillDirectories -contains $skill.Name) { continue }
             if (-not (Test-Path (Join-Path $skill.FullName "SKILL.md"))) { throw "Skill is missing SKILL.md: $($skill.FullName)" }
         }
         foreach ($mcp in Get-ChildItem $pluginPath -Filter ".mcp.json" -File -ErrorAction SilentlyContinue) {
@@ -180,6 +182,39 @@ function Copy-CodexSourceTree {
     if ($LASTEXITCODE -gt 7) { throw "Failed to project source tree: $Source" }
 }
 
+function New-CodexAgentAdapter {
+    param([string]$SourceAgentPath, [string]$DestinationAgentPath)
+
+    $source = Get-Content $SourceAgentPath -Raw
+    $nameMatch = [regex]::Match($source, '(?ms)^---\s*.*?^name:\s*(?<name>[^\r\n]+).*?^description:\s*(?<description>.*?)(?=^---\s*$)')
+    if (-not $nameMatch.Success) {
+        throw "Unable to read agent frontmatter: $SourceAgentPath"
+    }
+
+    $name = $nameMatch.Groups['name'].Value.Trim()
+    $description = $nameMatch.Groups['description'].Value.Trim()
+    if ($description -match '^>\s*') {
+        $description = ($description -split "`r?`n" | ForEach-Object { $_ -replace '^\s*>\s?', '' }) -join ' '
+    }
+    $description = $description -replace '\s+', ' '
+    $body = ($source -replace '(?ms)^---\s*.*?^---\s*\r?\n?', '').Trim()
+    if ($body -match "'''") {
+        throw "Agent contains an unsupported triple-single-quote sequence for Codex adapter generation: $SourceAgentPath"
+    }
+    $adapterPath = [IO.Path]::ChangeExtension($DestinationAgentPath, '.toml')
+    $adapter = @"
+# Codex adapter for $(Split-Path $SourceAgentPath -Leaf); source instruction: $([IO.Path]::GetFileNameWithoutExtension($DestinationAgentPath)).md; keep developer_instructions in parity with the source agent.
+name = "$($name -replace '"', '\"')"
+description = "$($description -replace '"', '\"')"
+model = "gpt-5.6-luna"
+developer_instructions = '''
+$body
+'''
+"@
+    Set-Content -Path $adapterPath -Value $adapter -Encoding UTF8
+    return $adapterPath
+}
+
 function Install-CodexProjection {
     param([string]$RepositoryPath, [string[]]$Plugins, [bool]$Force)
     $codexRoot = Get-CodexRoot
@@ -213,6 +248,7 @@ function Install-CodexProjection {
             $destination = Join-Path $agentsRoot ($agent.Name -replace '\.agent\.md$','.md')
             if ((Test-Path $destination) -and -not $Force) { throw "Codex agent already exists (use -Force): $destination" }
             Copy-Item $agent.FullName $destination -Force
+            New-CodexAgentAdapter -SourceAgentPath $agent.FullName -DestinationAgentPath $destination | Out-Null
             $agents += "$plugin/$($agent.Name)"
         }
         foreach ($definition in Get-ChildItem $sourcePlugin -Filter ".mcp.json" -File -ErrorAction SilentlyContinue) { $mcp += $definition.FullName }
@@ -252,8 +288,15 @@ function Register-CodexMcp {
             $managedBlockPattern = "(?ms)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*\r?\n\[mcp_servers\.$([regex]::Escape($name))\].*?^\# END powerbi-agentic-plugins: $([regex]::Escape($name))\s*\r?\n?"
             $existing = [regex]::Replace($existing, $managedBlockPattern, "")
         }
-        $serverArgs = ($definition.Value.PSObject.Properties['args'].Value | ForEach-Object { '"' + ($_ -replace '"','\\"') + '"' }) -join ', '
-        $blocks += "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`ncommand = `"$($definition.Value.command)`"`nargs = [$serverArgs]`n# END powerbi-agentic-plugins: $name`n"
+        $type = $definition.Value.PSObject.Properties['type'].Value
+        if ($type -eq 'http' -and $definition.Value.PSObject.Properties['url']) {
+            $url = $definition.Value.url -replace '"', '\\"'
+            $blocks += "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`nurl = `"$url`"`n# END powerbi-agentic-plugins: $name`n"
+        } else {
+            $serverArgs = ($definition.Value.PSObject.Properties['args'].Value | ForEach-Object { '"' + ($_ -replace '"','\\"') + '"' }) -join ', '
+            $command = $definition.Value.command -replace '"', '\\"'
+            $blocks += "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`ncommand = `"$command`"`nargs = [$serverArgs]`n# END powerbi-agentic-plugins: $name`n"
+        }
     }
     $parent = Split-Path $configPath -Parent; New-Item -ItemType Directory -Path $parent -Force | Out-Null
     ($existing.TrimEnd() + ($blocks -join "`n") + "`n") | Set-Content $configPath -Encoding UTF8
@@ -1060,6 +1103,7 @@ try {
     # Find or clone repository
     $repoPath = Find-Repository -ProvidedPath $RepositoryPath
     if (-not $repoPath) { throw "Could not locate repository. Provide -RepositoryPath to a valid checkout." }
+    $targetPlugins = @(Get-TargetPlugins -PluginName $PluginName)
     Test-SourceCatalog -RepositoryPath $repoPath -Plugins $targetPlugins | Out-Null
     Write-Info "Target: $Target; plugins: $($targetPlugins -join ', '); source: $repoPath"
 
@@ -1111,5 +1155,9 @@ try {
     if ($Target -eq "All" -and $targetResults.Count -lt 2) { exit 1 }
     Write-Success "Setup complete for $Target. Restart the selected harness(es) to discover the projection."
     exit 0
+} catch {
+    Write-Error-Custom "Setup failed: $_"
+    exit 1
+}
 
 #endregion

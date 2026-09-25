@@ -20,7 +20,7 @@ This file tracks the PQL.Assert planning work, the separate dependency-checking 
 - The main contract is [merge-powerbi-and-fabric-data-engineering](../openspec/changes/merge-powerbi-and-fabric-data-engineering), with two guarded companion changes: [add-fabriciq-consumption-skill](../openspec/changes/add-fabriciq-consumption-skill) and [port-fabric-data-engineering-capabilities](../openspec/changes/port-fabric-data-engineering-capabilities).
 - Keep the local Power BI suite as the default base. The current `skills-for-fabric` snapshot is a selective donor, never a wholesale replacement; preserve local scripts, templates, report-reference scanning, DAX testing, skills, and agents unless an approved disposition says otherwise.
 - Power BI ownership: report authoring owns PBIR/PBIP pages, visuals, formatting, templates, validation, rendering, and local reference scanning; report management owns Fabric report CRUD/definition transport; planning owns requirements/sequencing; design owns open-ended visual design; semantic-model authoring owns model changes and saved DAX.
-- FabricIQ is additive and uses the official endpoint `https://fabriciq.svc.cloud.microsoft/v1/mcp/fabriciq`, alongside the existing Fabric MCP server. Do not add a report-management or semantic-model FabricIQ redirect until its companion change has completed its configuration, `tools/list`, and smoke-test gates.
+- FabricIQ is additive and uses the verified endpoint `https://api.fabric.microsoft.com/v1/mcp/fabriciq`, alongside the existing Fabric MCP server. Do not add a report-management or semantic-model FabricIQ redirect until its companion change has completed its configuration, `tools/list`, and smoke-test gates.
 - Scope the Fabric import to `FabricDataEngineer`, root-level `FabricMigrationEngineer`, and their declared skill closure only. Do not import FabricAdmin, FabricAppDev, FabricIQ persona, or unrelated Fabric skills.
 - Codex, Claude Code, and GitHub Copilot CLI must discover one shared source-owned skill body. Preserve progressive disclosure: routing metadata first, selected `SKILL.md` on trigger, and references/scripts/assets only when selected by the workflow.
 - Before merging any matched Power BI pair, run `skill-merge-planner`'s seven-dimension rubric and live `quick_validate.py` on both candidates, inventory references/scripts/assets, and obtain a user-confirmed disposition. Rubric totals guide the decision but never make it automatically.
@@ -38,6 +38,44 @@ This file tracks the PQL.Assert planning work, the separate dependency-checking 
 3. Tasks 2.1–2.4 are complete: report-management routing/telemetry was updated, semantic-model metadata discovery was grafted, the design phantom redirect was adapted, local reference paths were repaired, and all five matched skills plus all local Markdown links passed their scoped checks. The pre-existing `skill-merge-planner` description-length validator failure remains a separate follow-up.
 4. Before task 3, verify the `add-fabriciq-consumption-skill` MCP connection/tools/smoke gates and the `port-fabric-data-engineering-capabilities` selected closure; keep their routing changes gated until those companion changes pass.
 5. Commit/push the resume and task-progress updates with the resulting work; post a Jira summary only when asked or after a subsequent commit per the Jira workflow.
+
+### Implementation update — 2026-09-24
+
+- The selected Fabric data-engineering closure is now ported under
+  `plugins/fabric`: `spark-cli`, `sqldw-cli`, `eventhouse-cli`, `eventstream-cli`,
+  `dataflows-cli`, `e2e-medallion-architecture`, `synapse-migration`,
+  `hdinsight-migration`, and `databricks-migration`.
+- `FabricDataEngineer` was imported and a local `FabricMigrationEngineer`
+  orchestration adapter was authored because the current upstream snapshot does
+  not contain the named migration-agent file.
+- Shared closure metadata is recorded in `plugins/fabric/capability-closure.json`
+  and checked by `scripts/validate-fabric-capability-closure.ps1`.
+- Codex projection now generates runtime-required `.toml` agent adapters from
+  source `.agent.md` instructions. Isolated Codex and Copilot Fabric projections
+  passed discovery/content checks.
+- The FabricIQ MCP endpoint and six-tool contract are configured, but the live
+  tenant smoke gate is still blocked: authorized artifact discovery returned no
+  report or semantic model for the tested search terms. Do not mark the
+  FabricIQ routing task complete until an accessible artifact is supplied.
+
+### `add-fabriciq-consumption-skill` — task 1.4 next after local skill validation
+
+- Task 1.1 (add `FabricIQ` HTTP server entry to `plugins/fabric/.mcp.json`) is done with
+  the verified endpoint `https://api.fabric.microsoft.com/v1/mcp/fabriciq`.
+- Task 1.2 (install/refresh the Fabric plugin and verify FabricIQ connects without auth errors) is
+  complete against `https://api.fabric.microsoft.com/v1/mcp/fabriciq`: the installed-plugin probe
+  reloaded successfully, exposed all six required `FabricIQ-*` tools, and a live `DiscoverArtifacts`
+  call returned authorized tenant results. The Copilot-target refresh on 2026-09-24 installed the
+  updated Fabric plugin and preserved the same endpoint in both installed-plugins and extensions;
+  a live `FabricIQ-DiscoverArtifacts` call completed without auth or transport errors (the generic
+  search term `Power BI` simply returned no matching artifacts).
+- The repository configuration and design decision now use the verified endpoint. The next task is
+  1.4: run a read-only smoke test against an authorized Power BI report or semantic model and
+  verify that metadata and query results are accessible to the configured tenant.
+- Task 1.3 is complete: the live contract exposed all six required operations and their exact local
+  mappings. The new `plugins/fabric/skills/fabriciq/SKILL.md` records the mappings, source-bound
+  workflow, governance rules, routing boundaries, and unavailable-capability handling.
+- The skill frontmatter passed `quick_validate.py` via `uv run --no-project python`.
 
 ---
 
@@ -156,3 +194,20 @@ repo's only `RESUME.md`.
 - Next step if resuming this thread: apply the two fixes above, bump `metadata.version`, re-run the
   same 2-eval loop into `iteration-2/` (with `--previous-workspace iteration-1`), and confirm the
   with-skill pass rate closes the gap with (or exceeds) the 100% baseline.
+
+## FIN-1810 implementation checkpoint — 2026-09-24
+
+- **Committed scope:** the selected Fabric data-engineering closure, FabricDataEngineer,
+  local FabricMigrationEngineer adapter, closure metadata/validator, Codex agent-adapter
+  generation, Power BI/Fabric ownership guidance, and catalog validation fixes.
+- **Verification:** strict OpenSpec validation passed; all selected Fabric skills passed
+  `quick_validate.py`; the source catalog and Fabric closure validators passed; isolated Codex
+  projection passed with 11 skills, 2 agents, and Fabric/FabricIQ MCP registration; isolated
+  Copilot projection passed with the selected Fabric skills and agents.
+- **Gated:** FabricIQ routing and final FIN-1810 reconciliation remain gated because the live
+  authorized artifact smoke test found no accessible report or semantic model for the tested
+  search terms. Do not mark the companion or parent closeout tasks complete until an accessible
+  artifact is available and metadata plus a bounded query succeed.
+- **Next action:** provide or authorize a searchable Power BI report or semantic model, rerun the
+  FabricIQ metadata/query smoke test, then complete the remaining OpenSpec tasks and post the
+  final Jira summary.

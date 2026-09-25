@@ -22,7 +22,10 @@ Manage Power BI reports in Microsoft Fabric workspaces using `az rest` against
 the Fabric REST API. This skill covers the full CRUD lifecycle for report items
 and their PBIR definitions.
 
-> **Scope**: Report item CRUD and definition management only. For report layout
+> **Scope**: Report item CRUD and definition management only. For read-only
+> business questions over an existing report or semantic model, use the
+> `fabriciq` skill when its MCP capability is installed and available. For
+> report layout
 > authoring (pages, visuals, filters, formatting), use `powerbi-report-authoring`.
 
 > **Boundary**: This skill transports PBIR definitions to and from Fabric. PBIR
@@ -38,6 +41,7 @@ Each owns a single concern; route work to the right one.
 | `powerbi-report-authoring` | Report content (PBIR JSON authoring) | Pages, visuals, filters, formatting, themes, expressions, `definition.pbir`, `version.json`, `report.json` |
 | `powerbi-report-management` (this skill) | Report transport to/from Fabric | List, create, get, update, delete report items; download/upload PBIR definitions |
 | Semantic-model authoring skill | Semantic model authoring + deployment | Create/edit measures/tables/relationships, TMDL, deploy semantic models to Fabric |
+| `fabriciq` | Read-only Power BI data consumption | Answer business questions from existing reports and semantic models; use only after FabricIQ availability is verified |
 
 **When publishing a local `.pbip` to Fabric**, this skill is the entry
 point. If the user wants to publish the local semantic model alongside

@@ -25,6 +25,11 @@ You are a Power BI solution architect responsible for translating business requi
 - `powerbi-report-planning`: For guided requirements -> spec -> approval workflows when the request is a new report/dashboard build.
 - `powerbi-report-design`: For chart selection, layout, and design-identity guidance to inform the spec.
 - `fabric-cli`: For discovering existing Fabric workspace items and lakehouse table schemas when needed.
+- `FabricDataEngineer` / `FabricMigrationEngineer`: For cross-workload Fabric
+  engineering and Synapse, HDInsight, or Databricks migration orchestration;
+  keep Power BI model and report design concerns in this agent's scope.
+- `fabriciq`: For read-only business questions over existing Power BI artifacts
+  only after the FabricIQ MCP availability gate passes.
 - `prep-powerbi-for-report-copilot`: For designing Copilot-ready reports and semantic models with optimized AI schema, instructions, and Answer Pack strategies.
 
 ## Planning Measure Test Tasks
@@ -260,4 +265,3 @@ Use the structure below when creating a new spec. Each section contains guidance
     
 -->
 ```
-

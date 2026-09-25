@@ -16,6 +16,13 @@ metadata:
 > 2. To find the item details (including its ID) from workspace ID, item type, and item name: list all items of that type in that workspace and, then, use JMESPath filtering
 > 3. Always consider the [Tool selection priority](#tool-selection-priority) when choosing which tool to use for each operation. Do not default to TMDL edits or `az rest` if MCP is available and connected to the target model.
 
+> **Consumption boundary:** Route natural-language business questions about
+> existing report or semantic-model data to `fabriciq` when its FabricIQ MCP
+> tools are installed, authorized, and available. Keep semantic-model
+> definition changes, deployment, refresh, permissions, and user-supplied DAX
+> edits in this skill. If FabricIQ is unavailable, explain that limitation
+> rather than fabricating a data answer.
+
 # Power BI Semantic Model Authoring — CLI Skill
 
 ## Workflow Selector
@@ -24,6 +31,7 @@ Use this decision tree to route to the correct workflow based on user intent:
 
 | User wants to...                                                                | Workflow                                                                             |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Answer a business question from existing report or model data                   | Route to the `fabriciq` skill when its availability gate passes                    |
 | Create a semantic model from scratch                                            | [Create new semantic model](#workflow-create-new-semantic-model)                     |
 | Inspect or discover model metadata (tables, columns, measures, relationships)   | [Discover Semantic Model Metadata](#workflow-discover-semantic-model-metadata)      |
 | Add/edit semantic model objects (e.g. measures, tables, columns, relationships) | [Modify an Existing Model](#workflow-modify-an-existing-model)                       |

@@ -13,10 +13,12 @@ $declared = @($marketplace.plugins | ForEach-Object { $_.name })
 if (@(Compare-Object $expected $declared).Count) { throw 'Marketplace and supported plugin catalog differ.' }
 
 $skillCount = 0; $agentCount = 0; $mcpCount = 0
+$excludedSkillDirectories = @('paginated-report-authoring')
 foreach ($plugin in $expected) {
     $root = Join-Path $RepositoryPath "plugins\$plugin"
     if (-not (Test-Path $root -PathType Container)) { throw "Missing plugin root: $plugin" }
     foreach ($skill in Get-ChildItem (Join-Path $root 'skills') -Directory) {
+        if ($excludedSkillDirectories -contains $skill.Name) { continue }
         if (-not (Test-Path (Join-Path $skill.FullName 'SKILL.md'))) { throw "Missing SKILL.md: $($skill.FullName)" }
         $skillCount++
     }

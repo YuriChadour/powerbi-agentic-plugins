@@ -15,17 +15,17 @@
 ## 3. Coordinate companion capabilities
 
 - [ ] 3.1 Add FabricIQ routing only after `add-fabriciq-consumption-skill` has passed its MCP connection and smoke-test gates; verify a business-data question routes to FabricIQ without changing report definitions.
-- [ ] 3.2 Add Data Engineer and Migration Engineer routing only after `port-fabric-data-engineering-capabilities` has delivered its selected skill closure; verify cross-workload requests retain the engineer as orchestrator and delegate semantic-model changes to the Power BI owner.
-- [ ] 3.3 Update relevant Power BI agents and package/catalog metadata with the approved boundaries; verify no agent duplicates a skill body or claims another capability's primary responsibility.
+- [x] 3.2 Add Data Engineer and Migration Engineer routing only after `port-fabric-data-engineering-capabilities` has delivered its selected skill closure; verify cross-workload requests retain the engineer as orchestrator and delegate semantic-model changes to the Power BI owner.
+- [x] 3.3 Update relevant Power BI agents and package/catalog metadata with the approved boundaries; verify no agent duplicates a skill body or claims another capability's primary responsibility.
 
 ## 4. Project and validate multi-harness progressive disclosure
 
-- [ ] 4.1 Project the selected source-owned Power BI skills and agents to Codex, Claude Code, and GitHub Copilot CLI; verify each harness discovers the same intended capability names without duplicated canonical skill bodies.
-- [ ] 4.2 Validate referenced scripts, templates, and on-demand guidance from each harness projection; verify every selected skill resolves its local resources from the source-owned package.
+- [x] 4.1 Project the selected source-owned Power BI skills and agents to Codex, Claude Code, and GitHub Copilot CLI; verify each harness discovers the same intended capability names without duplicated canonical skill bodies.
+- [x] 4.2 Validate referenced scripts, templates, and on-demand guidance from each harness projection; verify every selected skill resolves its local resources from the source-owned package.
 - [ ] 4.3 Exercise targeted authoring, management, planning, design, semantic-model, FabricIQ, and data-engineering requests; verify each loads only its selected skill and required on-demand references rather than the full collection.
 
 ## 5. Complete FIN-1810 verification
 
-- [ ] 5.1 Run repository validation and the applicable skill/package checks after the selective merge; verify no broken links, invalid metadata, or routing conflicts are reported.
+- [x] 5.1 Run repository validation and the applicable skill/package checks after the selective merge; verify no broken links, invalid metadata, or routing conflicts are reported.
 - [ ] 5.2 Reconcile the final implementation against this change and its two companion changes; verify every OpenSpec scenario is demonstrably satisfied or remains explicitly gated.
 - [ ] 5.3 Update FIN-1810 with the final capability and verification summary after implementation is complete; verify the ticket distinguishes planning artifacts from completed implementation.
