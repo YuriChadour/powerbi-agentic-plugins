@@ -291,7 +291,23 @@ function Register-CodexMcp {
         $type = $definition.Value.PSObject.Properties['type'].Value
         if ($type -eq 'http' -and $definition.Value.PSObject.Properties['url']) {
             $url = $definition.Value.url -replace '"', '\\"'
-            $blocks += "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`nurl = `"$url`"`n# END powerbi-agentic-plugins: $name`n"
+            $block = "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`nurl = `"$url`"`n"
+            $headersProperty = $definition.Value.PSObject.Properties['http_headers']
+            if ($headersProperty) {
+                $headerPairs = @($headersProperty.Value.PSObject.Properties | ForEach-Object {
+                    $headerName = $_.Name -replace '\\', '\\\\' -replace '"', '\\"'
+                    $headerValue = [string]$_.Value -replace '\\', '\\\\' -replace '"', '\\"'
+                    "`"$headerName`" = `"$headerValue`""
+                })
+                $block += "http_headers = { $($headerPairs -join ', ') }`n"
+            }
+            $helperProperty = $definition.Value.PSObject.Properties['http_headers_helper']
+            if ($helperProperty) {
+                $helper = [string]$helperProperty.Value -replace "'", "''"
+                $block += "http_headers_helper = '''`n$helper`n'''`n"
+            }
+            $block += "# END powerbi-agentic-plugins: $name`n"
+            $blocks += $block
         } else {
             $serverArgs = ($definition.Value.PSObject.Properties['args'].Value | ForEach-Object { '"' + ($_ -replace '"','\\"') + '"' }) -join ', '
             $command = $definition.Value.command -replace '"', '\\"'

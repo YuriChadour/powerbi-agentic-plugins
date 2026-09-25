@@ -14,7 +14,7 @@
 
 ## 3. Coordinate companion capabilities
 
-- [ ] 3.1 Add FabricIQ routing only after `add-fabriciq-consumption-skill` has passed its MCP connection and smoke-test gates; verify a business-data question routes to FabricIQ without changing report definitions.
+- [x] 3.1 Add FabricIQ routing only after `add-fabriciq-consumption-skill` has passed its MCP connection and smoke-test gates; verify a business-data question routes to FabricIQ without changing report definitions.
 - [x] 3.2 Add Data Engineer and Migration Engineer routing only after `port-fabric-data-engineering-capabilities` has delivered its selected skill closure; verify cross-workload requests retain the engineer as orchestrator and delegate semantic-model changes to the Power BI owner.
 - [x] 3.3 Update relevant Power BI agents and package/catalog metadata with the approved boundaries; verify no agent duplicates a skill body or claims another capability's primary responsibility.
 

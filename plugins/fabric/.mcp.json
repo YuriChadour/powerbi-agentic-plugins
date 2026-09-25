@@ -16,7 +16,11 @@
         },
         "FabricIQ": {
             "type": "http",
-            "url": "https://api.fabric.microsoft.com/v1/mcp/fabriciq",
+            "url": "https://fabriciq.svc.cloud.microsoft/v1/mcp/fabriciq",
+            "http_headers": {
+                "X-VARIANTS": "Fabric.Routing.FabricIQ.V1"
+            },
+            "http_headers_helper": "az account get-access-token --resource https://api.fabric.microsoft.com --query \"{Authorization: join(' ', ['Bearer', accessToken])}\" --output json --only-show-errors",
             "tools": [
                 "*"
             ]

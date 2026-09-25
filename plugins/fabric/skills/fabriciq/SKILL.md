@@ -37,7 +37,13 @@ invented tool names for these operations.
 
 The MCP server URL is fixed and must remain:
 
-`https://api.fabric.microsoft.com/v1/mcp/fabriciq`
+`https://fabriciq.svc.cloud.microsoft/v1/mcp/fabriciq`
+
+The Codex registration must also include the `X-VARIANTS` header with value
+`Fabric.Routing.FabricIQ.V1` and an `http_headers_helper` that returns a JSON
+`Authorization` header. The helper should acquire a fresh token for the
+`https://api.fabric.microsoft.com` resource with Azure CLI. Do not persist the
+token in this skill or in repository configuration.
 
 Do not append a tenant ID to the URL and do not store tenant IDs, access
 tokens, client secrets, or other credentials in this skill.
