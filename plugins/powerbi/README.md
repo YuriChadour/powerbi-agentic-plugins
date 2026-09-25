@@ -21,7 +21,7 @@ Activated when a user needs to design, build, or maintain Power BI solutions. Co
 
 ### `powerbi-developer`
 
-Activated when a user needs to implement Power BI solutions — creating and editing semantic models, writing and optimizing DAX, building reports in PBIR format, and deploying to Fabric workspaces. Uses the `semantic-model-authoring`, `powerbi-report-authoring`, and `fabric-cli` skills.
+Activated when a user needs to implement Power BI solutions — creating and editing semantic models, writing and optimizing DAX, building interactive PBIR/PBIP or paginated RDL reports, and deploying to Fabric workspaces. Uses the `semantic-model-authoring`, `powerbi-report-authoring`, `paginated-report-authoring`, and `fabric-cli` skills.
 
 ### Sample install prompt
 
@@ -46,6 +46,10 @@ Activated for any semantic model operation — creating or editing tables, measu
 ### `powerbi-report-authoring`
 
 Activated for any report operation — creating or editing Power BI reports in PBIR format, configuring visuals and pages, applying themes, rebinding reports to different semantic models, and deploying reports to Fabric workspaces.
+
+### `paginated-report-authoring`
+
+Activated for RDL paginated report workflows: semantic-model discovery, DAX-backed dataset generation, parameters and filters, tablix layouts, XML validation, and safe publication through the Power BI Imports API. Interactive PBIR/PBIP authoring remains owned by `powerbi-report-authoring`.
 
 ### `powerbi-report-design`
 

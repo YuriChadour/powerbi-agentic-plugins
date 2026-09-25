@@ -15,13 +15,13 @@ Run the unified installer from a checkout. With no target specified it installs 
 .\setup-team-plugins.ps1 -Target Codex -AllowGitMetadataWrites
 ```
 
-Codex skills are projected to `$env:USERPROFILE\.codex\skills`, agents to `.codex\agents`, and source MCP definitions are registered in `.codex\config.toml`. Copilot remains under `.copilot`; the two targets do not share configuration. Use `-Force` to update installer-owned files; backups are timestamped under the selected target's directory. Verify Codex by restarting Codex and checking the projected skill/agent paths; verify Copilot with `copilot /plugin list`.
+Codex skills are projected to `$env:USERPROFILE\.codex\skills`, and checked-in Codex `.toml` adapters for top-level agent Markdown files are projected under `.codex\agents` (the source agent Markdown remains in the repository for Copilot/Claude). Source MCP definitions are registered in `.codex\config.toml`. Copilot remains under `.copilot`; the two targets do not share configuration. Use `-Force` to update installer-owned files; backups are timestamped under the selected target's directory. Restart Codex after installation. Custom agents are spawnable subagents, not replacements for the primary persona; ask Codex to spawn `powerbi-architect` or `powerbi-developer` by name, then use `/agent` to inspect or switch to the resulting thread.
 
 `-AllowGitMetadataWrites` is opt-in for trusted repositories. It backs up and updates the user-scoped Codex config so agents can perform Git metadata operations; it does not add the user config to this repository.
 
 | Plugin                           | What it does                                                                                                                      | 
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | 
-| **[powerbi](./plugins/powerbi)** | Create semantic models, author reports in PBIR, write DAX queries, explore published datasets, apply modeling best practices, and **optimize reports for Report Copilot pane readiness**. | 
+| **[powerbi](./plugins/powerbi)** | Create semantic models, author interactive PBIR/PBIP and paginated RDL reports, write DAX queries, explore published datasets, apply modeling best practices, and **optimize reports for Report Copilot pane readiness**. |
 | **[fabric](./plugins/fabric)**   | Navigate workspaces, import/export item definitions, call Fabric & Power BI REST APIs, run jobs, and manage OneLake files.        |
 | **[devops](./plugins/devops)**   | Enforce branch hygiene, standard Azure DevOps branch policies, and team-safe Git workflows.                                      |
 | **[skill-creator](./plugins/skill-creator)** | Official Anthropic skill-authoring toolkit — create new skills, run with-skill/baseline benchmark evals, optimize trigger descriptions, and package `.skill` files. Vendored unmodified from [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official). |
@@ -82,6 +82,19 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 - ✓ Easy to contribute improvements back to the team fork
 
 **See [DEVELOPER_SETUP.md](DEVELOPER_SETUP.md) for full team setup guide including troubleshooting.**
+
+### End-of-session handoff
+
+After updating `MEMORY.md` and `SESSION_RESUME.md`, use the handoff script to validate OpenSpec, commit only the declared handoff files, push the current Jira branch, and create a pull request targeting `DEV`:
+
+```powershell
+.\scripts\end-session.ps1 `
+  -OpenSpecChange enable-local-vscode-dax-tests `
+  -ResumePath SESSION_RESUME.md `
+  -CommitMessage "docs: update session handoff"
+```
+
+The script reports unchecked OpenSpec tasks without marking them complete and prints a Jira-ready update containing the commit SHA, PR URL, change name, and remaining task count. Post that update through the configured Jira workflow; it does not embed Jira credentials or guess ticket transitions.
 
 ### GitHub Copilot CLI Setup (Individual Users)
 

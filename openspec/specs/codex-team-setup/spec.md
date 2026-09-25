@@ -48,7 +48,7 @@ The workflow SHALL accept an explicit repository path, discover a valid local ch
 - **THEN** setup does not create a partial installation and reports how to provide or obtain the repository
 
 ### Requirement: Setup verifies target readiness
-The workflow SHALL validate target-required runtime prerequisites, confirm that every selected plugin has its required projected assets, verify agent and skill references, and distinguish warnings from blocking failures per target.
+The workflow SHALL validate target-required runtime prerequisites, confirm that every selected plugin has its required projected assets, verify checked-in Codex agent adapters and skill references, and distinguish warnings from blocking failures per target.
 
 #### Scenario: Successful target validation
 - **WHEN** setup completes for a target and selected plugin set
@@ -57,6 +57,38 @@ The workflow SHALL validate target-required runtime prerequisites, confirm that 
 #### Scenario: Optional dependency is unavailable
 - **WHEN** an optional dependency such as Node.js, `uv`, or a desktop bridge is unavailable
 - **THEN** setup identifies the affected capability and remediation while only failing the relevant target installation if that dependency is required for its selected plugin contract
+
+### Requirement: External setup dependencies are provisioned idempotently
+
+When a selected plugin requires external tooling, setup SHALL detect the installed capability before attempting installation. A force-enabled plugin update SHALL not reinstall an already available Power BI Desktop Bridge CLI, ADOMD.NET client, or VS Code Python extension; missing capabilities SHALL be installed or reported with actionable remediation.
+
+#### Scenario: Existing Power BI dependencies are reused
+- **WHEN** setup targets the `powerbi` plugin and the Desktop Bridge CLI and ADOMD.NET client are already resolvable
+- **THEN** setup reports them as already available and does not invoke their installers
+
+#### Scenario: Existing VS Code extension is reused
+- **WHEN** VS Code is available and `ms-python.python` is present in the installed extension list
+- **THEN** setup reports the extension as already installed and does not invoke the extension installer
+
+#### Scenario: Missing optional dependency is handled safely
+- **WHEN** a selected external dependency is unavailable or its installer cannot run
+- **THEN** setup reports the affected capability and remediation without claiming that capability is ready
+
+### Requirement: Codex setup consumes prebuilt agent adapters
+
+For the Codex target, setup SHALL copy the checked-in `.toml` adapter for each selected packaged agent to the Codex agent directory. Setup SHALL NOT generate, rewrite, or repair `.toml` files from agent Markdown files at installation time.
+
+#### Scenario: Prebuilt adapters are installed
+- **WHEN** a user installs a plugin containing a supported agent for Codex
+- **THEN** setup copies the repository's matching `.toml` adapter and reports it as an installed agent artifact
+
+#### Scenario: A required adapter is missing or invalid
+- **WHEN** a selected plugin has a missing, orphaned, or instruction-mismatched Codex adapter
+- **THEN** setup fails validation before claiming Codex readiness and identifies the repository artifact that must be corrected
+
+#### Scenario: Adapter conversion is unavailable
+- **WHEN** setup runs on a machine without any Markdown-to-TOML conversion capability
+- **THEN** a valid repository with checked-in adapters installs normally because conversion is not part of the setup workflow
 
 ### Requirement: Documentation supports direct and agent-guided installation
 Team documentation and agent instructions SHALL explain target selection, prerequisites, installation, update, verification, MCP behavior, backup/recovery, and the distinction between Codex and Copilot paths.
