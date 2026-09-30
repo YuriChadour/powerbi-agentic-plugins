@@ -68,6 +68,8 @@ param(
     [switch]$SkipVSCode,
     [switch]$Force,
     [switch]$AllowGitMetadataWrites,
+    [scriptblock]$McpLauncher,
+    [scriptblock]$McpProvisioner,
     [switch]$Verbose
 )
 
@@ -319,60 +321,103 @@ function Install-CodexProjection {
     return [PSCustomObject]@{ Root=$codexRoot; Backup=$backupPath; Manifest=$manifest }
 }
 
+function Get-CodexMcpDefinition {
+    param([string]$Config, [string]$Name)
+
+    $escapedName = [regex]::Escape($Name)
+    $block = [regex]::Match($Config, "(?ms)^\[mcp_servers\.$escapedName\].*?(?=^\[|\z)").Value
+    if ([string]::IsNullOrWhiteSpace($block)) { return $null }
+    $value = [ordered]@{}
+    $urlMatch = [regex]::Match($block, '(?m)^url\s*=\s*["''](?<value>.*?)["'']\s*$')
+    if ($urlMatch.Success) {
+        $value.type = 'http'
+        $value.url = $urlMatch.Groups['value'].Value
+    } else {
+        $commandMatch = [regex]::Match($block, '(?m)^command\s*=\s*["''](?<value>.*?)["'']\s*$')
+        if (-not $commandMatch.Success) { return $null }
+        $value.type = 'local'
+        $value.command = $commandMatch.Groups['value'].Value
+        $parsedArguments = @()
+        $argsMatch = [regex]::Match($block, '(?m)^args\s*=\s*\[(?<value>.*?)\]\s*$')
+        if ($argsMatch.Success) {
+            foreach ($match in [regex]::Matches($argsMatch.Groups['value'].Value, '"((?:\\.|[^"])*)"|''((?:\\.|[^''])*)''')) {
+                $arg = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+                $parsedArguments += ($arg -replace '\\"', '"' -replace '\\\\', '\\')
+            }
+        }
+        $value.args = $parsedArguments
+    }
+    return [PSCustomObject]@{ Name = $Name; Value = [PSCustomObject]$value }
+}
+
+function Remove-CodexMcpBlock {
+    param([string]$Config, [string]$Name)
+
+    $escapedName = [regex]::Escape($Name)
+    $pattern = "(?ms)^\# BEGIN powerbi-agentic-plugins: $escapedName\s*\r?\n\[mcp_servers\.$escapedName\].*?^\# END powerbi-agentic-plugins: $escapedName\s*\r?\n?"
+    return [regex]::Replace($Config, $pattern, '')
+}
+
 function Register-CodexMcp {
     param([string]$RepositoryPath, [string[]]$Plugins, [bool]$Force)
-    $configPath = Join-Path (Get-CodexRoot) "config.toml"
-    $definitions = @()
-    foreach ($plugin in $Plugins) {
-        foreach ($file in Get-ChildItem (Join-Path $RepositoryPath "plugins\$plugin") -Filter ".mcp.json" -File -ErrorAction SilentlyContinue) {
-            $json = Get-Content $file.FullName -Raw | ConvertFrom-Json
-            foreach ($property in $json.mcpServers.PSObject.Properties) { $definitions += [PSCustomObject]@{ Name=$property.Name; Value=$property.Value } }
-        }
-    }
+    $configPath = Join-Path (Get-CodexRoot) 'config.toml'
+    $definitions = @(Get-ProjectedMcpDefinitions -RepositoryPath $RepositoryPath -Plugins $Plugins)
     if ($definitions.Count -eq 0) { return @() }
-    $existing = if (Test-Path $configPath) { Get-Content $configPath -Raw } else { "" }
-    $blocks = @(); foreach ($definition in $definitions) {
+    $existing = if (Test-Path $configPath) { Get-Content $configPath -Raw } else { '' }
+    $blocks = @(); $registeredNames = @()
+    foreach ($definition in $definitions) {
         $name = $definition.Name
-        if ($existing -match "(?m)^\[mcp_servers\.$([regex]::Escape($name))\]") {
-            $managedMarker = "# BEGIN powerbi-agentic-plugins: $name"
+        $existingDefinition = Get-CodexMcpDefinition -Config $existing -Name $name
+        if ($existingDefinition) {
+            if (Test-McpDefinitionsEquivalent -LeftName $existingDefinition.Name -Left $existingDefinition.Value -RightName $name -Right $definition.Value) {
+                $registeredNames += $name
+                continue
+            }
             $serverBlock = [regex]::Match($existing, "(?ms)^\[mcp_servers\.$([regex]::Escape($name))\].*?(?=^\[|\z)").Value
             $isInstallerOwned = $existing -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$" -or
                 $serverBlock -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$"
-            if (-not $Force) { throw "Codex MCP server '$name' already exists; re-run with -Force to update it." }
+            if (-not $Force) { throw "Codex MCP server '$name' has a different transport or launch signature; re-run with -Force only for an installer-owned entry, or review the user-owned entry manually." }
             if (-not $isInstallerOwned) { throw "Codex MCP server '$name' already exists and is not installer-owned; remove or rename it before installing." }
-            $managedBlockPattern = "(?ms)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*\r?\n\[mcp_servers\.$([regex]::Escape($name))\].*?^\# END powerbi-agentic-plugins: $([regex]::Escape($name))\s*\r?\n?"
-            $existing = [regex]::Replace($existing, $managedBlockPattern, "")
+            $existing = Remove-CodexMcpBlock -Config $existing -Name $name
         }
-        $type = $definition.Value.PSObject.Properties['type'].Value
-        if ($type -eq 'http' -and $definition.Value.PSObject.Properties['url']) {
-            $url = $definition.Value.url -replace '"', '\\"'
+
+        foreach ($legacyName in $Script:McpLegacyNames) {
+            $legacyDefinition = Get-CodexMcpDefinition -Config $existing -Name $legacyName
+            if (-not $legacyDefinition) { continue }
+            $legacyBlock = [regex]::Match($existing, "(?ms)^\[mcp_servers\.$([regex]::Escape($legacyName))\].*?(?=^\[|\z)").Value
+            $legacyOwned = $existing -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($legacyName))\s*$" -or
+                $legacyBlock -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($legacyName))\s*$"
+            if (-not $legacyOwned) { throw "Codex MCP legacy alias '$legacyName' is user-owned. Review or rename it before installing canonical '$name'; no user configuration was overwritten." }
+            if (-not $Force) { throw "Codex MCP legacy alias '$legacyName' is installer-owned; re-run with -Force to migrate it to '$name'." }
+            $existing = Remove-CodexMcpBlock -Config $existing -Name $legacyName
+        }
+
+        $transport = Get-McpTransport -Definition $definition.Value
+        if ($transport -eq 'http') {
+            $url = ([string]$definition.Value.url) -replace '"', '\\"'
             $block = "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`nurl = `"$url`"`n"
-            $headersProperty = $definition.Value.PSObject.Properties['http_headers']
-            if ($headersProperty) {
-                $headerPairs = @($headersProperty.Value.PSObject.Properties | ForEach-Object {
+            if ($definition.Value.PSObject.Properties['http_headers']) {
+                $headerPairs = @($definition.Value.http_headers.PSObject.Properties | ForEach-Object {
                     $headerName = $_.Name -replace '\\', '\\\\' -replace '"', '\\"'
                     $headerValue = [string]$_.Value -replace '\\', '\\\\' -replace '"', '\\"'
                     "`"$headerName`" = `"$headerValue`""
                 })
                 $block += "http_headers = { $($headerPairs -join ', ') }`n"
             }
-            $helperProperty = $definition.Value.PSObject.Properties['http_headers_helper']
-            if ($helperProperty) {
-                $helper = [string]$helperProperty.Value -replace "'", "''"
-                $block += "http_headers_helper = '''`n$helper`n'''`n"
-            }
             $block += "# END powerbi-agentic-plugins: $name`n"
-            $blocks += $block
         } else {
-            $serverArgs = ($definition.Value.PSObject.Properties['args'].Value | ForEach-Object { '"' + ($_ -replace '"','\\"') + '"' }) -join ', '
-            $command = $definition.Value.command -replace '"', '\\"'
-            $blocks += "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`ncommand = `"$command`"`nargs = [$serverArgs]`n# END powerbi-agentic-plugins: $name`n"
+            $serverArgs = (@($definition.Value.args) | ForEach-Object { '"' + ([string]$_ -replace '"', '\\"') + '"' }) -join ', '
+            $command = ([string]$definition.Value.command) -replace '"', '\\"'
+            $block = "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`ncommand = `"$command`"`nargs = [$serverArgs]`n# END powerbi-agentic-plugins: $name`n"
         }
+        $blocks += $block
+        $registeredNames += $name
     }
-    $parent = Split-Path $configPath -Parent; New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    $parent = Split-Path $configPath -Parent
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
     ($existing.TrimEnd() + ($blocks -join "`n") + "`n") | Set-Content $configPath -Encoding UTF8
-    Write-Success "Codex MCP configuration updated: $configPath ($($definitions.Name -join ', '))"
-    return @($definitions.Name)
+    Write-Success "Codex MCP configuration updated: $configPath ($($registeredNames -join ', '))"
+    return @($registeredNames)
 }
 
 function Enable-CodexGitMetadataWrites {
@@ -433,6 +478,363 @@ function ConvertFrom-JsonWithComments {
 
     $stripped = ($RawContent -split "`r?`n" | Where-Object { $_.TrimStart() -notmatch '^//' }) -join "`n"
     return $stripped | ConvertFrom-Json
+}
+
+$Script:McpCanonicalName = 'powerbi-modeling-mcp'
+$Script:McpLegacyNames = @('powerbi-modeling')
+$Script:PowerBiMcpGenericPackage = '@microsoft/powerbi-modeling-mcp@1.0.0'
+$Script:PowerBiMcpWindowsPackage = '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0'
+$Script:McpInitializeTimeoutMilliseconds = 30000
+
+function Get-McpCanonicalName {
+    param([Parameter(Mandatory)][string]$Name)
+
+    if ($Name -eq $Script:McpCanonicalName -or $Script:McpLegacyNames -contains $Name) {
+        return $Script:McpCanonicalName
+    }
+    return $Name
+}
+
+function Test-WindowsHost {
+    return [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+}
+
+function Get-McpTransport {
+    param([Parameter(Mandatory)]$Definition)
+
+    $type = [string]$Definition.type
+    if ($type -in @('http', 'sse', 'streamable-http') -or $Definition.PSObject.Properties['url']) {
+        return 'http'
+    }
+    if ($Definition.PSObject.Properties['command']) {
+        return 'stdio'
+    }
+    return 'unknown'
+}
+
+function Get-McpSignature {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)]$Definition)
+
+    $transport = Get-McpTransport -Definition $Definition
+    $signature = [ordered]@{
+        name = Get-McpCanonicalName -Name $Name
+        transport = $transport
+    }
+    if ($transport -eq 'http') {
+        $signature.url = [string]$Definition.url
+        $headers = [ordered]@{}
+        if ($Definition.PSObject.Properties['http_headers']) {
+            foreach ($header in $Definition.http_headers.PSObject.Properties | Sort-Object Name) {
+                if ($header.Name -notmatch '(?i)authorization|token|secret|password|api.?key') {
+                    $headers[$header.Name] = [string]$header.Value
+                }
+            }
+        }
+        $signature.headers = $headers
+    } else {
+        $command = [string]$Definition.command
+        if (Test-WindowsHost -and $command -ieq 'npx') { $command = 'npx.cmd' }
+        $signature.command = $command
+        $signature.args = @($Definition.args | ForEach-Object { [string]$_ })
+    }
+    return ($signature | ConvertTo-Json -Compress -Depth 20)
+}
+
+function Test-McpDefinitionsEquivalent {
+    param(
+        [Parameter(Mandatory)][string]$LeftName,
+        [Parameter(Mandatory)]$Left,
+        [Parameter(Mandatory)][string]$RightName,
+        [Parameter(Mandatory)]$Right
+    )
+
+    return (Get-McpSignature -Name $LeftName -Definition $Left) -eq (Get-McpSignature -Name $RightName -Definition $Right)
+}
+
+function Get-McpHostDefinition {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)]$Definition)
+
+    $projected = ($Definition | ConvertTo-Json -Depth 20 | ConvertFrom-Json)
+    if ((Get-McpCanonicalName -Name $Name) -eq $Script:McpCanonicalName -and (Get-McpTransport -Definition $Definition) -eq 'stdio') {
+        if (Test-WindowsHost) {
+            if (-not [Environment]::Is64BitOperatingSystem) {
+                throw "Power BI Modeling MCP requires Windows x64; this host is not x64. Use a Windows x64 host or select a target without Power BI Modeling MCP."
+            }
+            if ($projected.PSObject.Properties['command']) { $projected.command = 'npx.cmd' } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue 'npx.cmd' }
+            if ($projected.PSObject.Properties['args']) { $projected.args = @('-y', $Script:PowerBiMcpWindowsPackage, '--start') } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @('-y', $Script:PowerBiMcpWindowsPackage, '--start') }
+        } else {
+            if ($projected.PSObject.Properties['command']) { $projected.command = [string]$Definition.command } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue ([string]$Definition.command) }
+            if ($projected.PSObject.Properties['args']) { $projected.args = @($Definition.args | ForEach-Object { [string]$_ }) } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @($Definition.args | ForEach-Object { [string]$_ }) }
+        }
+    } elseif (Test-WindowsHost -and [string]$Definition.command -ieq 'npx') {
+        if ($projected.PSObject.Properties['command']) { $projected.command = 'npx.cmd' } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue 'npx.cmd' }
+    }
+    return [PSCustomObject]@{ Name = $Name; Value = $projected }
+}
+
+function Get-ProjectedMcpDefinitions {
+    param([Parameter(Mandatory)][string]$RepositoryPath, [Parameter(Mandatory)][string[]]$Plugins)
+
+    $definitions = @()
+    foreach ($plugin in $Plugins) {
+        foreach ($file in Get-ChildItem (Join-Path $RepositoryPath "plugins\$plugin") -Filter '.mcp.json' -File -ErrorAction SilentlyContinue) {
+            $json = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            foreach ($property in $json.mcpServers.PSObject.Properties) {
+                $definitions += Get-McpHostDefinition -Name $property.Name -Definition $property.Value
+            }
+        }
+    }
+    return @($definitions)
+}
+
+function ConvertTo-McpProcessArguments {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+
+    return (($Arguments | ForEach-Object {
+        $value = [string]$_
+        '"' + ($value -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+    }) -join ' ')
+}
+
+function Invoke-McpProcess {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][int]$TimeoutMilliseconds
+    )
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $FilePath
+    $startInfo.Arguments = ConvertTo-McpProcessArguments -Arguments $Arguments
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) { throw "Process did not start." }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+            $process.Kill()
+            throw "Process exceeded the $TimeoutMilliseconds ms timeout."
+        }
+        $stdoutTask.Wait(1000) | Out-Null
+        $stderrTask.Wait(1000) | Out-Null
+        return [PSCustomObject]@{
+            ExitCode = $process.ExitCode
+            StandardOutput = $stdoutTask.Result
+            StandardError = $stderrTask.Result
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+function Test-McpPackageProvisioning {
+    param(
+        [Parameter(Mandatory)]$Definition,
+        [scriptblock]$Provisioner
+    )
+
+    $package = if ((Test-WindowsHost) -and [Environment]::Is64BitOperatingSystem) { $Script:PowerBiMcpWindowsPackage } else { $Script:PowerBiMcpGenericPackage }
+    $commandName = if (Test-WindowsHost) { 'npx.cmd' } else { 'npx' }
+    $command = Get-Command $commandName -ErrorAction SilentlyContinue
+    if (-not $command) {
+        throw "Power BI Modeling MCP package provisioning failed for ${package}: $commandName was not found. Install Node.js 18+ and ensure npx is on PATH."
+    }
+    if ($Provisioner) {
+        $result = & $Provisioner $package
+        if ($result -eq $false) { throw "Power BI Modeling MCP package provisioning failed for $package. Run npx --yes --package $package node -e 'process.exit(0)' manually after fixing Node.js or network access." }
+        return $true
+    }
+    $result = Invoke-McpProcess -FilePath $command.Source -Arguments @('--yes', '--package', $package, 'node', '-e', 'process.exit(0)') -TimeoutMilliseconds $Script:McpInitializeTimeoutMilliseconds
+    if ($result.ExitCode -ne 0) {
+        $details = (($result.StandardError, $result.StandardOutput | Where-Object { $_ }) -join ' ').Trim()
+        throw "Power BI Modeling MCP package provisioning failed for $package (exit $($result.ExitCode)): $details. Run npx --yes --package $package node -e 'process.exit(0)' manually after fixing Node.js or network access."
+    }
+    Write-Success "Power BI Modeling MCP package provisioned: $package"
+    return $true
+}
+
+function New-McpInitializeRequest {
+    return [ordered]@{
+        jsonrpc = '2.0'; id = 1; method = 'initialize'
+        params = [ordered]@{
+            protocolVersion = '2025-06-18'
+            capabilities = [ordered]@{}
+            clientInfo = [ordered]@{ name = 'powerbi-agentic-plugins-setup'; version = '1.0.0' }
+        }
+    }
+}
+
+function Test-McpInitializeResponse {
+    param([Parameter(Mandatory)]$Response)
+
+    if ($Response -is [string]) {
+        try { $Response = $Response | ConvertFrom-Json } catch { return [PSCustomObject]@{ Ready = $false; Reason = 'The process returned a non-JSON initialize response.' } }
+    }
+    if (-not $Response -or $Response.id -ne 1) { return [PSCustomObject]@{ Ready = $false; Reason = 'The process returned no initialize response with id 1.' } }
+    if ($Response.PSObject.Properties['error']) { return [PSCustomObject]@{ Ready = $false; Reason = "The initialize exchange returned an MCP error: $($Response.error.message)" } }
+    if (-not $Response.PSObject.Properties['result']) { return [PSCustomObject]@{ Ready = $false; Reason = 'The initialize response did not contain a result.' } }
+    return [PSCustomObject]@{ Ready = $true; Reason = 'initialize completed' }
+}
+
+function Invoke-McpInitializeProbe {
+    param(
+        [Parameter(Mandatory)]$Definition,
+        [int]$TimeoutMilliseconds = $Script:McpInitializeTimeoutMilliseconds,
+        [scriptblock]$Launcher
+    )
+
+    $request = New-McpInitializeRequest
+    if ($Launcher) {
+        try {
+            $response = & $Launcher $Definition $request
+            return Test-McpInitializeResponse -Response $response
+        } catch {
+            return [PSCustomObject]@{ Ready = $false; Reason = "The deterministic launcher failed: $($_.Exception.Message)" }
+        }
+    }
+
+    $command = [string]$Definition.command
+    $processArguments = @($Definition.args | ForEach-Object { [string]$_ })
+    $resolvedCommand = Get-Command $command -ErrorAction SilentlyContinue
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = if ($resolvedCommand) { $resolvedCommand.Source } else { $command }
+    $startInfo.Arguments = ConvertTo-McpProcessArguments -Arguments $processArguments
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    $started = $false
+    try {
+        if (-not $process.Start()) { return [PSCustomObject]@{ Ready = $false; Reason = 'The MCP process did not start.' } }
+        $started = $true
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.StandardInput.WriteLine(($request | ConvertTo-Json -Compress -Depth 20))
+        $process.StandardInput.Flush()
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+        while ([DateTime]::UtcNow -lt $deadline) {
+            $remaining = [Math]::Max(1, [int]($deadline.Subtract([DateTime]::UtcNow).TotalMilliseconds))
+            $lineTask = $process.StandardOutput.ReadLineAsync()
+            if (-not $lineTask.Wait($remaining)) {
+                $stderrTask.Wait(1000) | Out-Null
+                $stderr = if ($stderrTask.IsCompleted) { $stderrTask.Result.Trim() } else { '' }
+                return [PSCustomObject]@{ Ready = $false; Reason = "No initialize response within $TimeoutMilliseconds ms (exit $($process.ExitCode)): $stderr" }
+            }
+            $line = $lineTask.Result
+            if ($null -eq $line) {
+                $stderrTask.Wait(1000) | Out-Null
+                $stderr = if ($stderrTask.IsCompleted) { $stderrTask.Result.Trim() } else { '' }
+                return [PSCustomObject]@{ Ready = $false; Reason = "The MCP process closed stdout without an initialize response (exit $($process.ExitCode)): $stderr" }
+            }
+            try {
+                $response = $line | ConvertFrom-Json
+                $result = Test-McpInitializeResponse -Response $response
+                if ($result.Ready -or $response.id -eq 1) { return $result }
+            } catch {
+                continue
+            }
+        }
+        $stderrTask.Wait(1000) | Out-Null
+        $stderr = if ($stderrTask.IsCompleted) { $stderrTask.Result.Trim() } else { '' }
+        return [PSCustomObject]@{ Ready = $false; Reason = "The MCP process exited before completing initialize or returned no usable response within $TimeoutMilliseconds ms (exit $($process.ExitCode)): $stderr" }
+    } catch {
+        return [PSCustomObject]@{ Ready = $false; Reason = $_.Exception.Message }
+    } finally {
+        if ($started -and $process -and -not $process.HasExited) { $process.Kill() }
+        if ($process) { $process.Dispose() }
+    }
+}
+
+function Test-McpReadiness {
+    param(
+        [Parameter(Mandatory)][string]$Harness,
+        [Parameter(Mandatory)]$Definitions,
+        [scriptblock]$Launcher
+    )
+
+    foreach ($definition in @($Definitions)) {
+        if ((Get-McpTransport -Definition $definition.Value) -ne 'stdio') { continue }
+        $probe = Invoke-McpInitializeProbe -Definition $definition.Value -Launcher $Launcher
+        if (-not $probe.Ready) {
+            $transport = Get-McpTransport -Definition $definition.Value
+            $argumentText = (@($definition.Value.args) -join ' ')
+            throw "$Harness MCP server '$($definition.Name)' ($transport) is not ready: $($probe.Reason) Command: $($definition.Value.command) $argumentText. Remediation: verify Node.js/npx, package provisioning, and the generated $Harness MCP configuration, then rerun setup."
+        }
+        Write-Success "$Harness MCP initialize verified: $($definition.Name)"
+    }
+    return $true
+}
+
+function Set-CopilotMcpDefinitions {
+    param([string]$InstallRoot, [string]$RepositoryPath, [string[]]$Plugins)
+
+    foreach ($plugin in $Plugins) {
+        $destination = Join-Path (Join-Path $InstallRoot $plugin) '.mcp.json'
+        if (-not (Test-Path $destination)) { continue }
+        $json = Get-Content $destination -Raw | ConvertFrom-Json
+        $projectedServers = [ordered]@{}
+        foreach ($property in $json.mcpServers.PSObject.Properties) {
+            $projected = Get-McpHostDefinition -Name $property.Name -Definition $property.Value
+            $projectedServers[$projected.Name] = $projected.Value
+        }
+        $json.mcpServers = [PSCustomObject]$projectedServers
+        $json | ConvertTo-Json -Depth 20 | Set-Content $destination -Encoding UTF8
+        Write-Info "Projected Copilot MCP definitions for ${plugin}: $destination"
+    }
+}
+
+function Get-CopilotProfileMcpDefinitions {
+    $definitions = @()
+    foreach ($fileName in @('mcp.json', 'mcp-config.json')) {
+        $path = Join-Path $env:USERPROFILE ".copilot\$fileName"
+        if (-not (Test-Path $path -PathType Leaf)) { continue }
+        try { $json = ConvertFrom-JsonWithComments -RawContent (Get-Content $path -Raw) } catch { throw "Could not parse Copilot MCP profile ${path}: $($_.Exception.Message)" }
+        foreach ($schemaName in @('servers', 'mcpServers')) {
+            if (-not $json.PSObject.Properties[$schemaName]) { continue }
+            foreach ($property in $json.$schemaName.PSObject.Properties) {
+                $definitions += [PSCustomObject]@{ Name = $property.Name; Value = $property.Value; Path = $path; Schema = $schemaName }
+            }
+        }
+    }
+    return @($definitions)
+}
+
+function Test-CopilotProfileMcpConflicts {
+    param([Parameter(Mandatory)]$ExpectedDefinitions)
+
+    $profileDefinitions = @(Get-CopilotProfileMcpDefinitions)
+    $findings = @()
+    foreach ($expected in @($ExpectedDefinitions)) {
+        $profileMatches = @($profileDefinitions | Where-Object { (Get-McpCanonicalName -Name $_.Name) -eq (Get-McpCanonicalName -Name $expected.Name) })
+        foreach ($group in @($profileMatches | Group-Object { Get-McpSignature -Name $_.Name -Definition $_.Value })) {
+            $representative = $group.Group[0]
+            if (Test-McpDefinitionsEquivalent -LeftName $representative.Name -Left $representative.Value -RightName $expected.Name -Right $expected.Value) { continue }
+            $transport = Get-McpTransport -Definition $representative.Value
+            $locations = @($group.Group | ForEach-Object { "$($_.Path) [$($_.Schema)]" }) -join '; '
+            $severity = if ($transport -eq 'http') { 'Warning' } else { 'Error' }
+            $message = if ($transport -eq 'http') {
+                "Copilot profile contains a distinct hosted HTTP '$($expected.Name)' definition at $locations; it is preserved and is not equivalent to the local stdio registration. Review the profile entry before choosing which server to use."
+            } else {
+                "Copilot profile contains a stale or conflicting '$($expected.Name)' definition at $locations. Review or remove the profile property manually, then rerun setup; installer-owned plugin files will not overwrite user-owned profile entries."
+            }
+            $findings += [PSCustomObject]@{ Severity = $severity; Name = $expected.Name; Transport = $transport; Locations = $locations; Message = $message }
+        }
+    }
+    foreach ($finding in $findings) {
+        if ($finding.Severity -eq 'Error') { Write-Error-Custom $finding.Message } else { Write-Warning-Custom $finding.Message }
+    }
+    if (@($findings | Where-Object Severity -eq 'Error').Count -gt 0) {
+        throw 'Copilot MCP profile validation failed. Resolve the reported profile-level conflict without deleting unrelated user configuration.'
+    }
+    return @($findings)
 }
 
 function Backup-ExistingPlugins {
@@ -1212,9 +1614,15 @@ try {
     $targetPlugins = @(Get-TargetPlugins -PluginName $PluginName)
     Test-SourceCatalog -RepositoryPath $repoPath -Plugins $targetPlugins | Out-Null
     Write-Info "Target: $Target; plugins: $($targetPlugins -join ', '); source: $repoPath"
+    $mcpDefinitions = @(Get-ProjectedMcpDefinitions -RepositoryPath $repoPath -Plugins $targetPlugins)
     if ($targetPlugins -contains 'powerbi') {
         Test-CodexCapabilities -Plugins $targetPlugins | Out-Null
         Install-Uv | Out-Null
+        foreach ($mcpDefinition in @($mcpDefinitions | Where-Object { $_.Name -eq $Script:McpCanonicalName })) {
+            if ((Get-McpTransport -Definition $mcpDefinition.Value) -eq 'stdio') {
+                Test-McpPackageProvisioning -Definition $mcpDefinition.Value -Provisioner $McpProvisioner | Out-Null
+            }
+        }
     }
 
     $targetResults = @()
@@ -1222,6 +1630,7 @@ try {
         try {
             $codex = Install-CodexProjection -RepositoryPath $repoPath -Plugins $targetPlugins -Force $Force
             $mcp = Register-CodexMcp -RepositoryPath $repoPath -Plugins $targetPlugins -Force $Force
+            Test-McpReadiness -Harness 'Codex' -Definitions $mcpDefinitions -Launcher $McpLauncher | Out-Null
             if ($AllowGitMetadataWrites) { Enable-CodexGitMetadataWrites }
             $targetResults += [PSCustomObject]@{ Target="Codex"; Status="Ready"; Path=$codex.Root; Plugins=($targetPlugins -join ', '); Skills=(@($codex.Manifest.skills).Count); Agents=(@($codex.Manifest.agents).Count); MCP=($mcp -join ', ') ; Backup=$codex.Backup }
         } catch {
@@ -1240,11 +1649,15 @@ try {
             Test-CopilotDestinations -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins -Force $Force | Out-Null
             $backup = Backup-ExistingPlugins -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins
             if (-not (Install-Plugins -SourcePath $repoPath -DestinationPath $installRoot -Force $Force -Plugins $targetPlugins)) { throw "Copilot plugin installation failed." }
+            Set-CopilotMcpDefinitions -InstallRoot $installRoot -RepositoryPath $repoPath -Plugins $targetPlugins
             if (-not (Sync-PluginsToDiscoveryRoot -InstallRoot $installRoot -DiscoveryRoot $discoveryRoot -Plugins $targetPlugins -Force $Force)) { throw "Copilot discovery sync failed." }
             Register-PluginsInCopilotConfig -InstallRoot $installRoot -MarketplaceName $marketplaceName -Plugins $targetPlugins -RepositoryPath $repoPath | Out-Null
             Register-PluginsInSettings -MarketplaceName $marketplaceName -Plugins $targetPlugins | Out-Null
             Validate-Installation -ExtensionsPath $discoveryRoot -Plugins $targetPlugins | Out-Null
-            $targetResults += [PSCustomObject]@{ Target="Copilot"; Status="Ready"; Path=$discoveryRoot; Plugins=($targetPlugins -join ', '); Skills='projected'; Agents='projected'; MCP="source definitions retained"; Backup=$backup }
+            $profileFindings = @(Test-CopilotProfileMcpConflicts -ExpectedDefinitions $mcpDefinitions)
+            Test-McpReadiness -Harness 'Copilot' -Definitions $mcpDefinitions -Launcher $McpLauncher | Out-Null
+            $profileStatus = if ($profileFindings.Count) { "ready with profile warning(s)" } else { 'ready' }
+            $targetResults += [PSCustomObject]@{ Target="Copilot"; Status="Ready"; Path=$discoveryRoot; Plugins=($targetPlugins -join ', '); Skills='projected'; Agents='projected'; MCP="${profileStatus}: $(($mcpDefinitions.Name -join ', '))"; Backup=$backup }
         } catch {
             Write-Error-Custom "Copilot failed: $_"
             Write-Info "Recovery: restore the latest backup under $env:USERPROFILE\.copilot\backups"

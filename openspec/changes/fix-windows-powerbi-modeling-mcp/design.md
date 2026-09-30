@@ -29,7 +29,7 @@ The Power BI plugin declares its MCP server as an `npx` launch of the generic `@
 ```mermaid
 flowchart TD
     A[plugins/powerbi/.mcp.json] --> B{Setup host projection}
-    B -->|Windows x64 local| C[npx.cmd -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0]
+    B -->|Windows x64 local| C[npx.cmd -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0 --start]
     B -->|Other hosts| D[npx -y @microsoft/powerbi-modeling-mcp@1.0.0]
     C --> E[Codex config.toml]
     C --> F[Copilot local .mcp.json]
@@ -48,7 +48,7 @@ flowchart TD
 
 ### Source declaration and host projection
 
-The source `.mcp.json` will pin the generic package version and omit `--start`, since the package executable starts the server by default. `powerbi-modeling-mcp` is the canonical server name; `powerbi-modeling` is treated as a legacy alias only during migration and conflict detection. Setup will preserve the source file as the portable catalog, then project a Windows x64-specific local stdio invocation using `npx.cmd -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0` into both the Codex TOML entry and the Copilot plugin-local `.mcp.json`. Other hosts retain the generic package declaration.
+The source `.mcp.json` will pin the generic package version and omit `--start`, keeping the checked-in declaration portable. The published Windows x64 package requires its documented `--start` mode to bypass its interactive welcome path, so the Windows projection uses `npx.cmd -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0 --start` in both the Codex TOML entry and the Copilot plugin-local `.mcp.json`. Other hosts retain the generic package declaration. `powerbi-modeling-mcp` is the canonical server name; `powerbi-modeling` is treated as a legacy alias only during migration and conflict detection.
 
 The normalized MCP signature includes server name, transport, URL or command, arguments, and non-secret headers. A hosted HTTP definition with the canonical name is not equivalent to the local Windows stdio definition and is never silently replaced when it is user-owned or owned by another plugin. Two profile files containing equivalent definitions are reported as one logical conflict, not as two independent servers.
 
@@ -81,3 +81,11 @@ For Copilot, setup will read both profile files when present, normalize their di
 3. Rerun setup with `-Target Codex -PluginName powerbi -Force` so the installer-owned canonical entry is regenerated.
 4. Review any `powerbi-modeling` legacy alias and same-name hosted HTTP definition reported by setup; remove or rename it manually only when it is no longer needed, then restart Codex.
 5. Roll back by restoring timestamped target backups and reverting the repository change; do not delete unowned profile files.
+
+## Verification Handoff
+
+- OpenSpec strict validation: passed (`openspec validate fix-windows-powerbi-modeling-mcp --type change --strict --json`).
+- PowerShell parser checks: passed for `setup-team-plugins.ps1`, `scripts/test-setup-team-plugins.ps1`, and `scripts/test-powerbi-modeling-mcp-smoke.ps1`.
+- Deterministic setup regression suite: passed with `scripts/test-setup-team-plugins.ps1 -RunIntegration`.
+- Real Windows x64 smoke test: passed with `scripts/test-powerbi-modeling-mcp-smoke.ps1`; `@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0` remained alive through the MCP `initialize` exchange using `--start`.
+- Post-install verification: Copilot profile-level stale extension entries were removed from both user-owned schemas; the probe now resolves `npx.cmd` to its absolute executable path and uses a bounded 30-second initialize timeout.

@@ -4,6 +4,22 @@
 
 `setup-team-plugins.ps1` defaults to `-Target All`. Use `-Target Codex` for `%USERPROFILE%\.codex` only or `-Target Copilot` for the existing `.copilot` workflow. Use `-PluginName` for one of `powerbi`, `fabric`, `devops`, `skill-creator`, or `spec-lifecycle`; use `-Force` for an installer-owned update. Add `-AllowGitMetadataWrites` only for trusted repositories when agents need Git metadata operations; this backs up and updates the user-scoped `.codex\config.toml` without adding it to the repository. Codex MCP entries are written to `.codex\config.toml` from the plugin `.mcp.json` files, while Copilot configuration remains isolated. Backups are retained under each target's own backup directory.
 
+MCP registration and package provisioning are separate setup responsibilities. Registration writes the harness configuration; provisioning checks that Node.js and the required package can be resolved; readiness then performs a bounded MCP `initialize` exchange. Setup does not report a local MCP as ready when launch or initialization fails.
+
+On Windows x64, the Power BI Modeling MCP projection uses the published platform package directly:
+
+```powershell
+npx.cmd -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0 --start
+```
+
+Other hosts use the portable source declaration:
+
+```powershell
+npx -y @microsoft/powerbi-modeling-mcp@1.0.0
+```
+
+The source declaration intentionally remains portable; setup applies the Windows projection to both Codex and the Copilot plugin-local `.mcp.json`.
+
 **Duration:** 5–10 minutes  
 **For:** All team members who want to use Power BI and Fabric plugins locally
 
@@ -323,6 +339,27 @@ install. They typically mean the setup script couldn't reach the network (`astra
   environment variable at the folder containing `Microsoft.AnalysisServices.AdomdClient.dll`.
 - Re-run `.\setup-team-plugins.ps1 -PluginName powerbi -Force` once network access is restored to
   let the script provision both automatically.
+
+### Issue: Copilot reports a stale or conflicting MCP profile entry
+
+Copilot installations may have either `%USERPROFILE%\.copilot\mcp.json` with a top-level
+`servers` property or `%USERPROFILE%\.copilot\mcp-config.json` with a top-level `mcpServers`
+property. Setup reads both files. It treats `powerbi-modeling` as the legacy alias of the
+canonical `powerbi-modeling-mcp` name, and reports mirrored equivalent entries as one logical
+conflict. User-owned profile properties are never deleted or overwritten.
+
+For a stale local entry, review the file and remove only the affected property, then rerun setup:
+
+```powershell
+notepad "$env:USERPROFILE\.copilot\mcp.json"
+notepad "$env:USERPROFILE\.copilot\mcp-config.json"
+.\setup-team-plugins.ps1 -Target Copilot -PluginName powerbi -Force
+```
+
+If the profile entry is an intentional hosted HTTP server, keep it. Setup compares transport,
+URL or command, arguments, and non-secret headers, so a hosted `powerbi-modeling-mcp` entry is
+reported as distinct from the local Windows stdio registration and remains untouched. Review the
+reported file and choose which registration the harness should use before removing either one.
 
 ### Issue: VS Code plugins not auto-discovered
 
