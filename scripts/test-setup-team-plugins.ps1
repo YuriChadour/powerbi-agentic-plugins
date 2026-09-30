@@ -186,6 +186,20 @@ try {
     if ((Get-Content (Join-Path $codexRoot 'config.toml') -Raw) -notmatch 'user-owned') { throw 'Codex conflict configuration was overwritten.' }
     Write-Output 'Injected one-target failure behavior OK.'
 
+    # A user-owned FabricIQ entry is preserved as a warning while the rest of
+    # the Codex projection and MCP registrations continue.
+    $fabricIqProfile = New-TestProfile; $profiles += $fabricIqProfile
+    $fabricIqRoot = Join-Path $fabricIqProfile '.codex'
+    New-Item -ItemType Directory -Path $fabricIqRoot -Force | Out-Null
+    $fabricIqConfig = "[mcp_servers.FabricIQ]`nurl = 'https://user-owned.invalid/fabriciq'`n"
+    Set-Content -LiteralPath (Join-Path $fabricIqRoot 'config.toml') -Value $fabricIqConfig -Encoding UTF8
+    $code = Invoke-IsolatedSetup -Profile $fabricIqProfile -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='fabric'; Force=$true; McpLauncher=$fakeMcpLauncher }
+    if ($code -ne 0) { throw 'User-owned FabricIQ conflict incorrectly blocked the Codex install.' }
+    $fabricIqResultConfig = Get-Content (Join-Path $fabricIqRoot 'config.toml') -Raw
+    if ($fabricIqResultConfig -notmatch 'user-owned.invalid') { throw 'User-owned FabricIQ configuration was overwritten.' }
+    if ($fabricIqResultConfig -notmatch '# BEGIN powerbi-agentic-plugins: fabric-mcp-server') { throw 'Non-conflicting Codex MCP server was not registered.' }
+    Write-Output 'User-owned FabricIQ warning-and-continue behavior OK.'
+
     # A process launch failure and an initialize failure must both fail the
     # selected target instead of producing a false-ready result.
     foreach ($failureCase in @(

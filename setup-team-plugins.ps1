@@ -376,8 +376,14 @@ function Register-CodexMcp {
             $serverBlock = [regex]::Match($existing, "(?ms)^\[mcp_servers\.$([regex]::Escape($name))\].*?(?=^\[|\z)").Value
             $isInstallerOwned = $existing -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$" -or
                 $serverBlock -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$"
+            if (-not $isInstallerOwned -and $name -eq 'FabricIQ') {
+                Write-Warning-Custom "Codex MCP server 'FabricIQ' already exists and is not installer-owned; preserving the existing entry and skipping FabricIQ registration. Other Codex plugins and MCP servers will continue installing."
+                continue
+            }
             if (-not $Force) { throw "Codex MCP server '$name' has a different transport or launch signature; re-run with -Force only for an installer-owned entry, or review the user-owned entry manually." }
-            if (-not $isInstallerOwned) { throw "Codex MCP server '$name' already exists and is not installer-owned; remove or rename it before installing." }
+            if (-not $isInstallerOwned) {
+                throw "Codex MCP server '$name' already exists and is not installer-owned; remove or rename it before installing."
+            }
             $existing = Remove-CodexMcpBlock -Config $existing -Name $name
         }
 
