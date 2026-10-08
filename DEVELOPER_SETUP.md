@@ -9,8 +9,12 @@ MCP registration and package provisioning are separate setup responsibilities. R
 On Windows x64, the Power BI Modeling MCP projection uses the published platform package directly:
 
 ```powershell
-npx.cmd -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0 --start
+node.exe "$env:ProgramFiles\nodejs\node_modules\npm\bin\npx-cli.js" -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0 --start
 ```
+
+The generated Windows host projection invokes `node.exe` directly with npm's
+`npx-cli.js` instead of the `npx.cmd` batch shim. This avoids host process
+inspection failures on Windows while preserving the same package and arguments.
 
 Other hosts use the portable source declaration:
 

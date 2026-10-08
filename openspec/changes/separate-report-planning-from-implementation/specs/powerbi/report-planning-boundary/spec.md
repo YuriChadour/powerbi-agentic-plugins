@@ -178,3 +178,41 @@ all declared skills.
 - **WHEN** a user follows the documented non-interactive verification command
 - **THEN** the command SHALL be valid for the installed Copilot CLI and SHALL not rely on
   passing `/plugin list` as a top-level executable argument
+
+### Requirement: Power BI MCP setup is portable and readiness-validated
+
+The setup workflow SHALL provision the pinned Power BI Modeling MCP package for
+the current user through the available Node.js/npm runtime, SHALL preserve a
+portable repository source declaration, and SHALL generate a host-specific MCP
+launch definition without requiring the VS Code extension or an absolute
+extension-installation path. On Windows x64, the generated definition SHALL use
+`node.exe` with npm's `npx-cli.js` and the pinned platform package rather than
+the `npx.cmd` batch shim. Setup SHALL distinguish package provisioning and
+plugin discovery from MCP readiness and SHALL perform a bounded MCP
+`initialize` check before reporting the connector ready.
+
+#### Scenario: First user installs the Power BI MCP
+- **WHEN** a user runs the Power BI plugin setup and the pinned package is not in
+  the user's npm cache
+- **THEN** setup SHALL download and provision the pinned package for that user,
+  retain the portable source declaration in the repository, and generate the
+  selected host's MCP configuration
+
+#### Scenario: User reruns setup with a cached package
+- **WHEN** a user reruns setup and the pinned package is already available in
+  that user's npm cache
+- **THEN** setup SHALL reuse or validate the cached package without requiring a
+  VS Code extension installation, and SHALL still perform the MCP readiness check
+
+#### Scenario: Windows x64 host projection
+- **WHEN** setup targets Copilot or another supported host on Windows x64
+- **THEN** the generated MCP definition SHALL launch `node.exe` with npm's
+  `npx-cli.js`, the pinned `@microsoft/powerbi-modeling-mcp-win32-x64` package,
+  and the server start argument, and SHALL NOT use `npx.cmd`
+
+#### Scenario: MCP process fails initialization
+- **WHEN** package provisioning succeeds but the MCP process cannot complete a
+  bounded `initialize` exchange
+- **THEN** setup SHALL report the connector as not ready and SHALL include the
+  generated command and actionable remediation rather than claiming successful
+  MCP setup

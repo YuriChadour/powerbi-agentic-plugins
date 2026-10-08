@@ -46,6 +46,19 @@ flowchart LR
     A -. regenerate design contract .-> V
 ```
 
+The setup path for the Copilot connector is independent of the report-planning
+flow but is part of the plugin's installation readiness:
+
+```mermaid
+flowchart LR
+    S[plugins/powerbi/.mcp.json] --> P[setup-team-plugins.ps1]
+    P --> R[Check Node.js/npm]
+    R --> C[Provision pinned package in user's npm cache]
+    P --> W[Windows projection: node.exe + npx-cli.js + win32-x64 package]
+    P --> I[Bounded MCP initialize probe]
+    I --> H[Report MCP ready]
+```
+
 ## Decisions
 
 ### Decision 1: One work folder per work item
@@ -103,6 +116,31 @@ plugin discovery and skill-load failures explicitly.
 recognize an installed plugin while omitting an invalid skill, leaving the planning
 workflow partially available.
 
+### Decision 10: MCP registration, provisioning, and readiness are separate gates
+
+The repository keeps a portable MCP declaration under `plugins/powerbi/.mcp.json`,
+but setup generates a host-specific projection before installing it. On Windows
+x64, setup resolves the pinned platform package
+`@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0`, launches npm through
+`node.exe` and `npx-cli.js`, and uses the user's npm cache. Each user therefore
+downloads and caches their own copy; the repository does not contain or reference
+the VS Code extension's installation directory. Setup must also perform a bounded
+MCP `initialize` exchange before reporting the connector as ready.
+
+The direct Node launcher is intentional. The Windows `npx.cmd` batch shim can
+fail Copilot's suspended-child-process inspection with an access-denied error,
+while `node.exe` with npm's `npx-cli.js` avoids that host-specific failure.
+The pinned version keeps installations reproducible; updating it is an explicit
+repository change rather than an implicit `latest` lookup.
+
+**Alternative rejected:** Registering the VS Code extension executable or storing
+an absolute extension path in the repository. That would only work for users with
+the same extension installation and would make the team setup non-portable.
+
+**Alternative rejected:** Treating package provisioning or plugin discovery as
+proof that the MCP is usable. A package can be cached or a plugin can be listed
+while process launch or MCP initialization still fails.
+
 ## Risks / Trade-offs
 
 - [Existing users expect planning to build immediately] -> State the planning-only boundary in the skill description, approval output, and README; require a separate implementation request after the spec is ready.
@@ -121,8 +159,8 @@ workflow partially available.
 3. Update the developer agent and its `.toml`: embedded contract, stop rule, path derivation.
 4. Update stale references in the authoring and design skills and the spec-lifecycle docs.
 5. Update `plugins/powerbi/README.md` and the root `README.md` with the process.
-6. Update Copilot setup verification to use `copilot plugin list` and add a complete skill-load check.
-7. Shorten any bundled skill frontmatter description rejected by Copilot, then validate with `copilot plugin list`, `copilot skill list`, the Codex projection and catalog scripts, skill frontmatter and path checks, and `openspec validate --strict`.
+6. Update Copilot setup verification to use `copilot plugin list`, add a complete skill-load check, and validate MCP package provisioning, the Windows host projection, and MCP `initialize` readiness.
+7. Shorten any bundled skill frontmatter description rejected by Copilot, then validate with `copilot plugin list`, `copilot skill list`, a clean-profile/package-provisioning check, the generated MCP projection and initialize probe, the Codex projection and catalog scripts, skill frontmatter and path checks, and `openspec validate --strict`.
 
 Rollback is a documentation-only revert of the affected skills, agents, and READMEs; no runtime data or report artifacts are changed.
 

@@ -242,7 +242,8 @@ try {
     if ($code -ne 0) { throw 'Hosted HTTP/local stdio mismatch incorrectly blocked Copilot setup.' }
     if ((Get-Content (Join-Path $hostedCopilotRoot 'mcp.json') -Raw) -notmatch 'example.invalid') { throw 'Hosted HTTP profile entry was overwritten.' }
     $projectedCopilotMcp = Get-Content (Join-Path $hostedProfile '.copilot\installed-plugins\powerbi-agentic-plugins\powerbi\.mcp.json') -Raw | ConvertFrom-Json
-    if ($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.command -ne 'npx.cmd') { throw 'Copilot Windows projection does not use npx.cmd.' }
+    if ([IO.Path]::GetFileName($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.command) -ne 'node.exe') { throw 'Copilot Windows projection does not use node.exe.' }
+    if (-not (@($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.args) | Where-Object { [IO.Path]::GetFileName($_) -eq 'npx-cli.js' })) { throw 'Copilot Windows projection does not use npm npx-cli.js.' }
     if (@($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.args) -notcontains '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0') { throw 'Copilot Windows projection does not use the pinned x64 package.' }
     if (@($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.args) -notcontains '--start') { throw 'Copilot Windows projection is missing the platform package start mode.' }
     Write-Output 'Hosted/local transport mismatch and Copilot Windows projection OK.'
@@ -251,22 +252,24 @@ try {
     $code = Invoke-IsolatedSetup -Profile $projectedCodex -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='powerbi'; McpLauncher=$fakeMcpLauncher; McpProvisioner=$fakeMcpProvisioner }
     if ($code -ne 0) { throw 'Power BI Codex projection failed.' }
     $codexMcp = Get-Content (Join-Path $projectedCodex '.codex\config.toml') -Raw
-    if ($codexMcp -notmatch 'command = "npx.cmd"' -or $codexMcp -notmatch '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0' -or $codexMcp -notmatch '--start') { throw 'Codex Windows projection does not contain the pinned x64 command.' }
+    if ($codexMcp -notmatch '(?i)command = ".*node\.exe"' -or $codexMcp -notmatch '(?i)npx-cli\.js' -or $codexMcp -notmatch '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0' -or $codexMcp -notmatch '--start') { throw 'Codex Windows projection does not contain the direct Node pinned x64 command.' }
     Write-Output 'Codex Windows projection OK.'
 
-    # Codex can resolve npx through its Windows command environment. Treat a
-    # manually repaired npx entry as equivalent to the generated npx.cmd form.
+    # A manually repaired direct Node entry remains equivalent to the generated
+        # Windows projection.
     $manualCodex = New-TestProfile; $profiles += $manualCodex
     $manualCodexRoot = Join-Path $manualCodex '.codex'
     New-Item -ItemType Directory -Path $manualCodexRoot -Force | Out-Null
-    @"
-[mcp_servers.powerbi-modeling-mcp]
-command = "npx"
-args = ["-y", "@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0", "--start"]
-"@ | Set-Content (Join-Path $manualCodexRoot 'config.toml') -Encoding UTF8
+    $nodeCommand = (Get-Command node.exe -ErrorAction Stop).Source
+    $npxCli = Join-Path (Split-Path -Parent $nodeCommand) 'node_modules\npm\bin\npx-cli.js'
+    @(
+        '[mcp_servers.powerbi-modeling-mcp]'
+        "command = `"$nodeCommand`""
+        "args = [`"$npxCli`", `"-y`", `"@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0`", `"--start`"]"
+    ) | Set-Content (Join-Path $manualCodexRoot 'config.toml') -Encoding UTF8
     $code = Invoke-IsolatedSetup -Profile $manualCodex -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='powerbi'; McpLauncher=$fakeMcpLauncher; McpProvisioner=$fakeMcpProvisioner }
-    if ($code -ne 0) { throw 'Codex rejected an equivalent manually repaired npx MCP entry.' }
-    Write-Output 'Codex npx/npx.cmd equivalence behavior OK.'
+    if ($code -ne 0) { throw 'Codex rejected an equivalent manually repaired direct Node MCP entry.' }
+    Write-Output 'Codex direct Node equivalence behavior OK.'
 } finally {
     foreach ($profile in $profiles) {
         if (Test-Path $profile) { Remove-Item -LiteralPath $profile -Recurse -Force -ErrorAction SilentlyContinue }

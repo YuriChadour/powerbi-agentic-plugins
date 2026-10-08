@@ -492,6 +492,21 @@ $Script:PowerBiMcpGenericPackage = '@microsoft/powerbi-modeling-mcp@1.0.0'
 $Script:PowerBiMcpWindowsPackage = '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0'
 $Script:McpInitializeTimeoutMilliseconds = 30000
 
+function Get-WindowsNpxLauncher {
+    $node = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $node) {
+        throw 'Node.js was not found. Install Node.js 18+ and ensure node.exe is on PATH.'
+    }
+    $npxCli = Join-Path (Split-Path -Parent $node.Source) 'node_modules\npm\bin\npx-cli.js'
+    if (-not (Test-Path -LiteralPath $npxCli)) {
+        throw "npm npx-cli.js was not found beside node.exe: $npxCli"
+    }
+    return [PSCustomObject]@{
+        Command = $node.Source
+        NpxCli = $npxCli
+    }
+}
+
 function Get-McpCanonicalName {
     param([Parameter(Mandatory)][string]$Name)
 
@@ -566,8 +581,9 @@ function Get-McpHostDefinition {
             if (-not [Environment]::Is64BitOperatingSystem) {
                 throw "Power BI Modeling MCP requires Windows x64; this host is not x64. Use a Windows x64 host or select a target without Power BI Modeling MCP."
             }
-            if ($projected.PSObject.Properties['command']) { $projected.command = 'npx.cmd' } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue 'npx.cmd' }
-            if ($projected.PSObject.Properties['args']) { $projected.args = @('-y', $Script:PowerBiMcpWindowsPackage, '--start') } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @('-y', $Script:PowerBiMcpWindowsPackage, '--start') }
+            $launcher = Get-WindowsNpxLauncher
+            if ($projected.PSObject.Properties['command']) { $projected.command = $launcher.Command } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue $launcher.Command }
+            if ($projected.PSObject.Properties['args']) { $projected.args = @($launcher.NpxCli, '-y', $Script:PowerBiMcpWindowsPackage, '--start') } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @($launcher.NpxCli, '-y', $Script:PowerBiMcpWindowsPackage, '--start') }
         } else {
             if ($projected.PSObject.Properties['command']) { $projected.command = [string]$Definition.command } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue ([string]$Definition.command) }
             if ($projected.PSObject.Properties['args']) { $projected.args = @($Definition.args | ForEach-Object { [string]$_ }) } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @($Definition.args | ForEach-Object { [string]$_ }) }
@@ -646,17 +662,24 @@ function Test-McpPackageProvisioning {
     )
 
     $package = if ((Test-WindowsHost) -and [Environment]::Is64BitOperatingSystem) { $Script:PowerBiMcpWindowsPackage } else { $Script:PowerBiMcpGenericPackage }
-    $commandName = if (Test-WindowsHost) { 'npx.cmd' } else { 'npx' }
-    $command = Get-Command $commandName -ErrorAction SilentlyContinue
+    $launcher = if (Test-WindowsHost) { Get-WindowsNpxLauncher } else { $null }
+    $commandName = if (Test-WindowsHost) { $launcher.Command } else { 'npx' }
+    $command = if (Test-WindowsHost) { $launcher } else { Get-Command $commandName -ErrorAction SilentlyContinue }
     if (-not $command) {
-        throw "Power BI Modeling MCP package provisioning failed for ${package}: $commandName was not found. Install Node.js 18+ and ensure npx is on PATH."
+        throw "Power BI Modeling MCP package provisioning failed for ${package}: $commandName was not found. Install Node.js 18+ and ensure Node.js and npx are on PATH."
     }
     if ($Provisioner) {
         $result = & $Provisioner $package
         if ($result -eq $false) { throw "Power BI Modeling MCP package provisioning failed for $package. Run npx --yes --package $package node -e 'process.exit(0)' manually after fixing Node.js or network access." }
         return $true
     }
-    $result = Invoke-McpProcess -FilePath $command.Source -Arguments @('--yes', '--package', $package, 'node', '-e', 'process.exit(0)') -TimeoutMilliseconds $Script:McpInitializeTimeoutMilliseconds
+    $provisioningArguments = if (Test-WindowsHost) {
+        @($launcher.NpxCli, '--yes', '--package', $package, 'node', '-e', 'process.exit(0)')
+    } else {
+        @('--yes', '--package', $package, 'node', '-e', 'process.exit(0)')
+    }
+    $provisioningCommand = if (Test-WindowsHost) { $launcher.Command } else { $command.Source }
+    $result = Invoke-McpProcess -FilePath $provisioningCommand -Arguments $provisioningArguments -TimeoutMilliseconds $Script:McpInitializeTimeoutMilliseconds
     if ($result.ExitCode -ne 0) {
         $details = (($result.StandardError, $result.StandardOutput | Where-Object { $_ }) -join ' ').Trim()
         throw "Power BI Modeling MCP package provisioning failed for $package (exit $($result.ExitCode)): $details. Run npx --yes --package $package node -e 'process.exit(0)' manually after fixing Node.js or network access."

@@ -17,6 +17,8 @@ The planning workflow should behave as a planning-only gate, similar to `openspe
 - Have `powerbi-developer` consume the embedded Design Brief, stop on report-page tasks when it is missing, route layout changes through the architect, and derive plan and summary paths from the spec's folder.
 - Document the end-to-end process in `plugins/powerbi/README.md` and the root `README.md`.
 - Make the workflow verifiable in GitHub Copilot: use the current `copilot plugin list` command, validate plugin discovery separately from skill-load success, and keep all skill descriptions within Copilot's 1,024-character frontmatter limit.
+- Define MCP setup readiness separately from plugin discovery: provision the pinned Power BI Modeling MCP package per user through npm, generate host-specific launch definitions, and require a bounded MCP `initialize` check before reporting the connector ready.
+- Keep the MCP source declaration portable and independent of the VS Code extension; on Windows x64, project it to `node.exe` plus npm's `npx-cli.js` and the platform package so users do not depend on machine-specific extension paths or the `npx.cmd` launcher.
 - Preserve `powerbi-report-design` as the visual-design specialist and `powerbi-report-authoring` as the PBIR mechanics specialist.
 - Out of scope (follow-ups): HTML mock generate/refresh/ingest/bind mechanics (`design-from-html-mockup`) and a traceability validator script.
 
@@ -39,5 +41,6 @@ The planning workflow should behave as a planning-only gate, similar to `openspe
 - `plugins/powerbi/skills/powerbi-report-design/SKILL.md`, `references/design-brief.md`, `references/pre-flight-checklist.md`
 - `plugins/powerbi/README.md` and root `README.md`
 - `plugins/spec-lifecycle/README.md` and `plugins/spec-lifecycle/skills/openspec-bridge/SKILL.md`
-- `setup-team-plugins.ps1`, Copilot setup documentation, and `plugins/powerbi/skills/skill-merge-planner/SKILL.md` for Copilot compatibility validation
+- `setup-team-plugins.ps1`, Copilot setup documentation, and `plugins/powerbi/skills/skill-merge-planner/SKILL.md` for Copilot compatibility and MCP readiness validation
+- Per-user npm cache and Node.js/npm runtime used to provision and launch the pinned Power BI Modeling MCP package; no VS Code extension installation is required
 - No semantic-model, PBIR, report, or application runtime behavior changes
