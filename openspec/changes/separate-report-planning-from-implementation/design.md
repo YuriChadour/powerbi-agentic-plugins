@@ -18,6 +18,7 @@ In practice a design mock (HTML, generated from sample data, a screenshot, or an
 - Keep all artifacts of one work item together and discoverable.
 - Preserve specialist ownership for report design, PBIR authoring, semantic-model authoring, and report management.
 - Document the process where users and agents will read it.
+- Make the installed GitHub Copilot plugin discoverable and fully loadable, not merely present in the extensions directory.
 
 **Non-Goals:**
 
@@ -89,6 +90,19 @@ The developer extracts the embedded block for report-page tasks and passes it to
 
 The plugin README and the root README describe the full flow, folder layout, and ownership. The architect and developer rules enforce the same process, so documentation and behavior agree.
 
+### Decision 9: Copilot discovery and skill loading are separate gates
+
+GitHub Copilot validation uses the current `copilot plugin list` subcommand for
+non-interactive checks; `/plugin list` remains an interactive-session command only.
+Validation must also run `copilot skill list`, because a plugin can appear as installed
+while one of its skills is rejected during loading. Skill frontmatter descriptions are
+kept at or below Copilot's 1,024-character limit, and setup validation reports both
+plugin discovery and skill-load failures explicitly.
+
+**Alternative rejected:** Treating plugin registration as sufficient. Copilot can
+recognize an installed plugin while omitting an invalid skill, leaving the planning
+workflow partially available.
+
 ## Risks / Trade-offs
 
 - [Existing users expect planning to build immediately] -> State the planning-only boundary in the skill description, approval output, and README; require a separate implementation request after the spec is ready.
@@ -98,6 +112,7 @@ The plugin README and the root README describe the full flow, folder layout, and
 - [Large specs for multi-page reports] -> Accepted; the embedded YAML is the price of a single authoritative contract.
 - [The mock drifts from the spec] -> Accepted by design; the spec records mock provenance and the spec's YAML prevails.
 - [READMEs overstate mock tooling] -> The README states the mock is optional and does not describe unreleased mechanics.
+- [Copilot reports an installed plugin even when a bundled skill fails to load] -> Validate both `copilot plugin list` and `copilot skill list`, enforce the description-length limit, and fix the rejected skill before declaring the plugin healthy.
 
 ## Migration Plan
 
@@ -106,7 +121,8 @@ The plugin README and the root README describe the full flow, folder layout, and
 3. Update the developer agent and its `.toml`: embedded contract, stop rule, path derivation.
 4. Update stale references in the authoring and design skills and the spec-lifecycle docs.
 5. Update `plugins/powerbi/README.md` and the root `README.md` with the process.
-6. Validate with the Codex projection and catalog scripts, skill frontmatter and path checks, and `openspec validate --strict`.
+6. Update Copilot setup verification to use `copilot plugin list` and add a complete skill-load check.
+7. Shorten any bundled skill frontmatter description rejected by Copilot, then validate with `copilot plugin list`, `copilot skill list`, the Codex projection and catalog scripts, skill frontmatter and path checks, and `openspec validate --strict`.
 
 Rollback is a documentation-only revert of the affected skills, agents, and READMEs; no runtime data or report artifacts are changed.
 

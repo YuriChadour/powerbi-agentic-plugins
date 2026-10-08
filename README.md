@@ -71,7 +71,7 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 
 3. **Verify installation** (each team member):
    ```powershell
-   copilot /plugin list
+   copilot plugin list
    ```
 
 **Benefits:**

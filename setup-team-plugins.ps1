@@ -1275,7 +1275,7 @@ function Register-CopilotCLI {
         
         # Try to list plugins to verify
         Write-Info "Verifying plugins are discoverable..."
-        $listOutput = copilot /plugin list 2>&1
+        $listOutput = copilot plugin list 2>&1
         Write-Success "GitHub Copilot CLI registration verified ✓"
         return $true
     } catch {
@@ -1587,7 +1587,7 @@ function Show-NextSteps {
     
     Write-Info "Next steps:"
     Write-Host "  1. Restart GitHub Copilot CLI or VS Code to load plugins" -ForegroundColor $ColorInfo
-    Write-Host "  2. For Copilot CLI: run 'copilot /plugin list' to verify" -ForegroundColor $ColorInfo
+    Write-Host "  2. For Copilot CLI: run 'copilot plugin list' to verify" -ForegroundColor $ColorInfo
     Write-Host "  3. For VS Code: enable 'chat.useAgentSkills' in settings (Ctrl+,)" -ForegroundColor $ColorInfo
     Write-Host "  4. Read DEVELOPER_SETUP.md for team workflows" -ForegroundColor $ColorInfo
     Write-Host "  5. Read CONTRIBUTING_TEAM.md for contribution guidelines" -ForegroundColor $ColorInfo
@@ -1685,7 +1685,7 @@ try {
         Write-Info "$($result.Target): plugins=$($result.Plugins); skills=$($result.Skills); agents=$($result.Agents); MCP=$($result.MCP)"
         if ($result.Backup) { Write-Info "$($result.Target) backup: $($result.Backup)" }
     }
-    Write-Info "Restart the selected harness(es) to discover the projection. Verify Codex with scripts\validate-codex-projection.ps1 or Copilot with copilot /plugin list."
+    Write-Info "Restart the selected harness(es) to discover the projection. Verify Codex with scripts\validate-codex-projection.ps1 or Copilot with copilot plugin list."
     if ($Target -eq "All" -and $targetResults.Count -lt 2) { exit 1 }
     Write-Success "Setup complete for $Target. Restart the selected harness(es) to discover the projection."
     exit 0

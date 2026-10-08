@@ -36,3 +36,6 @@
 - [x] 6.1 Run `scripts/validate-codex-projection.ps1` and `scripts/validate-codex-catalog.ps1`, check skill frontmatter, and verify all referenced paths in the changed skills and agents resolve
 - [x] 6.2 Run `openspec validate --strict --changes "separate-report-planning-from-implementation"` and verify the change passes schema validation
 - [x] 6.3 Review the final planning-to-architect-to-developer flow against the capability scenarios and verify no project code, semantic-model artifact, PBIR artifact, or publishing operation was changed by this documentation-only change
+- [x] 6.4 Update `setup-team-plugins.ps1`, `README.md`, `DEVELOPER_SETUP.md`, `TEAM_DEPLOYMENT_GUIDE.md`, and `AGENTS.md` so non-interactive Copilot verification uses `copilot plugin list`, while interactive guidance explicitly uses `/plugin list` inside a running session.
+- [x] 6.5 Shorten the `skill-merge-planner` frontmatter description to 1,024 characters or fewer without weakening its trigger boundary, then verify `copilot skill list` reports no bundled skill-load failures.
+- [x] 6.6 Re-run `copilot plugin list`, `copilot skill list`, the Codex catalog/projection validators, and `openspec validate --strict --changes "separate-report-planning-from-implementation"`; record both plugin discovery and complete skill loading as acceptance criteria.

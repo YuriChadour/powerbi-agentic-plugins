@@ -155,3 +155,26 @@ The plugin README and the repository README SHALL describe the end-to-end proces
 #### Scenario: Mock mechanics are not yet delivered
 - **WHEN** the README describes the design mock
 - **THEN** it SHALL present the mock as an optional input and SHALL NOT claim generator or ingestion tooling
+
+### Requirement: The workflow SHALL be fully loadable in GitHub Copilot
+
+The plugin packaging and setup guidance SHALL distinguish successful plugin discovery
+from successful skill loading. Non-interactive verification SHALL use `copilot plugin
+list`, interactive verification MAY use `/plugin list`, and the validation path SHALL
+also inspect `copilot skill list`. Every bundled skill description SHALL remain within
+GitHub Copilot's 1,024-character frontmatter limit so that the installed plugin exposes
+all declared skills.
+
+#### Scenario: Copilot discovers the plugin
+- **WHEN** the setup completes for GitHub Copilot
+- **THEN** `copilot plugin list` SHALL show the installed plugin and its expected version
+
+#### Scenario: A bundled skill is rejected during loading
+- **WHEN** `copilot skill list` reports a skill-load failure for a bundled skill
+- **THEN** the plugin SHALL NOT be declared healthy, and the failure SHALL identify the
+  rejected skill and the frontmatter constraint that must be corrected
+
+#### Scenario: Copilot setup documentation is followed
+- **WHEN** a user follows the documented non-interactive verification command
+- **THEN** the command SHALL be valid for the installed Copilot CLI and SHALL not rely on
+  passing `/plugin list` as a top-level executable argument

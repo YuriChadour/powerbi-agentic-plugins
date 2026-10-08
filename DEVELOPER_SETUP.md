@@ -422,7 +422,7 @@ A: Yes! Pass the path to the script:
 
 ## Next Steps
 
-1. **Verify installation:** Run `copilot /plugin list` or check VS Code
+1. **Verify installation:** Run `copilot plugin list` or check VS Code
 2. **Read the skills:** Check out the documentation in `plugins/powerbi/skills/` and `plugins/fabric/skills/`
 3. **Try it out:** Open Copilot and ask it to help with Power BI or Fabric tasks
 4. **Contribute:** See `CONTRIBUTING_TEAM.md` to learn how to improve skills and agents
