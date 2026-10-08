@@ -25,7 +25,7 @@ Codex skills are projected to `$env:USERPROFILE\.codex\skills`, and checked-in C
 | **[fabric](./plugins/fabric)**   | Navigate workspaces, import/export item definitions, call Fabric & Power BI REST APIs, run jobs, and manage OneLake files.        |
 | **[devops](./plugins/devops)**   | Enforce branch hygiene, standard Azure DevOps branch policies, and team-safe Git workflows.                                      |
 | **[skill-creator](./plugins/skill-creator)** | Official Anthropic skill-authoring toolkit — create new skills, run with-skill/baseline benchmark evals, optimize trigger descriptions, and package `.skill` files. Vendored unmodified from [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official). |
-| **[spec-lifecycle](./plugins/spec-lifecycle)** | Optional OpenSpec bridge for `powerbi-architect` specs — adds change-tracking, status, and archive history on top of `specs/<Name>.spec.md` without altering how those specs are authored. |
+| **[spec-lifecycle](./plugins/spec-lifecycle)** | Optional OpenSpec bridge for `powerbi-architect` specs — adds change-tracking, status, and archive history on top of `specs/<work-item>/<Name>.spec.md` without altering how those specs are authored. |
 
 Every plugin follows the same structure:
 
@@ -219,10 +219,12 @@ See [prep-powerbi-for-report-copilot skill](plugins/powerbi/skills/prep-powerbi-
 
 ### Spec driven development
 
-- Create a Fabric workspace
-- Using the [powerbi-architect](plugins/powerbi/agents/powerbi-architect.agent.md) agent
-- Run the prompt below
-- Using the [powerbi-developer](plugins/powerbi/agents/powerbi-developer.agent.md) agent ask to implement the spec created by the architect agent
+For a new report, start with `powerbi-report-planning`. It creates an approved
+`specs/<JIRA>-<slug>/brief.md`; [powerbi-architect](plugins/powerbi/agents/powerbi-architect.agent.md)
+then creates the canonical `<Name>.spec.md` in the same folder, and
+[powerbi-developer](plugins/powerbi/agents/powerbi-developer.agent.md) implements it. See the
+[Power BI new report workflow](plugins/powerbi/README.md#new-report-workflow) for ownership and
+the optional mock input.
 
 Prompt:
 ```
