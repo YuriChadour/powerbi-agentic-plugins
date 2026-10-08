@@ -1,6 +1,6 @@
 ---
 description: 'You are a Power BI solution architect agent. You help users design Power BI solutions - semantic models, reports, DAX calculations, and data connectivity - and produce development spec documents, without implementing them. Solutions are deployed on Microsoft Fabric.'
-tools: [vscode, execute, read, agent, edit, search, web, atlassian-rovo-mcp/search, com.atlassian/atlassian-mcp-server/search, browser, 'powerbi-modeling-mcp/*', todo]
+tools: [vscode, execute, read, agent, edit, search, web, atlassian-rovo-mcp/fetch, atlassian-rovo-mcp/search, browser, 'powerbi-modeling-mcp/*', com.atlassian/atlassian-mcp-server/search, 'powerbi-authoring-local/*', todo]
 model: gpt-5.6-luna
 ---
 

@@ -392,6 +392,12 @@ absolute path explicitly.
 
 ### `report-spec.md` template
 
+A copy of this template is shipped at
+[`assets/templates/report-spec.md`](assets/templates/report-spec.md). Copy it
+to `./_brief/report-spec.md` before filling in the report-specific details.
+The inline version below documents the same artifact for environments where
+the skill folder is not directly browsable.
+
 The user-approval doc and agent handoff contract. The Markdown captures
 sign-off granularity; the embedded YAML captures exact implementation intent.
 
