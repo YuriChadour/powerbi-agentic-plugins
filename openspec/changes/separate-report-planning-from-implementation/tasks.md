@@ -1,0 +1,38 @@
+## 1. Bound the report-planning skill
+
+- [ ] 1.1 Rewrite the `powerbi-report-planning` frontmatter, introduction, and Must/Prefer/Avoid rules to define a planning-only workflow with plan-oriented triggers (drop "build me a dashboard" and "plan then implement") and remove the post-approval build, validation, and publishing sections; verify the skill no longer claims ownership of implementation or publishing
+- [ ] 1.2 Add the work-folder rules: create `specs/<JIRA>-<slug>/` (or `<slug>/`), take the Jira key from the git branch else ask once, derive the slug from the report name, never overwrite another report's `brief.md`; verify the approval output states the exact `brief.md` path and the skill stops after the approved brief
+- [ ] 1.3 Replace `assets/templates/report-spec.md` with a `brief.md` template with front-matter (`jira`, `report`, `status`, `mockup`), business context, model inventory, scope, page intent, design direction, model requirements, dependencies, constraints, risks, approval status, and architect handoff fields, plus a pre-approval completeness checklist; verify it contains no developer task checklist
+- [ ] 1.4 Add the optional design-mock input: sign-off counts as design approval, translation notes and field-binding gaps (as model requirements) are reviewed at approval, and the mock is never a gate; verify the skill does not claim generator or ingestion tooling
+
+## 2. Wire the architect handoff
+
+- [ ] 2.1 Update `powerbi-architect.agent.md` so new-report specifications require an approved `brief.md` (route to planning if absent), model-only specifications are exempt, and the architect creates the work folder when no brief exists; verify EARS requirements, architecture, data sources, and executable tasks remain required
+- [ ] 2.2 Update the spec template: front-matter (`jira`, `report`, `status`, `mockup`), a `Design > Report Design Contract` subsection holding the verbatim `Design Brief:` YAML, EARS requirements citing it, one task per page, and a `Revisions` section (ADDED/MODIFIED/REMOVED)
+- [ ] 2.3 Add the rules: the spec's YAML is the only authoritative design; a revised mock updates the spec only on request through `powerbi-report-design`, with provenance recorded; design changes after execution starts append tasks and never reset completed ones
+- [ ] 2.4 Preserve specialist routing and the progressive measure-test task chain; verify the agent still references `powerbi-report-design`, `semantic-model-authoring`, `powerbi-report-authoring`, and `pql-tester` appropriately
+- [ ] 2.5 Sync the same changes into `powerbi-architect.toml`
+
+## 3. Wire the developer contract
+
+- [ ] 3.1 Update `powerbi-developer.agent.md`: extract the embedded Design Brief for report-page tasks and pass it to `powerbi-report-authoring`, stop and ask the architect when it is missing, route layout changes through the architect, derive plan and summary paths from the spec's folder, and remove the planning "approval → build" wording; verify the Tasks lookup, acceptance-criteria validation, and execution-summary contract remain intact
+- [ ] 3.2 Sync the same changes into `powerbi-developer.toml`
+
+## 4. Reconcile downstream references
+
+- [ ] 4.1 Update `powerbi-report-authoring/SKILL.md` and `powerbi-report-design/SKILL.md`, `references/design-brief.md`, and `references/pre-flight-checklist.md` so `_brief/report-spec.md` references become the Design Brief block in the approved spec; verify authoring and design skills still route direct requests without forcing planning
+- [ ] 4.2 Update `plugins/spec-lifecycle/README.md` and `openspec-bridge/SKILL.md` for the work-folder layout and the folder-based spec path
+- [ ] 4.3 Search the repository for remaining `_brief/report-spec.md`, flat `specs/<Name>.spec.md` references, and planning build/publish ownership claims; verify they are removed or clarified
+- [ ] 4.4 Verify direct design-only, surgical report-authoring, semantic-model, and report-management requests still route to their specialist skills without forcing the planning workflow
+
+## 5. Document the process
+
+- [ ] 5.1 Update `plugins/powerbi/README.md`: add a "New report workflow" section with the optional design mock, planning, architect, and developer diagram, the work-folder layout, and artifact ownership; update the `powerbi-report-planning`, `powerbi-architect`, and `powerbi-developer` entries
+- [ ] 5.2 Update the root `README.md`: expand the "Spec driven development" scenario with the new-report path linking to the plugin README, and update the `spec-lifecycle` table row for the work-folder layout
+- [ ] 5.3 Verify both READMEs present the mock as optional and do not claim generation, ingestion, or binding tooling
+
+## 6. Validate the contract
+
+- [ ] 6.1 Run `scripts/validate-codex-projection.ps1` and `scripts/validate-codex-catalog.ps1`, check skill frontmatter, and verify all referenced paths in the changed skills and agents resolve
+- [ ] 6.2 Run `openspec validate --strict --changes "separate-report-planning-from-implementation"` and verify the change passes schema validation
+- [ ] 6.3 Review the final planning-to-architect-to-developer flow against the capability scenarios and verify no project code, semantic-model artifact, PBIR artifact, or publishing operation was changed by this documentation-only change
