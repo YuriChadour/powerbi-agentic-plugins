@@ -149,7 +149,7 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 .\setup-team-plugins.ps1 -RepositoryPath "C:\Development\powerbi-agentic-plugins"
 
 # Verify
-copilot /plugin list
+copilot plugin list
 ```
 
 **Support:** Designate a "Skill Champion" (see Phase C) for troubleshooting

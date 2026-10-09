@@ -7,13 +7,15 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or -not [Enviro
     throw 'Power BI Modeling MCP smoke test requires Windows x64.'
 }
 
-$npx = Get-Command npx.cmd -ErrorAction SilentlyContinue
-if (-not $npx) { throw 'npx.cmd was not found. Install Node.js 18+ and ensure npm is on PATH.' }
+$node = Get-Command node.exe -ErrorAction SilentlyContinue
+if (-not $node) { throw 'node.exe was not found. Install Node.js 18+ and ensure Node.js is on PATH.' }
+$npxCli = Join-Path (Split-Path -Parent $node.Source) 'node_modules\npm\bin\npx-cli.js'
+if (-not (Test-Path -LiteralPath $npxCli)) { throw "npm npx-cli.js was not found beside node.exe: $npxCli" }
 
 $package = '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0'
 $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-$startInfo.FileName = $npx.Source
-$startInfo.Arguments = "-y $package --start"
+$startInfo.FileName = $node.Source
+$startInfo.Arguments = "`"$npxCli`" -y $package --start"
 $startInfo.UseShellExecute = $false
 $startInfo.CreateNoWindow = $true
 $startInfo.RedirectStandardInput = $true

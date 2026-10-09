@@ -1,13 +1,13 @@
 ---
 name: openspec-bridge
-description: Backfills a completed powerbi-architect-authored specs/<Name>.spec.md into OpenSpec's archive lifecycle, without changing where the spec lives or how it's authored. Use when the user wants to track, archive, or check the status of an existing single-file Power BI spec.
+description: Backfills a completed powerbi-architect-authored specs/<work-item>/<Name>.spec.md into OpenSpec's archive lifecycle, without changing where the spec lives or how it's authored. Use when the user wants to track, archive, or check the status of an existing Power BI spec.
 ---
 
 # OpenSpec Bridge for powerbi-architect Specs
 
 ## Purpose
 
-`powerbi-architect` authors durable, single-file specs at `specs/<Name>.spec.md` (Overview /
+`powerbi-architect` authors durable specs at `specs/<work-item>/<Name>.spec.md` (Overview /
 Requirements / Design / Tasks). This skill backfills a completed spec into OpenSpec's archive
 history, preserving an audit trail without creating a second source of truth during active work.
 
@@ -41,7 +41,7 @@ paths.
 
 ## Workflow: backfill archive history for an already-completed spec
 
-1. Read the target `specs/<Name>.spec.md` in full.
+1. Read the target `specs/<work-item>/<Name>.spec.md` in full.
 2. Derive a kebab-case change name from its title (e.g. "Python DAX Test Framework" →
    `add-dax-test-framework`).
 3. Run `openspec new change "<name>"`, then `openspec status --change "<name>" --json` to get the
@@ -71,7 +71,7 @@ paths.
    sync fails, stop and do not move the change. Archive the folder as
    `openspec/changes/archive/<YYYY-MM-DD>-<name>/`, adding today's date only when `<name>` does
    not already have a date prefix.
-7. Add a one-line pointer at the top of the original `specs/<Name>.spec.md` noting it is now
+7. Add a one-line pointer at the top of the original `specs/<work-item>/<Name>.spec.md` noting it is now
    tracked via the archived OpenSpec change — do not delete or rewrite the original file's
    content.
 
