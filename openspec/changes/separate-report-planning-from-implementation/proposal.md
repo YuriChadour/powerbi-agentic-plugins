@@ -18,6 +18,9 @@ The planning workflow should behave as a planning-only gate, similar to `openspe
 - Document the end-to-end process in `plugins/powerbi/README.md` and the root `README.md`.
 - Make the workflow verifiable in GitHub Copilot: use the current `copilot plugin list` command, validate plugin discovery separately from skill-load success, and keep all skill descriptions within Copilot's 1,024-character frontmatter limit.
 - Define MCP setup readiness separately from plugin discovery: provision the pinned Power BI Modeling MCP package per user through npm, generate host-specific launch definitions, and require a bounded MCP `initialize` check before reporting the connector ready.
+- Reuse an available ADOMD.NET dependency when it already satisfies the setup requirement, and install it only when discovery confirms it is missing or unusable.
+- Remove installer backup artifacts whose last-write time is older than seven days, while tolerating an absent backup location and never deleting current backups.
+- Make Codex MCP registration ownership-safe: update an existing installer-owned `powerbi-modeling-mcp` entry, create a missing entry, and stop with actionable remediation when a same-named entry is not installer-owned.
 - Keep the MCP source declaration portable and independent of the VS Code extension; on Windows x64, project it to `node.exe` plus npm's `npx-cli.js` and the platform package so users do not depend on machine-specific extension paths or the `npx.cmd` launcher.
 - Preserve `powerbi-report-design` as the visual-design specialist and `powerbi-report-authoring` as the PBIR mechanics specialist.
 - Out of scope (follow-ups): HTML mock generate/refresh/ingest/bind mechanics (`design-from-html-mockup`) and a traceability validator script.

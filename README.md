@@ -15,7 +15,7 @@ Run the unified installer from a checkout. With no target specified it installs 
 .\setup-team-plugins.ps1 -Target Codex -AllowGitMetadataWrites
 ```
 
-Codex skills are projected to `$env:USERPROFILE\.codex\skills`, and checked-in Codex `.toml` adapters for top-level agent Markdown files are projected under `.codex\agents` (the source agent Markdown remains in the repository for Copilot/Claude). Source MCP definitions are registered in `.codex\config.toml`. Copilot remains under `.copilot`; the two targets do not share configuration. Use `-Force` to update installer-owned files; backups are timestamped under the selected target's directory. Restart Codex after installation. Custom agents are spawnable subagents, not replacements for the primary persona; ask Codex to spawn `powerbi-architect` or `powerbi-developer` by name, then use `/agent` to inspect or switch to the resulting thread.
+Codex skills are projected to `$env:USERPROFILE\.codex\skills`, and checked-in Codex `.toml` adapters for top-level agent Markdown files are projected under `.codex\agents` (the source agent Markdown remains in the repository for Copilot/Claude). Source MCP definitions are registered in `.codex\config.toml`. Copilot remains under `.copilot`; the two targets do not share configuration. Use `-Force` to update installer-owned files; backups are timestamped under the selected target's directory and artifacts older than seven days are pruned. A same-named user-owned Codex MCP entry is preserved and setup stops with remediation instead of overwriting it. Restart Codex after installation. Custom agents are spawnable subagents, not replacements for the primary persona; ask Codex to spawn `powerbi-architect` or `powerbi-developer` by name, then use `/agent` to inspect or switch to the resulting thread.
 
 `-AllowGitMetadataWrites` is opt-in for trusted repositories. It backs up and updates the user-scoped Codex config so agents can perform Git metadata operations; it does not add the user config to this repository.
 
@@ -85,16 +85,28 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 
 ### End-of-session handoff
 
-After updating `MEMORY.md` and `SESSION_RESUME.md`, use the handoff script to validate OpenSpec, commit only the declared handoff files, push the current Jira branch, and create a pull request targeting `DEV`:
+Update durable facts in `MEMORY.md` and route progress in the route recovery
+record. Use the local `SESSION_RESUME.md` only as a convenience, then run the
+handoff script with the exact publishable files. It validates OpenSpec, stages
+only the declared handoff files, commits, updates the local resume after the
+commit, pushes the current Jira branch, and can create a pull request targeting
+`DEV`:
 
 ```powershell
 .\scripts\end-session.ps1 `
   -OpenSpecChange enable-local-vscode-dax-tests `
   -ResumePath SESSION_RESUME.md `
+  -StagePath @('MEMORY.md','openspec/changes/enable-local-vscode-dax-tests/tasks.md') `
   -CommitMessage "docs: update session handoff"
 ```
 
-The script reports unchecked OpenSpec tasks without marking them complete and prints a Jira-ready update containing the commit SHA, PR URL, change name, and remaining task count. Post that update through the configured Jira workflow; it does not embed Jira credentials or guess ticket transitions.
+For report work, add `-PowerBiRecoveryPath specs/<JIRA>-<slug>` to stage only
+that explicitly selected recovery folder. `-ResumePath` is never staged. If
+only the local handoff changed, the script reports that no publishable handoff
+changes exist and does not commit. It prints a Jira-ready update containing the
+commit SHA, PR URL, change name, and remaining task count; post that update
+through the configured Jira workflow, which does not embed Jira credentials or
+guess ticket transitions.
 
 ### GitHub Copilot CLI Setup (Individual Users)
 

@@ -2,7 +2,7 @@
 
 ## Harness selection
 
-`setup-team-plugins.ps1` defaults to `-Target All`. Use `-Target Codex` for `%USERPROFILE%\.codex` only or `-Target Copilot` for the existing `.copilot` workflow. Use `-PluginName` for one of `powerbi`, `fabric`, `devops`, `skill-creator`, or `spec-lifecycle`; use `-Force` for an installer-owned update. Add `-AllowGitMetadataWrites` only for trusted repositories when agents need Git metadata operations; this backs up and updates the user-scoped `.codex\config.toml` without adding it to the repository. Codex MCP entries are written to `.codex\config.toml` from the plugin `.mcp.json` files, while Copilot configuration remains isolated. Backups are retained under each target's own backup directory.
+`setup-team-plugins.ps1` defaults to `-Target All`. Use `-Target Codex` for `%USERPROFILE%\.codex` only or `-Target Copilot` for the existing `.copilot` workflow. Use `-PluginName` for one of `powerbi`, `fabric`, `devops`, `skill-creator`, or `spec-lifecycle`; use `-Force` for an installer-owned update. Add `-AllowGitMetadataWrites` only for trusted repositories when agents need Git metadata operations; this backs up and updates the user-scoped `.codex\config.toml` without adding it to the repository. Codex MCP entries are written to `.codex\config.toml` from the plugin `.mcp.json` files, while Copilot configuration remains isolated. Backups are retained under each target's own backup directory, and artifacts older than seven days are pruned.
 
 MCP registration and package provisioning are separate setup responsibilities. Registration writes the harness configuration; provisioning checks that Node.js and the required package can be resolved; readiness then performs a bounded MCP `initialize` exchange. Setup does not report a local MCP as ready when launch or initialization fails.
 
@@ -179,7 +179,7 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 5. **Registers plugins** — writes entries into `config.json` and `settings.json` so Copilot CLI discovers them on next start
 6. **Mirrors to extensions** — copies plugins to `~\.copilot\extensions\` for VS Code discovery
 7. **Configures MCP servers** — sets up Model Context Protocol servers from `.mcp.json` files
-8. **Provisions the ADOMD.NET client library** (Windows-only, `powerbi` plugin only) — detects an existing install or downloads it from the public NuGet feed into your user-profile NuGet package cache, no admin rights required
+8. **Provisions the ADOMD.NET client library** (Windows-only, `powerbi` plugin only) — validates and reuses a usable installation; only if discovery finds no usable client does it download the pinned package into your user-profile NuGet package cache, no admin rights required
 9. **Validates installation** — verifies all plugins loaded correctly
 
 #### 4. Restart Your Tools

@@ -17,6 +17,19 @@ or reproduce an investigation without repeating discovery work from scratch.
 - Live-query connection: not applicable; this incident concerns local MCP process
   startup and MCP `initialize`, not a data query.
 
+## Reusable guidance
+
+Keep only confirmed, reusable facts here. Ticket-specific symptoms, branches,
+status, evidence, and next steps belong in the matching ticket section below.
+
+### Environment and diagnostic patterns
+
+- Record a known-good environment, connection, diagnostic shortcut, limitation,
+  prevention rule, or remediation pattern only after it is supported by an
+  investigation.
+- Write entries so a cold-start agent can apply them without relying on a
+  ticket, branch, or conversation transcript.
+
 ---
 
 ## FIN-1909
@@ -82,3 +95,18 @@ portable for non-Windows hosts.
 - Reinstalled the active Copilot Power BI plugin projection.
 - Restart Copilot CLI is required for the running session to discover the new
   process definition.
+
+### Follow-up: legacy Codex registration and Windows TOML escaping
+
+**Symptom:** `setup-team-plugins.ps1 -Target Codex -PluginName powerbi -Force`
+reported that `powerbi-modeling-mcp` was not installer-owned, and a manually
+repaired direct-Node registration required doubled backslashes in Windows paths.
+
+**Root cause:** the existing Codex block was created by an older installer
+version without ownership markers, and the generated TOML serializer emitted
+single backslashes in `command` and `args` paths.
+
+**Fix:** exact pinned legacy `npx` signatures are now migrated only by `-Force`
+and receive ownership markers; unrelated user-owned collisions remain blocked.
+Windows command and argument paths are escaped for TOML. The real Codex force
+setup completed and MCP `initialize` passed.
