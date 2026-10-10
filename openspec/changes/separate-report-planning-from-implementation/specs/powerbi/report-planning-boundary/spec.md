@@ -216,3 +216,60 @@ plugin discovery from MCP readiness and SHALL perform a bounded MCP
 - **THEN** setup SHALL report the connector as not ready and SHALL include the
   generated command and actionable remediation rather than claiming successful
   MCP setup
+
+### Requirement: Installer dependencies and backups SHALL be managed conditionally
+
+The setup workflow SHALL discover whether the required ADOMD.NET dependency is
+already available and usable before attempting installation. It SHALL reuse a
+valid available dependency, and SHALL install or repair it only when discovery
+confirms that it is missing or unusable. The workflow SHALL remove installer
+backup artifacts older than seven days relative to the cleanup run, SHALL
+preserve artifacts at or newer than that boundary, and SHALL treat a missing
+backup location as a successful no-op.
+
+#### Scenario: Required ADOMD.NET dependency is available
+- **WHEN** setup discovers a usable ADOMD.NET installation that satisfies the
+  required version or capability
+- **THEN** setup SHALL reuse it without downloading or reinstalling ADOMD.NET
+
+#### Scenario: Required ADOMD.NET dependency is unavailable
+- **WHEN** setup cannot discover a usable ADOMD.NET installation
+- **THEN** setup SHALL install the required dependency and report the
+  provisioning result
+
+#### Scenario: Backup cleanup runs with mixed ages
+- **WHEN** setup cleans a backup location containing artifacts older than seven
+  days and artifacts at or newer than seven days
+- **THEN** setup SHALL delete only the older artifacts and SHALL preserve the
+  current artifacts
+
+#### Scenario: Backup location is absent
+- **WHEN** setup runs cleanup and the backup location does not exist
+- **THEN** setup SHALL report cleanup as a successful no-op and SHALL continue
+  the installation workflow
+
+### Requirement: Codex MCP registration SHALL respect ownership
+
+When setup projects the Power BI MCP definition to Codex, it SHALL create the
+registration when it is absent and SHALL update it when the existing
+`powerbi-modeling-mcp` entry is marked as installer-owned. If an entry with that
+name exists without the installer ownership marker, setup SHALL not remove,
+rename, or overwrite it automatically; it SHALL fail the Codex installation
+step with the conflicting name and actionable instructions to remove or rename
+the entry before retrying.
+
+#### Scenario: Codex MCP registration is absent
+- **WHEN** setup targets Codex and no `powerbi-modeling-mcp` registration exists
+- **THEN** setup SHALL create the registration with the installer ownership
+  marker and the generated host-specific definition
+
+#### Scenario: Existing Codex registration is installer-owned
+- **WHEN** setup targets Codex and an existing `powerbi-modeling-mcp`
+  registration contains the installer ownership marker
+- **THEN** setup SHALL update it to the current generated definition
+
+#### Scenario: Existing Codex registration is not installer-owned
+- **WHEN** setup targets Codex and an existing `powerbi-modeling-mcp`
+  registration lacks the installer ownership marker
+- **THEN** setup SHALL leave it unchanged and report that the user must remove
+  or rename it before installation can continue

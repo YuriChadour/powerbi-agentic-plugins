@@ -39,3 +39,10 @@
 - [x] 6.4 Update `setup-team-plugins.ps1`, `README.md`, `DEVELOPER_SETUP.md`, `TEAM_DEPLOYMENT_GUIDE.md`, and `AGENTS.md` so non-interactive Copilot verification uses `copilot plugin list`, while interactive guidance explicitly uses `/plugin list` inside a running session; verify MCP registration, per-user pinned-package provisioning, host-specific projection, and the Windows direct-Node launcher are documented.
 - [x] 6.5 Shorten the `skill-merge-planner` frontmatter description to 1,024 characters or fewer without weakening its trigger boundary, then verify `copilot skill list` reports no bundled skill-load failures.
 - [x] 6.6 Re-run `copilot plugin list`, `copilot skill list`, the Codex catalog/projection validators, the MCP provisioning/readiness smoke test, and `openspec validate --strict --changes "separate-report-planning-from-implementation"`; record plugin discovery, complete skill loading, generated MCP projection, pinned package provisioning, and successful MCP `initialize` as acceptance criteria.
+
+## 7. Optimize dependency provisioning and backup retention
+
+- [x] 7.1 Update `setup-team-plugins.ps1` to discover and validate an available ADOMD.NET dependency before downloading or installing it; reuse a usable installation, install only when missing or unusable, and verify both branches with isolated setup fixtures
+- [x] 7.2 Add installer backup cleanup using a seven-day retention boundary; delete only artifacts older than seven days, preserve current artifacts, tolerate a missing backup directory, and verify the behavior with dated fixtures
+- [x] 7.3 Make Codex MCP projection ownership-safe: create missing registrations, update installer-owned registrations, and fail without modifying non-installer-owned collisions; verify all three branches with isolated fixtures
+- [x] 7.4 Update setup documentation and acceptance output to describe conditional ADOMD.NET provisioning, backup cleanup, and Codex collision remediation, then run the setup integration tests, MCP smoke test, and strict OpenSpec validation

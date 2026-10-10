@@ -95,3 +95,18 @@ portable for non-Windows hosts.
 - Reinstalled the active Copilot Power BI plugin projection.
 - Restart Copilot CLI is required for the running session to discover the new
   process definition.
+
+### Follow-up: legacy Codex registration and Windows TOML escaping
+
+**Symptom:** `setup-team-plugins.ps1 -Target Codex -PluginName powerbi -Force`
+reported that `powerbi-modeling-mcp` was not installer-owned, and a manually
+repaired direct-Node registration required doubled backslashes in Windows paths.
+
+**Root cause:** the existing Codex block was created by an older installer
+version without ownership markers, and the generated TOML serializer emitted
+single backslashes in `command` and `args` paths.
+
+**Fix:** exact pinned legacy `npx` signatures are now migrated only by `-Force`
+and receive ownership markers; unrelated user-owned collisions remain blocked.
+Windows command and argument paths are escaped for TOML. The real Codex force
+setup completed and MCP `initialize` passed.

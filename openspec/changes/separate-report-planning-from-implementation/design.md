@@ -133,6 +133,29 @@ while `node.exe` with npm's `npx-cli.js` avoids that host-specific failure.
 The pinned version keeps installations reproducible; updating it is an explicit
 repository change rather than an implicit `latest` lookup.
 
+### Decision 11: Dependency reuse precedes installation and backups have a seven-day retention window
+
+Setup first performs a local discovery check for the required ADOMD.NET
+dependency. A usable installation is reused; download or repair occurs only
+when the check reports that the dependency is missing or unusable. This avoids
+repeated downloads and installer side effects on every setup run while keeping
+the required dependency available when a machine is not prepared.
+
+Backup cleanup runs as a bounded maintenance step using the cleanup run's
+current time as the reference. Only artifacts with a last-write time strictly
+older than seven days are removed. Missing backup directories and empty
+directories are successful no-ops, and artifacts on or inside the seven-day
+boundary are retained.
+
+### Decision 12: Codex MCP projection is ownership-safe
+
+The installer marks the Codex `powerbi-modeling-mcp` registration it creates
+with an explicit installer-ownership marker. On later runs, an absent
+registration is created and an installer-owned registration is updated. A
+same-named registration without that marker is treated as user-owned: setup
+does not delete, rename, or overwrite it and instead reports the exact
+collision plus the manual remediation required before retrying.
+
 **Alternative rejected:** Registering the VS Code extension executable or storing
 an absolute extension path in the repository. That would only work for users with
 the same extension installation and would make the team setup non-portable.
@@ -160,7 +183,8 @@ while process launch or MCP initialization still fails.
 4. Update stale references in the authoring and design skills and the spec-lifecycle docs.
 5. Update `plugins/powerbi/README.md` and the root `README.md` with the process.
 6. Update Copilot setup verification to use `copilot plugin list`, add a complete skill-load check, and validate MCP package provisioning, the Windows host projection, and MCP `initialize` readiness.
-7. Shorten any bundled skill frontmatter description rejected by Copilot, then validate with `copilot plugin list`, `copilot skill list`, a clean-profile/package-provisioning check, the generated MCP projection and initialize probe, the Codex projection and catalog scripts, skill frontmatter and path checks, and `openspec validate --strict`.
+7. Add conditional ADOMD.NET discovery/reuse, seven-day backup cleanup, and ownership-safe Codex MCP projection to the installer, then validate all branches with isolated fixtures.
+8. Shorten any bundled skill frontmatter description rejected by Copilot, then validate with `copilot plugin list`, `copilot skill list`, a clean-profile/package-provisioning check, the generated MCP projection and initialize probe, the Codex projection and catalog scripts, skill frontmatter and path checks, and `openspec validate --strict`.
 
 Rollback is a documentation-only revert of the affected skills, agents, and READMEs; no runtime data or report artifacts are changed.
 
