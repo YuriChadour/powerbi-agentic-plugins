@@ -85,16 +85,28 @@ If you're setting up plugins for a **team or group**, use the team-friendly setu
 
 ### End-of-session handoff
 
-After updating `MEMORY.md` and `SESSION_RESUME.md`, use the handoff script to validate OpenSpec, commit only the declared handoff files, push the current Jira branch, and create a pull request targeting `DEV`:
+Update durable facts in `MEMORY.md` and route progress in the route recovery
+record. Use the local `SESSION_RESUME.md` only as a convenience, then run the
+handoff script with the exact publishable files. It validates OpenSpec, stages
+only the declared handoff files, commits, updates the local resume after the
+commit, pushes the current Jira branch, and can create a pull request targeting
+`DEV`:
 
 ```powershell
 .\scripts\end-session.ps1 `
   -OpenSpecChange enable-local-vscode-dax-tests `
   -ResumePath SESSION_RESUME.md `
+  -StagePath @('MEMORY.md','openspec/changes/enable-local-vscode-dax-tests/tasks.md') `
   -CommitMessage "docs: update session handoff"
 ```
 
-The script reports unchecked OpenSpec tasks without marking them complete and prints a Jira-ready update containing the commit SHA, PR URL, change name, and remaining task count. Post that update through the configured Jira workflow; it does not embed Jira credentials or guess ticket transitions.
+For report work, add `-PowerBiRecoveryPath specs/<JIRA>-<slug>` to stage only
+that explicitly selected recovery folder. `-ResumePath` is never staged. If
+only the local handoff changed, the script reports that no publishable handoff
+changes exist and does not commit. It prints a Jira-ready update containing the
+commit SHA, PR URL, change name, and remaining task count; post that update
+through the configured Jira workflow, which does not embed Jira credentials or
+guess ticket transitions.
 
 ### GitHub Copilot CLI Setup (Individual Users)
 

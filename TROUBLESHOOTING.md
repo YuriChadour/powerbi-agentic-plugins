@@ -17,6 +17,19 @@ or reproduce an investigation without repeating discovery work from scratch.
 - Live-query connection: not applicable; this incident concerns local MCP process
   startup and MCP `initialize`, not a data query.
 
+## Reusable guidance
+
+Keep only confirmed, reusable facts here. Ticket-specific symptoms, branches,
+status, evidence, and next steps belong in the matching ticket section below.
+
+### Environment and diagnostic patterns
+
+- Record a known-good environment, connection, diagnostic shortcut, limitation,
+  prevention rule, or remediation pattern only after it is supported by an
+  investigation.
+- Write entries so a cold-start agent can apply them without relying on a
+  ticket, branch, or conversation transcript.
+
 ---
 
 ## FIN-1909

@@ -249,7 +249,12 @@ committed by the workflow.
 #### Scenario: End-session script stages only publishable files
 
 - **WHEN** `scripts/end-session.ps1` runs
-- **THEN** it stages only `MEMORY.md` and declared OpenSpec files, never `SESSION_RESUME.md`
+- **THEN** it stages only `MEMORY.md`, declared OpenSpec files, and an explicitly selected Power BI `specs/<JIRA>-<slug>/` recovery folder for report work, never `SESSION_RESUME.md`
+
+#### Scenario: Report recovery folder is selected
+
+- **WHEN** `scripts/end-session.ps1` runs for report work with an explicitly declared `specs/<JIRA>-<slug>/` recovery folder
+- **THEN** it stages that folder's changes, including specification status and task-checkbox updates recorded as work completed, without staging unrelated work folders under `specs/` or `SESSION_RESUME.md`
 
 #### Scenario: Only the local handoff changed
 

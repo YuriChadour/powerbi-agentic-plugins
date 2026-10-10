@@ -36,9 +36,7 @@ boundary, and troubleshooting lifecycle remain constraints.
 - Treating every Other request as a troubleshooting investigation.
 - Changing Jira statuses, transition IDs, or MCP payloads.
 
-## Decisions
-
-### Architecture Diagram
+## Architecture Diagram
 
 ```mermaid
 flowchart TD
@@ -47,8 +45,10 @@ flowchart TD
     C --> D{Category}
     D -->|Bug| E[Read or bootstrap TROUBLESHOOTING.md]
     D -->|Report Development Story| F[Ask report subtype]
-    D -->|Fabric Development| G[Create or resume OpenSpec change]
+    D -->|Fabric Development| FD{Fabric request}
     D -->|Other| H[Ask whether investigative]
+    FD -->|Development change or durable plan requested| G[Create or resume OpenSpec change]
+    FD -->|Discovery, querying, monitoring, or simple operation without a plan| OP[Applicable Fabric capability without OpenSpec]
     F -->|New report or dashboard| I[powerbi-report-planning]
     F -->|Existing report| J[Report design or authoring route]
     F -->|Model-only| K[Semantic-model route]
@@ -56,20 +56,33 @@ flowchart TD
     H -->|Investigative| E
     H -->|Non-investigative| M[User-directed workflow prompt]
     E --> N[Trace, gather evidence, update ticket section]
-    N --> O[Update reusable troubleshooting guidance]
+    N --> RC{Root cause confirmed by evidence?}
+    RC -->|No| BL[Record blocker or unresolved investigation]
+    RC -->|Yes| O[Update reusable troubleshooting guidance when applicable]
     G --> P[Complete OpenSpec proposal/spec/design/tasks]
-    P --> Q[FabricDataEngineer or FabricMigrationEngineer]
+    P --> W[Wait for explicit implementation request]
+    W --> Q[FabricDataEngineer or FabricMigrationEngineer]
     I --> R[Approved brief]
     R --> S[powerbi-architect canonical spec]
-    S --> T[powerbi-developer]
-    J --> U[Explicit specialist implementation request]
+    S --> X[Wait for explicit implementation request]
+    X --> T[powerbi-developer]
+    J --> U[Wait for explicit specialist implementation request]
     K --> U
     L --> U
     M --> U
+    U --> IM[Applicable specialist or implementation agent]
     O --> V[User chooses fix, defer, or transition]
-    Q --> W[Explicit implementation request]
-    T --> X[Explicit implementation request]
+    V -->|Defer or transition| END[Record decision and follow selected ticket action]
+    V -->|Fix| FS[Ask fix surface and state intended change]
+    FS --> SZ[Check dependent rename/removal and new object/structural change triggers]
+    SZ --> CF{User confirms or overrides fix size}
+    CF -->|Surgical| SF[Use troubleshooting section as fix context]
+    SF --> U
+    CF -->|Substantial| SP[Resume and complete applicable planning route for the selected surface]
+    SP --> U
 ```
+
+## Decisions
 
 ### Decision: Ask the user to classify every started Jira ticket
 
@@ -234,11 +247,18 @@ new agent session before the end-of-session workflow runs.
 and fails when nothing is staged. It must:
 
 - remove `SESSION_RESUME.md` from the default stage list, staging only
-  `MEMORY.md` and the declared OpenSpec files;
+  `MEMORY.md`, declared OpenSpec files, and the explicitly selected Power BI
+  `specs/<JIRA>-<slug>/` recovery folder for report work;
 - keep `-ResumePath` as a local-only input used to print the handoff, never
   staged;
 - not fail when only the local handoff changed and there is nothing to stage,
   reporting that no publishable handoff changes exist instead.
+
+The Power BI recovery folder must be explicitly declared for the active report
+work; selecting it must not stage other work folders under `specs/`. Agents
+update its specification status or task checkboxes as work completes, so the
+end-session script publishes the current recovery state rather than creating
+progress updates only at session end.
 
 The `MEMORY.md` "End-of-session workflow" section is updated to match, and
 `SESSION_RESUME.md` is added to `.gitignore` and untracked with
