@@ -12,6 +12,12 @@ foreach ($required in @('-Target', 'Codex', 'Copilot', 'All', '-Force', 'powerbi
 if ($source -notmatch '\$Target\s*=\s*"All"') { throw 'Target default is not All.' }
 if ($source -notmatch 'Test-CopilotDestinations') { throw 'Copilot collision preflight is missing.' }
 if ($source -notmatch 'Test-CodexCapabilities') { throw 'Codex capability checks are missing.' }
+if ($source -notmatch 'Remove-OldInstallerBackups') { throw 'Installer backup retention cleanup is missing.' }
+if ($source -notmatch 'older than \$RetentionDays days') { throw 'Backup cleanup output does not describe the retention boundary.' }
+if ($source -notmatch 'Assert-CodexMcpOwnership') { throw 'Codex MCP ownership preflight is missing.' }
+if ($source -notmatch "already exists and is not installer-owned; no Codex projection was modified") { throw 'Codex collision remediation is not explicit.' }
+if ($source -notmatch 'if \(\$existing\) \{') { throw 'ADOMD.NET reuse check is missing.' }
+if ($source -match 'if \(\$existing -and -not \$Force\)') { throw 'ADOMD.NET provisioning still reinstalls on -Force.' }
 if ($source -match 'Convert-AgentMarkdownToCodexToml') { throw 'Installer must not generate Codex agent adapters.' }
 if ($source -notmatch 'Test-AgentAdapterParity') { throw 'Checked-in Codex adapter parity validation is missing.' }
 & (Join-Path $repo 'scripts\validate-codex-catalog.ps1') -RepositoryPath $repo | Out-Null
@@ -141,6 +147,22 @@ try {
     if (-not (Get-ChildItem (Join-Path $allProfile '.codex\backups') -Directory -ErrorAction SilentlyContinue)) { throw 'Force update did not create a Codex backup.' }
     Write-Output 'Default and explicit All projections OK.'
 
+    # Backup retention is strict: old artifacts are removed, while an artifact
+    # newer than seven days remains available after the update.
+    $backupRoot = Join-Path $allProfile '.codex\backups'
+    $oldBackup = Join-Path $backupRoot 'old-fixture'
+    $currentBackup = Join-Path $backupRoot 'current-fixture'
+    New-Item -ItemType Directory -Path $oldBackup,$currentBackup -Force | Out-Null
+    $oldTime = (Get-Date).AddDays(-8)
+    $currentTime = (Get-Date).AddDays(-1)
+    (Get-Item $oldBackup).LastWriteTime = $oldTime
+    (Get-Item $currentBackup).LastWriteTime = $currentTime
+    $code = Invoke-IsolatedSetup -Profile $allProfile -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='fabric'; Force=$true; McpLauncher=$fakeMcpLauncher }
+    if ($code -ne 0) { throw 'Retention fixture update failed.' }
+    if (Test-Path $oldBackup) { throw 'Backup older than seven days was not removed.' }
+    if (-not (Test-Path $currentBackup)) { throw 'Current backup was removed by retention cleanup.' }
+    Write-Output 'Seven-day backup retention behavior OK.'
+
     # Non-force rerun must fail without deleting the existing projection.
     $code = Invoke-IsolatedSetup -Profile $codexProfile -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='fabric' }
     if ($code -eq 0) { throw 'Non-force Codex rerun unexpectedly succeeded.' }
@@ -185,6 +207,37 @@ try {
     if (-not (Test-Path (Join-Path $failureProfile '.copilot\extensions\fabric\skills\fabric-cli\SKILL.md'))) { throw 'Copilot did not remain usable after Codex failure.' }
     if ((Get-Content (Join-Path $codexRoot 'config.toml') -Raw) -notmatch 'user-owned') { throw 'Codex conflict configuration was overwritten.' }
     Write-Output 'Injected one-target failure behavior OK.'
+
+    # The canonical Power BI Modeling MCP collision is checked before Codex
+    # projection, so a user-owned entry and the existing Codex assets remain
+    # untouched when setup refuses the collision.
+    $canonicalConflictProfile = New-TestProfile; $profiles += $canonicalConflictProfile
+    $canonicalRoot = Join-Path $canonicalConflictProfile '.codex'
+    New-Item -ItemType Directory -Path $canonicalRoot -Force | Out-Null
+    $canonicalConfig = "[mcp_servers.powerbi-modeling-mcp]`ncommand = 'user-owned'`nargs = []`n"
+    Set-Content -LiteralPath (Join-Path $canonicalRoot 'config.toml') -Value $canonicalConfig -Encoding UTF8
+    $code = Invoke-IsolatedSetup -Profile $canonicalConflictProfile -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='powerbi'; McpLauncher=$fakeMcpLauncher; McpProvisioner=$fakeMcpProvisioner }
+    if ($code -eq 0) { throw 'Canonical user-owned Codex MCP collision did not fail.' }
+    if (-not (Test-Path (Join-Path $canonicalRoot 'config.toml'))) { throw 'Canonical collision removed the user config.' }
+    if ((Get-Content (Join-Path $canonicalRoot 'config.toml') -Raw) -notmatch 'user-owned') { throw 'Canonical collision configuration was overwritten.' }
+    if (Test-Path (Join-Path $canonicalRoot 'powerbi-agentic-plugins.manifest.json')) { throw 'Canonical collision created a Codex projection before failing.' }
+    Write-Output 'Canonical Codex MCP ownership behavior OK.'
+
+    # A pre-marker installer registration with the exact pinned legacy npx
+    # signature is migrated by -Force instead of being treated as a collision.
+    $legacyProfile = New-TestProfile; $profiles += $legacyProfile
+    $legacyRoot = Join-Path $legacyProfile '.codex'
+    New-Item -ItemType Directory -Path $legacyRoot -Force | Out-Null
+    @(
+        '[mcp_servers.powerbi-modeling-mcp]'
+        'command = "npx"'
+        'args = ["-y", "@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0", "--start"]'
+    ) | Set-Content (Join-Path $legacyRoot 'config.toml') -Encoding UTF8
+    $code = Invoke-IsolatedSetup -Profile $legacyProfile -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='powerbi'; Force=$true; McpLauncher=$fakeMcpLauncher; McpProvisioner=$fakeMcpProvisioner }
+    if ($code -ne 0) { throw 'Legacy installer-owned Codex MCP entry was not migrated.' }
+    $legacyResult = Get-Content (Join-Path $legacyRoot 'config.toml') -Raw
+    if ($legacyResult -notmatch '# BEGIN powerbi-agentic-plugins: powerbi-modeling-mcp' -or $legacyResult -notmatch '(?i)npx-cli\.js') { throw 'Legacy Codex MCP entry was not replaced with the owned direct-Node projection.' }
+    Write-Output 'Legacy Codex MCP migration behavior OK.'
 
     # A user-owned FabricIQ entry is preserved as a warning while the rest of
     # the Codex projection and MCP registrations continue.
@@ -242,7 +295,8 @@ try {
     if ($code -ne 0) { throw 'Hosted HTTP/local stdio mismatch incorrectly blocked Copilot setup.' }
     if ((Get-Content (Join-Path $hostedCopilotRoot 'mcp.json') -Raw) -notmatch 'example.invalid') { throw 'Hosted HTTP profile entry was overwritten.' }
     $projectedCopilotMcp = Get-Content (Join-Path $hostedProfile '.copilot\installed-plugins\powerbi-agentic-plugins\powerbi\.mcp.json') -Raw | ConvertFrom-Json
-    if ($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.command -ne 'npx.cmd') { throw 'Copilot Windows projection does not use npx.cmd.' }
+    if ([IO.Path]::GetFileName($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.command) -ne 'node.exe') { throw 'Copilot Windows projection does not use node.exe.' }
+    if (-not (@($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.args) | Where-Object { [IO.Path]::GetFileName($_) -eq 'npx-cli.js' })) { throw 'Copilot Windows projection does not use npm npx-cli.js.' }
     if (@($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.args) -notcontains '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0') { throw 'Copilot Windows projection does not use the pinned x64 package.' }
     if (@($projectedCopilotMcp.mcpServers.'powerbi-modeling-mcp'.args) -notcontains '--start') { throw 'Copilot Windows projection is missing the platform package start mode.' }
     Write-Output 'Hosted/local transport mismatch and Copilot Windows projection OK.'
@@ -251,22 +305,25 @@ try {
     $code = Invoke-IsolatedSetup -Profile $projectedCodex -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='powerbi'; McpLauncher=$fakeMcpLauncher; McpProvisioner=$fakeMcpProvisioner }
     if ($code -ne 0) { throw 'Power BI Codex projection failed.' }
     $codexMcp = Get-Content (Join-Path $projectedCodex '.codex\config.toml') -Raw
-    if ($codexMcp -notmatch 'command = "npx.cmd"' -or $codexMcp -notmatch '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0' -or $codexMcp -notmatch '--start') { throw 'Codex Windows projection does not contain the pinned x64 command.' }
+    if ($codexMcp -notmatch '(?i)command = ".*node\.exe"' -or $codexMcp -notmatch '(?i)npx-cli\.js' -or $codexMcp -notmatch '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0' -or $codexMcp -notmatch '--start') { throw 'Codex Windows projection does not contain the direct Node pinned x64 command.' }
+    if ($codexMcp -match '(?i)command = ".*Program Files' -and $codexMcp -notmatch '(?i)command = ".*\\\\Program Files\\\\nodejs\\\\node\.exe"') { throw 'Codex Windows projection did not TOML-escape backslashes in the command path.' }
     Write-Output 'Codex Windows projection OK.'
 
-    # Codex can resolve npx through its Windows command environment. Treat a
-    # manually repaired npx entry as equivalent to the generated npx.cmd form.
+    # A manually repaired direct Node entry remains equivalent to the generated
+        # Windows projection.
     $manualCodex = New-TestProfile; $profiles += $manualCodex
     $manualCodexRoot = Join-Path $manualCodex '.codex'
     New-Item -ItemType Directory -Path $manualCodexRoot -Force | Out-Null
-    @"
-[mcp_servers.powerbi-modeling-mcp]
-command = "npx"
-args = ["-y", "@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0", "--start"]
-"@ | Set-Content (Join-Path $manualCodexRoot 'config.toml') -Encoding UTF8
+    $nodeCommand = (Get-Command node.exe -ErrorAction Stop).Source
+    $npxCli = Join-Path (Split-Path -Parent $nodeCommand) 'node_modules\npm\bin\npx-cli.js'
+    @(
+        '[mcp_servers.powerbi-modeling-mcp]'
+        "command = `"$nodeCommand`""
+        "args = [`"$npxCli`", `"-y`", `"@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0`", `"--start`"]"
+    ) | Set-Content (Join-Path $manualCodexRoot 'config.toml') -Encoding UTF8
     $code = Invoke-IsolatedSetup -Profile $manualCodex -Arguments @{ RepositoryPath=$repo; Target='Codex'; PluginName='powerbi'; McpLauncher=$fakeMcpLauncher; McpProvisioner=$fakeMcpProvisioner }
-    if ($code -ne 0) { throw 'Codex rejected an equivalent manually repaired npx MCP entry.' }
-    Write-Output 'Codex npx/npx.cmd equivalence behavior OK.'
+    if ($code -ne 0) { throw 'Codex rejected an equivalent manually repaired direct Node MCP entry.' }
+    Write-Output 'Codex direct Node equivalence behavior OK.'
 } finally {
     foreach ($profile in $profiles) {
         if (Test-Path $profile) { Remove-Item -LiteralPath $profile -Recurse -Force -ErrorAction SilentlyContinue }

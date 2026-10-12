@@ -8,8 +8,8 @@ description: >-
   table, column, or measure and where a field is used across local PBIP
   reports and semantic models; and scanning local PBIP report references
   before model entity renames or removals. Use `powerbi-report-design` for
-  open-ended design and `powerbi-report-planning` for requirements and build
-  sequencing. Triggers: "edit PBIR", "create Power BI report page", "format
+  open-ended design and `powerbi-report-planning` for requirements and planning
+  approval. Triggers: "edit PBIR", "create Power BI report page", "format
   report visual", "validate Power BI report", "reload Desktop screenshot",
   "scaffold from template", "BPA report", "scan report references", "find all
   references", "where is this field used", "find reports using", "scan PBIP
@@ -43,7 +43,8 @@ definition files in the **PBIR (Power BI Report)** format used by **PBIP
 
 ### PREFER
 
-- Start from an approved `Design Brief:` or `_brief/report-spec.md` for greenfield report builds.
+- For greenfield report builds, start from the embedded `Design Brief:` block in the
+  approved architect specification.
 - Route visual-design uncertainty to `powerbi-report-design` before writing files.
 - For semantic model metadata or model-side changes, use a semantic-model authoring skill, Power BI Modeling MCP, or local TMDL files when available.
 - Before renaming or removing a table, column, or measure in a local PBIP project, run the bundled reference scanner and review every TMDL and PBIR hit.
@@ -97,9 +98,9 @@ for how to classify and report multi-term scan results.
 0. **Plan/design routing** → for greenfield builds, read `powerbi-report-planning`
    first; for theming, visual style, layout, redesigns, or critiques, read
    `powerbi-report-design`. Return here for PBIR mechanics. Before authoring,
-   use the `Design Brief:` yaml block from `_brief/report-spec.md` (or an
-   approved inline `Design Brief:` block in the conversation) as implementation
-   context.
+   use the `Design Brief:` YAML block embedded in the approved architect
+   specification as implementation context. Direct, surgical authoring requests
+   may instead provide an approved inline Design Brief.
 1. **Set up/update CLIs** → before first use, confirm `powerbi-report-author`
    and the global `powerbi-desktop` command are available; see
    [CLI Setup](#cli-setup).

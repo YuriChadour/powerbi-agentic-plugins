@@ -1,22 +1,12 @@
 ---
 name: skill-merge-planner
 description: >-
-  Compares this repo's plugin skills against an external/reference skill
-  collection (e.g. skills-for-fabric-1's powerbi-authoring plugin), scores each
-  matched skill pair against a 7-dimension Skill-authoring quality rubric,
-  identifies cost-effective content to graft from either side, and generates a
-  structured merge/migration plan saved under plans/name.plan.md. Use when
-  the user wants to: (1) check whether local skills have drifted from an
-  upstream/reference skill collection, (2) rate skill authoring quality
-  (conciseness, progressive disclosure, duplication, degrees-of-freedom,
-  description quality, version hygiene), (3) decide which skill should become
-  the "base" in a merge, (4) produce a phased implementation plan before
-  actually copying/merging files. Does NOT check plugin version numbers or
-  marketplace releases — this repo tracks skills as a maintained fork, not a
-  marketplace subscriber; use a dedicated update-check mechanism for that if
-  one is ever wired up. Triggers: "compare skills to upstream", "generate
-  merge plan", "check skill drift", "rate skill quality vs external", "should
-  we adopt X as base", "sync skills plan".
+  Compare local plugin skills with an external reference collection, score matched
+  pairs against the skill-authoring rubric, identify useful content to merge, and
+  create a phased migration plan under plans/. Use when the user asks to compare
+  skills to upstream, check skill drift, rate skill quality, choose a merge base,
+  or generate a skill merge plan. This skill does not check marketplace versions
+  or perform the file merge.
 metadata:
   version: 0.2.0
 ---

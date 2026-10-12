@@ -15,9 +15,9 @@
     configures MCP servers, and installs the Power BI Desktop Bridge CLI
     (@microsoft/powerbi-desktop-bridge-cli) when the powerbi plugin is targeted.
     
-    Backups are timestamped and stored under
-    $USERPROFILE\.copilot\backups\<yyyyMMdd-HHmmss>, so previous plugin versions
-    can be restored manually if needed.
+    Backups are timestamped and stored under the selected target's backup folder.
+    Artifacts older than seven days are removed before a new backup is created;
+    current backups can be restored manually if needed.
     
 .PARAMETER RepositoryPath
     Path to the local powerbi-agentic-plugins repository.
@@ -210,6 +210,7 @@ function Test-SourceCatalog {
 
 function Backup-CodexState {
     param([string]$CodexRoot, [string[]]$Plugins, [bool]$Force)
+    Remove-OldInstallerBackups -BackupRoot (Join-Path $CodexRoot 'backups') | Out-Null
     $manifestPath = Join-Path $CodexRoot "powerbi-agentic-plugins.manifest.json"
     $hasOwnedState = Test-Path $manifestPath
     if ($hasOwnedState -and -not $Force) { throw "Codex installation already exists at $CodexRoot. Re-run with -Force to update it." }
@@ -228,6 +229,26 @@ function Backup-CodexState {
     if (Test-Path $agentsPath) { Copy-Item $agentsPath (Join-Path $backupRoot "agents") -Recurse -Force }
     Write-Success "Codex backup created: $backupRoot"
     return $backupRoot
+}
+
+function Remove-OldInstallerBackups {
+    param(
+        [Parameter(Mandatory)][string]$BackupRoot,
+        [int]$RetentionDays = 7,
+        [datetime]$ReferenceTime = (Get-Date)
+    )
+
+    if (-not (Test-Path -LiteralPath $BackupRoot -PathType Container)) { return 0 }
+    $cutoff = $ReferenceTime.AddDays(-$RetentionDays)
+    $removed = 0
+    foreach ($artifact in @(Get-ChildItem -LiteralPath $BackupRoot -Force -ErrorAction SilentlyContinue)) {
+        if ($artifact.LastWriteTime -lt $cutoff) {
+            Remove-Item -LiteralPath $artifact.FullName -Recurse -Force
+            $removed++
+        }
+    }
+    if ($removed -gt 0) { Write-Info "Removed $removed installer backup artifact(s) older than $RetentionDays days from $BackupRoot" }
+    return $removed
 }
 
 function Copy-CodexSourceTree {
@@ -273,6 +294,7 @@ $body
 function Install-CodexProjection {
     param([string]$RepositoryPath, [string[]]$Plugins, [bool]$Force)
     $codexRoot = Get-CodexRoot
+    Assert-CodexMcpOwnership -RepositoryPath $RepositoryPath -Plugins $Plugins
     $backupPath = Backup-CodexState -CodexRoot $codexRoot -Plugins $Plugins -Force $Force
     $skillsRoot = Join-Path $codexRoot "skills"
     $agentsRoot = Join-Path $codexRoot "agents"
@@ -355,7 +377,24 @@ function Remove-CodexMcpBlock {
 
     $escapedName = [regex]::Escape($Name)
     $pattern = "(?ms)^\# BEGIN powerbi-agentic-plugins: $escapedName\s*\r?\n\[mcp_servers\.$escapedName\].*?^\# END powerbi-agentic-plugins: $escapedName\s*\r?\n?"
-    return [regex]::Replace($Config, $pattern, '')
+    $updated = [regex]::Replace($Config, $pattern, '')
+    if ($updated -ne $Config) { return $updated }
+
+    # Older installer versions emitted the canonical block without ownership
+    # markers. This fallback is used only after the exact legacy signature has
+    # passed Test-CodexLegacyMcpDefinition.
+    $legacyPattern = "(?ms)^\[mcp_servers\.$escapedName\].*?(?=^\[mcp_servers\.|\z)"
+    return [regex]::Replace($Config, $legacyPattern, '')
+}
+
+function Test-CodexLegacyMcpDefinition {
+    param([string]$Name, [string]$ServerBlock)
+
+    if ($Name -ne $Script:McpCanonicalName -and $Script:McpLegacyNames -notcontains $Name) { return $false }
+    $hasPinnedPackage = $ServerBlock -match [regex]::Escape($Script:PowerBiMcpGenericPackage) -or
+        $ServerBlock -match [regex]::Escape($Script:PowerBiMcpWindowsPackage)
+    return $hasPinnedPackage -and $ServerBlock -match '(?m)^command\s*=\s*["'']npx(?:\.cmd)?["'']\s*$' -and
+        $ServerBlock -match [regex]::Escape('--start')
 }
 
 function Register-CodexMcp {
@@ -375,7 +414,8 @@ function Register-CodexMcp {
             }
             $serverBlock = [regex]::Match($existing, "(?ms)^\[mcp_servers\.$([regex]::Escape($name))\].*?(?=^\[|\z)").Value
             $isInstallerOwned = $existing -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$" -or
-                $serverBlock -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$"
+                $serverBlock -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$" -or
+                (Test-CodexLegacyMcpDefinition -Name $name -ServerBlock $serverBlock)
             if (-not $isInstallerOwned -and $name -eq 'FabricIQ') {
                 Write-Warning-Custom "Codex MCP server 'FabricIQ' already exists and is not installer-owned; preserving the existing entry and skipping FabricIQ registration. Other Codex plugins and MCP servers will continue installing."
                 continue
@@ -412,8 +452,8 @@ function Register-CodexMcp {
             }
             $block += "# END powerbi-agentic-plugins: $name`n"
         } else {
-            $serverArgs = (@($definition.Value.args) | ForEach-Object { '"' + ([string]$_ -replace '"', '\\"') + '"' }) -join ', '
-            $command = ([string]$definition.Value.command) -replace '"', '\\"'
+            $serverArgs = (@($definition.Value.args) | ForEach-Object { '"' + ([string]$_ -replace '\\', '\\' -replace '"', '\\"') + '"' }) -join ', '
+            $command = ([string]$definition.Value.command) -replace '\\', '\\' -replace '"', '\\"'
             $block = "`n# BEGIN powerbi-agentic-plugins: $name`n[mcp_servers.$name]`ncommand = `"$command`"`nargs = [$serverArgs]`n# END powerbi-agentic-plugins: $name`n"
         }
         $blocks += $block
@@ -426,9 +466,40 @@ function Register-CodexMcp {
     return @($registeredNames)
 }
 
+function Assert-CodexMcpOwnership {
+    param([string]$RepositoryPath, [string[]]$Plugins)
+
+    $configPath = Join-Path (Get-CodexRoot) 'config.toml'
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return $true }
+    $existing = Get-Content -LiteralPath $configPath -Raw
+    foreach ($definition in @(Get-ProjectedMcpDefinitions -RepositoryPath $RepositoryPath -Plugins $Plugins)) {
+        $name = $definition.Name
+        $existingDefinition = Get-CodexMcpDefinition -Config $existing -Name $name
+        if (-not $existingDefinition -or (Test-McpDefinitionsEquivalent -LeftName $name -Left $existingDefinition.Value -RightName $name -Right $definition.Value)) { continue }
+        if ($name -eq 'FabricIQ') { continue }
+        $serverBlock = [regex]::Match($existing, "(?ms)^\[mcp_servers\.$([regex]::Escape($name))\].*?(?=^\[|\z)").Value
+        $isInstallerOwned = $existing -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$" -or
+            $serverBlock -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($name))\s*$" -or
+            (Test-CodexLegacyMcpDefinition -Name $name -ServerBlock $serverBlock)
+        if (-not $isInstallerOwned) {
+            throw "Codex MCP server '$name' already exists and is not installer-owned; no Codex projection was modified. Remove or rename the user-owned entry, then rerun setup."
+        }
+    }
+    foreach ($legacyName in $Script:McpLegacyNames) {
+        $legacyDefinition = Get-CodexMcpDefinition -Config $existing -Name $legacyName
+        if (-not $legacyDefinition) { continue }
+        $legacyOwned = $existing -match "(?m)^\# BEGIN powerbi-agentic-plugins: $([regex]::Escape($legacyName))\s*$"
+        if (-not $legacyOwned) {
+            throw "Codex MCP legacy alias '$legacyName' already exists and is not installer-owned; no Codex projection was modified. Remove or rename the user-owned entry, then rerun setup."
+        }
+    }
+    return $true
+}
+
 function Enable-CodexGitMetadataWrites {
     $codexRoot = Get-CodexRoot
     $configPath = Join-Path $codexRoot "config.toml"
+    Remove-OldInstallerBackups -BackupRoot (Join-Path $codexRoot 'backups') | Out-Null
     $backupRoot = Join-Path (Join-Path $codexRoot "backups") (Get-Date -Format 'yyyyMMdd-HHmmss')
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
     if (Test-Path $configPath) {
@@ -491,6 +562,21 @@ $Script:McpLegacyNames = @('powerbi-modeling')
 $Script:PowerBiMcpGenericPackage = '@microsoft/powerbi-modeling-mcp@1.0.0'
 $Script:PowerBiMcpWindowsPackage = '@microsoft/powerbi-modeling-mcp-win32-x64@1.0.0'
 $Script:McpInitializeTimeoutMilliseconds = 30000
+
+function Get-WindowsNpxLauncher {
+    $node = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $node) {
+        throw 'Node.js was not found. Install Node.js 18+ and ensure node.exe is on PATH.'
+    }
+    $npxCli = Join-Path (Split-Path -Parent $node.Source) 'node_modules\npm\bin\npx-cli.js'
+    if (-not (Test-Path -LiteralPath $npxCli)) {
+        throw "npm npx-cli.js was not found beside node.exe: $npxCli"
+    }
+    return [PSCustomObject]@{
+        Command = $node.Source
+        NpxCli = $npxCli
+    }
+}
 
 function Get-McpCanonicalName {
     param([Parameter(Mandatory)][string]$Name)
@@ -566,8 +652,9 @@ function Get-McpHostDefinition {
             if (-not [Environment]::Is64BitOperatingSystem) {
                 throw "Power BI Modeling MCP requires Windows x64; this host is not x64. Use a Windows x64 host or select a target without Power BI Modeling MCP."
             }
-            if ($projected.PSObject.Properties['command']) { $projected.command = 'npx.cmd' } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue 'npx.cmd' }
-            if ($projected.PSObject.Properties['args']) { $projected.args = @('-y', $Script:PowerBiMcpWindowsPackage, '--start') } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @('-y', $Script:PowerBiMcpWindowsPackage, '--start') }
+            $launcher = Get-WindowsNpxLauncher
+            if ($projected.PSObject.Properties['command']) { $projected.command = $launcher.Command } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue $launcher.Command }
+            if ($projected.PSObject.Properties['args']) { $projected.args = @($launcher.NpxCli, '-y', $Script:PowerBiMcpWindowsPackage, '--start') } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @($launcher.NpxCli, '-y', $Script:PowerBiMcpWindowsPackage, '--start') }
         } else {
             if ($projected.PSObject.Properties['command']) { $projected.command = [string]$Definition.command } else { $projected | Add-Member -NotePropertyName command -NotePropertyValue ([string]$Definition.command) }
             if ($projected.PSObject.Properties['args']) { $projected.args = @($Definition.args | ForEach-Object { [string]$_ }) } else { $projected | Add-Member -NotePropertyName args -NotePropertyValue @($Definition.args | ForEach-Object { [string]$_ }) }
@@ -646,17 +733,24 @@ function Test-McpPackageProvisioning {
     )
 
     $package = if ((Test-WindowsHost) -and [Environment]::Is64BitOperatingSystem) { $Script:PowerBiMcpWindowsPackage } else { $Script:PowerBiMcpGenericPackage }
-    $commandName = if (Test-WindowsHost) { 'npx.cmd' } else { 'npx' }
-    $command = Get-Command $commandName -ErrorAction SilentlyContinue
+    $launcher = if (Test-WindowsHost) { Get-WindowsNpxLauncher } else { $null }
+    $commandName = if (Test-WindowsHost) { $launcher.Command } else { 'npx' }
+    $command = if (Test-WindowsHost) { $launcher } else { Get-Command $commandName -ErrorAction SilentlyContinue }
     if (-not $command) {
-        throw "Power BI Modeling MCP package provisioning failed for ${package}: $commandName was not found. Install Node.js 18+ and ensure npx is on PATH."
+        throw "Power BI Modeling MCP package provisioning failed for ${package}: $commandName was not found. Install Node.js 18+ and ensure Node.js and npx are on PATH."
     }
     if ($Provisioner) {
         $result = & $Provisioner $package
         if ($result -eq $false) { throw "Power BI Modeling MCP package provisioning failed for $package. Run npx --yes --package $package node -e 'process.exit(0)' manually after fixing Node.js or network access." }
         return $true
     }
-    $result = Invoke-McpProcess -FilePath $command.Source -Arguments @('--yes', '--package', $package, 'node', '-e', 'process.exit(0)') -TimeoutMilliseconds $Script:McpInitializeTimeoutMilliseconds
+    $provisioningArguments = if (Test-WindowsHost) {
+        @($launcher.NpxCli, '--yes', '--package', $package, 'node', '-e', 'process.exit(0)')
+    } else {
+        @('--yes', '--package', $package, 'node', '-e', 'process.exit(0)')
+    }
+    $provisioningCommand = if (Test-WindowsHost) { $launcher.Command } else { $command.Source }
+    $result = Invoke-McpProcess -FilePath $provisioningCommand -Arguments $provisioningArguments -TimeoutMilliseconds $Script:McpInitializeTimeoutMilliseconds
     if ($result.ExitCode -ne 0) {
         $details = (($result.StandardError, $result.StandardOutput | Where-Object { $_ }) -join ' ').Trim()
         throw "Power BI Modeling MCP package provisioning failed for $package (exit $($result.ExitCode)): $details. Run npx --yes --package $package node -e 'process.exit(0)' manually after fixing Node.js or network access."
@@ -851,6 +945,7 @@ function Backup-ExistingPlugins {
     )
 
     Write-Header "Backing Up Existing Plugins"
+    Remove-OldInstallerBackups -BackupRoot (Join-Path $env:USERPROFILE '.copilot\backups') | Out-Null
 
     $backupRoot = Join-Path $env:USERPROFILE ".copilot\backups\$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     $anyBackedUp = $false
@@ -1275,7 +1370,7 @@ function Register-CopilotCLI {
         
         # Try to list plugins to verify
         Write-Info "Verifying plugins are discoverable..."
-        $listOutput = copilot /plugin list 2>&1
+        $listOutput = copilot plugin list 2>&1
         Write-Success "GitHub Copilot CLI registration verified ✓"
         return $true
     } catch {
@@ -1458,8 +1553,13 @@ function Test-AdomdClientPresent {
 
     foreach ($candidate in $candidates) {
         $dll = Join-Path $candidate "Microsoft.AnalysisServices.AdomdClient.dll"
-        if (Test-Path $dll) {
+        if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { continue }
+        try {
+            if ((Get-Item -LiteralPath $dll).Length -le 0) { continue }
+            [Reflection.AssemblyName]::GetAssemblyName($dll) | Out-Null
             return $candidate
+        } catch {
+            continue
         }
     }
 
@@ -1474,7 +1574,7 @@ function Install-AdomdClient {
     Write-Header "Provisioning ADOMD.NET Client Library"
 
     $existing = Test-AdomdClientPresent
-    if ($existing -and -not $Force) {
+    if ($existing) {
         Write-Success "ADOMD.NET client already available ✓ ($existing)"
         return $true
     }
@@ -1587,7 +1687,7 @@ function Show-NextSteps {
     
     Write-Info "Next steps:"
     Write-Host "  1. Restart GitHub Copilot CLI or VS Code to load plugins" -ForegroundColor $ColorInfo
-    Write-Host "  2. For Copilot CLI: run 'copilot /plugin list' to verify" -ForegroundColor $ColorInfo
+    Write-Host "  2. For Copilot CLI: run 'copilot plugin list' to verify" -ForegroundColor $ColorInfo
     Write-Host "  3. For VS Code: enable 'chat.useAgentSkills' in settings (Ctrl+,)" -ForegroundColor $ColorInfo
     Write-Host "  4. Read DEVELOPER_SETUP.md for team workflows" -ForegroundColor $ColorInfo
     Write-Host "  5. Read CONTRIBUTING_TEAM.md for contribution guidelines" -ForegroundColor $ColorInfo
@@ -1685,7 +1785,7 @@ try {
         Write-Info "$($result.Target): plugins=$($result.Plugins); skills=$($result.Skills); agents=$($result.Agents); MCP=$($result.MCP)"
         if ($result.Backup) { Write-Info "$($result.Target) backup: $($result.Backup)" }
     }
-    Write-Info "Restart the selected harness(es) to discover the projection. Verify Codex with scripts\validate-codex-projection.ps1 or Copilot with copilot /plugin list."
+    Write-Info "Restart the selected harness(es) to discover the projection. Verify Codex with scripts\validate-codex-projection.ps1 or Copilot with copilot plugin list."
     if ($Target -eq "All" -and $targetResults.Count -lt 2) { exit 1 }
     Write-Success "Setup complete for $Target. Restart the selected harness(es) to discover the projection."
     exit 0

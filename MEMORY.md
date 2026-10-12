@@ -1,22 +1,75 @@
 # Project Memory
 
-## Codex agent adapters
+> Repository memory pointer: `/memories/repo/` should reference only this
+> file for durable project facts. Route records and local session state remain
+> in their own records.
 
-- Codex projects all packaged agent adapters into the shared user directory `%USERPROFILE%\.codex\agents`.
-- Every checked-in agent adapter MUST therefore have a globally unique TOML `name` and filename across all plugins. Matching the filename to the `name` is the repository convention.
-- Before adding an adapter, check the complete plugin catalog for name and filename collisions. Do not rely on a plugin directory as a Codex namespace.
-- Adapter parity validation must normalize CRLF/LF line endings and trailing whitespace before comparing `developer_instructions`; otherwise Windows checkouts can be falsely reported as stale.
+## Cold-start orientation
+
+This repository is a Microsoft Fabric development plugin collection organized
+as **plugins → agents → skills**. Plugins live under `plugins/` and are grouped
+by workload. Shared implementation guidance lives in `common/`; durable route
+records live in `openspec/changes/`, Power BI `specs/`, and
+`TROUBLESHOOTING.md`.
+
+Use the repository `AGENTS.md` for operating constraints and
+`DEVELOPER_SETUP.md` for setup and deployment. Use the relevant plugin skill
+before changing a Fabric, Power BI, DevOps, or migration artifact. Preserve
+parameterization, externalize secrets, and validate generated definitions
+before handoff.
+
+## Durable project conventions
+
+- Fabric work follows Bronze → Silver → Gold medallion boundaries, with Delta
+  Lake tables for Lakehouse storage.
+- Power BI new-report work follows approved business planning, canonical
+  architecture, then explicit implementation. Existing report, semantic-model,
+  and management work may use their specialist routes directly.
+- Jira work is user-routed after branch setup. Jira metadata is context only;
+  it is not an architectural classification.
+- Investigations use one ticket section in `TROUBLESHOOTING.md`, preserve
+  evidence and blockers, and extract confirmed reusable guidance separately.
+- `MEMORY.md` contains only durable, vendor-neutral facts that a new harness
+  can understand without conversation history. It never contains ticket
+  status, active changes, branches, or next steps.
+
+## Agent adapter conventions
+
+- Agent adapters packaged into shared harness directories require globally
+  unique names and filenames across all plugins.
+- Adapter parity checks normalize line endings and trailing whitespace before
+  comparing developer instructions.
+- Cross-platform process launchers must resolve executable paths before process
+  startup when the host cannot resolve shell shims reliably.
+- User-owned profile entries are preserved; repository-managed projections may
+  report stale conflicts for explicit cleanup rather than deleting unrelated
+  configuration.
+
+## Record roles and recovery
+
+| Record | Role | Tracked |
+|---|---|---|
+| `MEMORY.md` | Durable, vendor-neutral project facts | yes |
+| `SESSION_RESUME.md` | Last commit, validation, current state, next resume point | no |
+| `TROUBLESHOOTING.md` | Investigation history and shared reusable guidance | yes |
+| Route recovery record | Planned work and progress markers | yes |
+| Jira | Ticket status and findings comments | external |
+
+Route recovery records are the Power BI `specs/<JIRA>-<slug>/` folder, the
+Fabric `openspec/changes/<JIRA>-<slug>/` change, or the matching ticket section
+in `TROUBLESHOOTING.md`. Agents update those records as work completes;
+`SESSION_RESUME.md` is convenient but never required for recovery.
 
 ## End-of-session workflow
 
-- Update `MEMORY.md` and `SESSION_RESUME.md` before publishing session state.
-- Run `scripts/end-session.ps1` with the active OpenSpec change. It validates OpenSpec, reports unchecked tasks without marking them complete, stages only declared handoff files, commits, pushes the Jira branch, creates a PR targeting `DEV`, and prints a Jira-ready update.
-- Post the generated commit/PR summary through the configured Jira workflow and transition the ticket only when the actual Jira transition is available.
+Run `scripts/end-session.ps1` with the active OpenSpec change and the exact
+publishable files. It validates OpenSpec and whitespace, reports unchecked
+tasks without marking them complete, stages only `MEMORY.md`, declared files
+under the active OpenSpec change, and an explicitly selected Power BI
+`specs/<JIRA>-<slug>/` recovery folder, then commits. Use `-ResumePath` only
+for the local handoff; it is ignored, never staged, and is updated after the
+commit before push, Jira-comment, or PR handling.
 
-## Windows Power BI Modeling MCP
-
-- The source declaration remains portable and pinned to `@microsoft/powerbi-modeling-mcp@1.0.0` without `--start`.
-- Windows x64 Codex and Copilot projections use `npx.cmd -y @microsoft/powerbi-modeling-mcp-win32-x64@1.0.0 --start`.
-- MCP readiness must resolve `npx.cmd` to its absolute executable path before `ProcessStartInfo`; resolving only the literal command causes npm to look for missing repository-local modules.
-- Codex signature comparison treats `npx` and `npx.cmd` as equivalent on Windows when the package and arguments match.
-- User-owned Copilot profile entries in both `.copilot\mcp.json` (`servers`) and `.copilot\mcp-config.json` (`mcpServers`) are preserved; stale Power BI Modeling entries require manual cleanup.
+If no publishable changes are staged, the script reports that no publishable
+handoff changes exist and exits without committing. After the commit, offer
+the Jira summary comment and PR independently according to the Jira workflow.
