@@ -27,7 +27,10 @@
 
 ## 4. Validation and DEV drift lifecycle
 
-- [ ] 4.1 Extract the existing notebook, pipeline, and `.platform` semantic comparator into the reusable lifecycle boundary; verify local and trusted pipeline callers receive identical `PASS`, `DRIFT`, `ERROR`, and `UNKNOWN` results.
+- [ ] 4.1 Extract the existing notebook, pipeline, and `.platform` semantic comparator into the reusable lifecycle boundary; verify local and trusted pipeline callers receive identical per-item `MATCH`/`DRIFT`/`ERROR` and overall `PASS`/`DRIFT`/`ERROR`/`UNKNOWN` results.
+- [ ] 4.1a Normalize canonical marker-based notebook Python and exported IPYNB cells; verify serialization-only differences are ignored while cell type, order, and normalized source changes fail comparison.
+- [ ] 4.1b Normalize pipeline JSON and `.platform` metadata; verify only approved export identity fields and manifest-verified environment identity exceptions are ignored and all behavior changes fail comparison.
+- [ ] 4.1c Emit deterministic machine-readable reports on pass and failure; verify reports include item status, structured differences/errors, approved exceptions, workspace/source metadata, and preserved export paths without secrets.
 - [ ] 4.2 Implement read-only DEV export with temporary output, CLI/authentication checks, excluded-content protection, redacted diagnostics, and preserved report paths; verify missing CLI, workspace, item, or authentication fails closed.
 - [ ] 4.3 Add the trusted server-side DEV drift pipeline and required build-validation policy with a pinned Fabric CLI and protected read-only identity; verify local helper success cannot mark release readiness when the trusted stage is missing.
 - [ ] 4.4 Integrate the generic branch/Jira guard and DEV PR helper through a thin delegation hook; verify the helper contains no Fabric workspace, credential, parser, or deployment logic.
@@ -53,7 +56,7 @@
 
 ## 7. Tests, reference bootstrap, and rollout
 
-- [ ] 7.1 Add unit fixtures for manifest parsing, mixed-scope routing, cross-domain dependency validation, notebook comparison, pipeline comparison, platform exceptions, and excluded content; verify the focused test suite passes.
+- [ ] 7.1 Add unit fixtures for manifest parsing, mixed-scope routing, cross-domain dependency validation, notebook serialization and behavior comparison, pipeline normalization and behavior comparison, platform exceptions, unsupported/incomplete exports, excluded content, and deterministic reports; verify the focused test suite passes.
 - [ ] 7.2 Add integration fixtures for bootstrap idempotency, external-plan confirmation, DEV drift blocking, immutable artifact verification, protected deployment preflight, and rollback evidence; verify expected exit codes and reports.
 - [ ] 7.3 Run the orchestrator in report-only mode against the reference Analytics Reporting `cicd/` asset map; verify existing assets are inventoried before any generated replacement is proposed.
 - [ ] 7.4 Validate the generated secretless validation, trusted drift, shared release stages, DEV rehearsal, and PROD deployment templates on supported hosted/self-hosted agents; verify agent-pool authorization, protected-resource connectivity, and target guards before release.

@@ -107,12 +107,52 @@ The lifecycle SHALL validate manifests, source definitions, supported item types
 
 ### Requirement: Enforce DEV reconciliation and definition drift
 
-For a Fabric-scoped repository, the lifecycle SHALL provide a read-only DEV definition export and semantic comparison against canonical source before DEV PR creation and required DEV PR validation. Notebook cell behavior, pipeline behavior, and unexpected platform metadata differences SHALL block the gate; approved environment identity differences SHALL be reported as exceptions. The gate SHALL preserve export/report evidence and SHALL never import Git content into DEV. A trusted server-side DEV drift stage with the approved protected identity SHALL be required for release readiness; the local PR helper MAY provide an earlier equivalent check but SHALL not replace the server-side policy.
+For a Fabric-scoped repository, the lifecycle SHALL provide a read-only DEV definition export and semantic comparison against canonical source before DEV PR creation and required DEV PR validation. The comparator SHALL expose a stable per-item result of `MATCH`, `DRIFT`, or `ERROR` and an overall result of `PASS`, `DRIFT`, `ERROR`, or `UNKNOWN` to local and trusted callers. Notebook comparison SHALL preserve cell type, order, and normalized source while ignoring IDs, execution counts, outputs, and notebook-level execution metadata. Pipeline comparison SHALL parse JSON and ignore only approved export identity fields; activities, expressions, dependencies, connections, parameters, and references remain significant. Lakehouse `.platform` comparison SHALL allow only manifest-verified environment identity exceptions and SHALL report those exceptions explicitly. Unsupported types, missing canonical files, malformed exports, ambiguous locations, or incomplete exports SHALL fail closed rather than be skipped. The gate SHALL preserve export/report evidence and SHALL never import Git content into DEV. A trusted server-side DEV drift stage with the approved protected identity SHALL be required for release readiness; the local PR helper MAY provide an earlier equivalent check but SHALL not replace the server-side policy.
 
 #### Scenario: DEV definitions match source
 
 - **WHEN** all managed DEV items export successfully and executable definitions match the repository source
 - **THEN** the drift stage SHALL return `PASS` with a machine-readable report and allow the DEV PR workflow to continue
+
+#### Scenario: Notebook serialization-only differences exist
+
+- **WHEN** an exported notebook differs from canonical source only by line endings, trailing whitespace, final blank lines, cell IDs, execution counts, outputs, or notebook metadata
+- **THEN** the comparator SHALL return `MATCH` for that item and SHALL not report executable drift
+
+#### Scenario: Notebook behavior differs
+
+- **WHEN** a notebook cell is added, removed, reordered, changes type, or changes normalized source text
+- **THEN** the comparator SHALL return `DRIFT` for that item and identify the changed cell or source
+
+#### Scenario: Pipeline serialization-only differences exist
+
+- **WHEN** parsed pipeline JSON differs only in formatting or approved export identity fields such as IDs, etags, folder identity, or export timestamps
+- **THEN** the comparator SHALL return `MATCH` and record the normalized fields as approved exceptions
+
+#### Scenario: Pipeline behavior differs
+
+- **WHEN** pipeline activities, expressions, dependencies, connections, source/sink definitions, parameters, notebook references, lakehouse references, or policies differ
+- **THEN** the comparator SHALL return `DRIFT` and prevent the DEV workflow from continuing
+
+#### Scenario: Approved platform identity differs
+
+- **WHEN** a verified item mapping differs only in an approved `.platform` environment identity field such as `config.logicalId` or an approved empty-versus-null description
+- **THEN** the comparator SHALL return `MATCH` and report the metadata exception explicitly
+
+#### Scenario: Unexpected platform metadata differs
+
+- **WHEN** a `.platform` difference is outside the approved manifest-verified identity exceptions
+- **THEN** the comparator SHALL return `DRIFT` and prevent the DEV workflow from continuing
+
+#### Scenario: Comparator input is unsupported or incomplete
+
+- **WHEN** an item type is unsupported, a canonical file is missing, an export is malformed or incomplete, or an export location is ambiguous
+- **THEN** the comparator SHALL return `ERROR` or `UNKNOWN`, preserve diagnostics, and SHALL not silently skip the item
+
+#### Scenario: Drift report is emitted deterministically
+
+- **WHEN** comparison completes or fails for any managed scope
+- **THEN** the lifecycle SHALL write a machine-readable report containing workspace, source root, item, type, status, structured differences or errors, approved exceptions, overall result, and preserved export/report locations without secrets
 
 #### Scenario: DEV definitions drift from source
 

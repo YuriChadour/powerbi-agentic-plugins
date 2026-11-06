@@ -111,7 +111,7 @@ The release builder packages the merged revision, resolved manifest, dependency 
 
 ### 6. Keep the drift comparator as a reusable child stage
 
-The existing drift design remains the child implementation for notebook, pipeline, and `.platform` semantic comparison. The lifecycle consumes its `PASS`, `DRIFT`, `ERROR`, and `UNKNOWN` result contract and report. Drift is mandatory for Fabric-scoped DEV PRs but does not own release packaging, policy setup, or deployment.
+The existing drift design remains the child implementation for notebook, pipeline, and `.platform` semantic comparison. The lifecycle consumes its stable per-item `MATCH`, `DRIFT`, and `ERROR` results plus overall `PASS`, `DRIFT`, `ERROR`, and `UNKNOWN` result contract and report. Notebook handlers compare cell type/order/normalized source while ignoring serialization metadata; pipeline handlers parse JSON and ignore only approved export identity fields; `.platform` handlers allow only manifest-verified environment identity exceptions. Unsupported types, malformed or incomplete exports, missing canonical files, and ambiguous locations fail closed. Drift is mandatory for Fabric-scoped DEV PRs but does not own release packaging, policy setup, or deployment.
 
 **Alternative rejected:** duplicating drift logic in each generated pipeline. Duplication would cause local and server-side validation to disagree and make normalization fixes unsafe to roll out.
 
