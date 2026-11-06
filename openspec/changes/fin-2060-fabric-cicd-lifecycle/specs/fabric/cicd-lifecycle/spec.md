@@ -1,17 +1,17 @@
 ## Purpose
 
-Establishes a reusable, idempotent Fabric CI/CD lifecycle for a new or existing repository, from scope discovery and validation through DEV drift control, immutable release packaging, protected deployment, and operational evidence.
+Establishes a reusable, idempotent Fabric CI/CD lifecycle for a new or existing repository, from scope discovery and validation through DEV authoring and Git review, immutable release packaging, protected deployment, and operational evidence.
 
 ## ADDED Requirements
 
 ### Requirement: Discover and classify the repository delivery scope
 
-The capability SHALL inspect the repository and identify Fabric source roots, Power BI source roots, existing CI/CD assets, target branches, configured managed items, and any Fabric Git connection state before proposing changes. It SHALL classify the repository as Fabric-only, Power BI-only, mixed, or unconfigured and SHALL surface missing or ambiguous inputs before bootstrap. When Fabric Git reconciliation is in scope, it SHALL record the initial synchronization direction, result, source revision, and target branch before enabling promotion.
+The capability SHALL inspect the repository and identify Fabric source roots, Power BI source roots, existing CI/CD assets, target branches, configured managed items, and any Fabric Git connection state before proposing changes. It SHALL classify the repository as Fabric-only, Power BI-only, mixed, or unconfigured and SHALL surface missing or ambiguous inputs before bootstrap. When Fabric Git synchronization is in scope, it SHALL record the initial synchronization direction, result, source revision, and target branch before enabling promotion.
 
 #### Scenario: New Fabric repository is discovered
 
 - **WHEN** a repository contains Fabric source items but no complete CI/CD contract
-- **THEN** the capability SHALL produce a bootstrap plan identifying the source root, candidate managed items, DEV/PROD workspace inputs, and required CI/CD assets
+- **THEN** the capability SHALL produce a bootstrap plan identifying the source root, candidate managed items, distinct DEV/TEST/PROD workspace inputs, and required CI/CD assets
 
 #### Scenario: Existing CI/CD implementation is discovered
 
@@ -30,12 +30,12 @@ The capability SHALL inspect the repository and identify Fabric source roots, Po
 
 #### Scenario: Fabric Git synchronization evidence is missing
 
-- **WHEN** the DEV workspace is connected to Git but the initial synchronization direction, result, or source revision is not recorded
-- **THEN** the capability SHALL report the missing evidence and SHALL not mark Fabric reconciliation or promotion as ready
+- **WHEN** Fabric Git integration is used and its initial synchronization direction, result, or source revision is not recorded
+- **THEN** the capability SHALL report the missing evidence and SHALL not mark Fabric synchronization or promotion as ready
 
 ### Requirement: Bootstrap a repository CI/CD contract
 
-After an approved bootstrap action, the capability SHALL create or update the repository-local CI/CD contract needed to validate and release the declared scope. The contract SHALL include managed-item mappings, source roots, dependencies, logical IDs, data exclusions, pinned runtime/dependency inputs, validation entry points, release packaging inputs, and explicit Power BI scope boundaries. Bootstrap SHALL be idempotent and SHALL show a diff before overwriting an existing file.
+After an approved bootstrap action, the capability SHALL create or update the repository-local CI/CD contract needed to validate and release the declared scope. For Fabric scope the contract SHALL include distinct DEV authoring, TEST and PROD workspace mappings, the DEV branch mapping, and protected TEST and PROD environment and deployment identity/service-connection references. It SHALL also include managed-item mappings, source roots, dependencies, logical IDs, data exclusions, pinned runtime/dependency inputs, validation entry points, release packaging inputs, and explicit Power BI scope boundaries. Power BI's separately mapped repository/PBIP source SHALL NOT be forced through a Fabric TEST workspace. Bootstrap SHALL be idempotent and SHALL show a diff before overwriting an existing file. The DEV workspace-to-branch mapping and initial synchronization SHALL be established for authoring.
 
 #### Scenario: New Fabric CI/CD assets are scaffolded
 
@@ -56,10 +56,15 @@ After an approved bootstrap action, the capability SHALL create or update the re
 
 The capability SHALL be able to configure or validate path-scoped Azure DevOps build-validation policies, environments, service connections, protected variable groups, Key Vault references/connectivity checks, agent-pool permissions, and protected-resource approvals required by the lifecycle. Fabric and Power BI policy scopes SHALL remain independently configurable. Jira SHALL remain the default work-tracking integration; the capability SHALL not add Azure Boards work-item-link policy unless explicitly requested. External writes SHALL require a displayed plan and explicit user confirmation, SHALL be idempotent, and SHALL preserve user-owned configuration that is outside the requested scope.
 
-#### Scenario: DEV and PROD branch policies are established
+#### Scenario: Branch governance supports the selected workflows
 
-- **WHEN** the user approves governance setup and the repository has declared DEV and PROD targets
-- **THEN** the capability SHALL configure required validation policies with the appropriate path scopes and report the resulting policy identities and status
+- **WHEN** the user approves governance setup
+- **THEN** the capability SHALL verify that authorized Fabric workspace users can commit directly to DEV and that Power BI and other scopes retain their applicable PR policies, and SHALL report configured policy identities and status
+
+#### Scenario: Branch policies conflict with direct DEV commits
+
+- **WHEN** the existing DEV branch policy or permissions prevent Fabric Git integration from committing directly
+- **THEN** the capability SHALL report the conflict and the required authorized policy decision; it SHALL NOT silently bypass or weaken existing protections
 
 #### Scenario: Protected deployment resources are missing
 
@@ -84,11 +89,11 @@ The capability SHALL be able to configure or validate path-scoped Azure DevOps b
 #### Scenario: Fabric and Power BI policies are path-scoped
 
 - **WHEN** the repository contains both `fabric/` and `pbi/` source roots
-- **THEN** the capability SHALL create or validate separate required build-validation policies for each declared path scope and SHALL prevent an unrelated path change from invoking the other release scope
+- **THEN** the capability SHALL validate the applicable independent governance and release scope for each root, and SHALL report any inability to enforce the intended direct-commit and PR separation rather than treating path-scoped PR policies as protection against direct commits
 
 ### Requirement: Validate source and produce an immutable release artifact
 
-The lifecycle SHALL validate manifests, source definitions, supported item types, secret-like content, excluded data content, and required dependencies before release. A successful release build SHALL identify the exact source revision, resolved manifest, approved deployment-identity reference, dependency versions, content hashes, and package identity in an immutable artifact. Secret values SHALL never be included in the manifest or artifact.
+The lifecycle SHALL validate manifests, source definitions, supported item types, secret-like content, excluded data content, and required dependencies before release. A successful release build SHALL identify the exact source revision, resolved manifest, approved TEST and PROD deployment-identity references, dependency versions, content hashes, and package identity in an immutable artifact. Secret values SHALL never be included in the manifest or artifact.
 
 #### Scenario: Repository validation passes
 
@@ -102,128 +107,88 @@ The lifecycle SHALL validate manifests, source definitions, supported item types
 
 #### Scenario: Release artifact is built
 
-- **WHEN** source validation passes on a specific merged revision
+- **WHEN** source validation passes on a specific selected DEV revision
 - **THEN** the capability SHALL create an immutable artifact whose manifest and hashes can be verified without rebuilding from another revision
 
-### Requirement: Enforce DEV reconciliation and definition drift
+### Requirement: Author Fabric data engineering in DEV and review the release commit
 
-For a Fabric-scoped repository, the lifecycle SHALL provide a read-only DEV definition export and semantic comparison against canonical source before DEV PR creation and required DEV PR validation. The comparator SHALL expose a stable per-item result of `MATCH`, `DRIFT`, or `ERROR` and an overall result of `PASS`, `DRIFT`, `ERROR`, or `UNKNOWN` to local and trusted callers. Notebook comparison SHALL preserve cell type, order, and normalized source while ignoring IDs, execution counts, outputs, and notebook-level execution metadata. Pipeline comparison SHALL parse JSON and ignore only approved export identity fields; activities, expressions, dependencies, connections, parameters, and references remain significant. Lakehouse `.platform` comparison SHALL allow only manifest-verified environment identity exceptions and SHALL report those exceptions explicitly. Unsupported types, missing canonical files, malformed exports, ambiguous locations, or incomplete exports SHALL fail closed rather than be skipped. The gate SHALL preserve export/report evidence and SHALL never import Git content into DEV. A trusted server-side DEV drift stage with the approved protected identity SHALL be required for release readiness; the local PR helper MAY provide an earlier equivalent check but SHALL not replace the server-side policy.
+For explicitly scoped Fabric data-engineering work, the lifecycle SHALL support authoring and testing in the shared DEV workspace using the Data Engineering extension. The operator SHALL review pending workspace changes and use Fabric Git integration to commit the selected supported managed definitions to the configured DEV branch. The operator SHALL deliberately select and validate the exact DEV commit for release, confirming its contents and accounting for unfinished or uncommitted workspace work. A feature or bugfix branch, PR, separate DEV export, repository overwrite reconciliation, or DEV drift gate SHALL NOT be required for this scope. The lifecycle SHALL report unsupported Git or deployment item types and unresolved dependencies before release.
 
-The lifecycle SHALL also provide an explicitly invoked local reconciliation operation that treats DEV as authoritative and overwrites corresponding manifest-mapped repository source files with validated DEV definitions when drift exists. It SHALL convert supported exports to the canonical source format, preserve recoverable previous file contents including uncommitted edits, report affected files, and leave the resulting Git diff for review. It SHALL re-run semantic comparison after synchronization and block PR creation if the result is not `PASS`. It SHALL not change unrelated files, commit or push changes, or write to Fabric. The server-side PR gate SHALL compare only and SHALL NOT synchronize repository files.
+The lifecycle SHALL consume the scope-first intake and mandatory branch guard contract owned by `fin-2060-fabric-de-branch-guard`: the user selects work area first and then bug, feature, or story before branch handling. A Fabric data-engineering bug follows the same eligible DEV route as a feature or story. The direct DEV branch exception SHALL apply only to explicitly identified Fabric data-engineering work. Power BI and other work SHALL retain their existing feature/bugfix branch and PR rules. For mixed work, each portion SHALL follow its applicable rules; ambiguous scope SHALL NOT qualify for the exception.
 
-#### Scenario: Managed DEV definitions differ from repository source
+#### Scenario: DEV authoring is complete
 
-- **WHEN** the operator invokes local reconciliation and a complete, validated DEV export differs from a managed repository definition
-- **THEN** the lifecycle SHALL overwrite the corresponding source with the canonical form of the DEV definition, retain recoverable prior contents, report the file and resulting diff, and revalidate before allowing PR creation
+- **WHEN** the operator completes Fabric data-engineering work in DEV
+- **THEN** the operator SHALL review pending changes, commit the intended managed items to DEV, and select a validated DEV commit when ready to release
 
-#### Scenario: Synchronization cannot complete safely
+#### Scenario: Validation or scope review fails
 
-- **WHEN** export, conversion, mapping, validation, or a repository write fails during reconciliation
-- **THEN** the lifecycle SHALL restore any affected source files to their prior contents, retain diagnostics, and block PR creation
+- **WHEN** source validation fails or the selected commit contains unintended work
+- **THEN** release SHALL stop until the problem is resolved and an appropriate DEV commit is selected
 
-#### Scenario: DEV changes after local synchronization
+#### Scenario: Initial mapping is unavailable
 
-- **WHEN** trusted PR validation detects new drift after local synchronization
-- **THEN** the server-side gate SHALL report drift and block merge without modifying source or DEV
+- **WHEN** the DEV workspace-to-branch mapping, direct commit permissions or initial baseline is missing or ambiguous
+- **THEN** the lifecycle SHALL report the missing setup and SHALL NOT claim the DEV release is ready
 
-#### Scenario: DEV definitions match source
+#### Scenario: Branch guard receives explicit Fabric data-engineering scope
 
-- **WHEN** all managed DEV items export successfully and executable definitions match the repository source
-- **THEN** the drift stage SHALL return `PASS` with a machine-readable report and allow the DEV PR workflow to continue
+- **WHEN** the mandatory branch guard runs for explicitly scoped Fabric data-engineering-only work on the configured DEV branch
+- **THEN** it SHALL permit that branch without requiring a feature/bugfix prefix or Jira key in the branch name, while retaining applicable Jira intake and traceability
 
-#### Scenario: Notebook serialization-only differences exist
+#### Scenario: Branch scope or target is unsafe
 
-- **WHEN** an exported notebook differs from canonical source only by line endings, trailing whitespace, final blank lines, cell IDs, execution counts, outputs, or notebook metadata
-- **THEN** the comparator SHALL return `MATCH` for that item and SHALL not report executable drift
+- **WHEN** scope is missing, ambiguous, mixed, or not Fabric data engineering, or the branch is a protected branch other than the configured DEV branch
+- **THEN** the guard SHALL retain the existing feature/bugfix and protected-branch checks and SHALL NOT infer the DEV exception
 
-#### Scenario: Notebook behavior differs
+#### Scenario: Work includes Power BI or another scope
 
-- **WHEN** a notebook cell is added, removed, reordered, changes type, or changes normalized source text
-- **THEN** the comparator SHALL return `DRIFT` for that item and identify the changed cell or source
+- **WHEN** a change includes Power BI or other non-Fabric-data-engineering work
+- **THEN** that work SHALL follow its existing feature/bugfix branch and PR rules even when the change also contains Fabric data engineering
 
-#### Scenario: Pipeline serialization-only differences exist
+### Requirement: Protect the TEST-to-PROD promotion boundary
 
-- **WHEN** parsed pipeline JSON differs only in formatting or approved export identity fields such as IDs, etags, folder identity, or export timestamps
-- **THEN** the comparator SHALL return `MATCH` and record the normalized fields as approved exceptions
+Shared DEV SHALL remain available for interactive human and agent authoring and execution. PR validation and release pipelines SHALL NOT deploy, import, publish, or overwrite DEV definitions. After deliberate selection and successful validation of a DEV commit the lifecycle SHALL build one immutable artifact from that exact DEV revision, then deploy it to the distinct protected `fabric-test` environment using its configured TEST workspace, identity/service connection, parameters, and `ALLOW_FABRIC_TEST_WRITE` guard. TEST SHALL verify supported definitions, dependencies and configured execution/integration checks, publishing evidence bound to the artifact digest. PROD SHALL deploy only after successful TEST verification and required approvals and governance, and SHALL consume exactly that same artifact digest through its own protected environment, identity/service connection and guard without re-export or rebuild.
 
-#### Scenario: Pipeline behavior differs
+#### Scenario: Selected DEV commit builds once and deploys to TEST
 
-- **WHEN** pipeline activities, expressions, dependencies, connections, source/sink definitions, parameters, notebook references, lakehouse references, or policies differ
-- **THEN** the comparator SHALL return `DRIFT` and prevent the DEV workflow from continuing
+- **WHEN** the intended DEV commit is selected for release, source validation passes, and TEST prerequisites are configured
+- **THEN** the lifecycle SHALL build one artifact from that exact DEV revision, deploy that artifact to TEST, publish digest-bound verification evidence, and SHALL NOT deploy the artifact to DEV
 
-#### Scenario: Approved platform identity differs
+#### Scenario: TEST prerequisites are missing
 
-- **WHEN** a verified item mapping differs only in an approved `.platform` environment identity field such as `config.logicalId` or an approved empty-versus-null description
-- **THEN** the comparator SHALL return `MATCH` and report the metadata exception explicitly
+- **WHEN** the TEST workspace, protected environment, identity/service connection, write guard, or required input is unavailable
+- **THEN** the lifecycle SHALL stop before TEST writes, report the missing prerequisite, and block PROD promotion
 
-#### Scenario: Unexpected platform metadata differs
+#### Scenario: A deployment target resolves to DEV
 
-- **WHEN** a `.platform` difference is outside the approved manifest-verified identity exceptions
-- **THEN** the comparator SHALL return `DRIFT` and prevent the DEV workflow from continuing
+- **WHEN** a TEST or PROD deployment workspace resolves to the configured DEV authoring workspace ID
+- **THEN** preflight SHALL reject the target before any release write
 
-#### Scenario: Comparator input is unsupported or incomplete
+#### Scenario: TEST deployment excludes operational state
 
-- **WHEN** an item type is unsupported, a canonical file is missing, an export is malformed or incomplete, or an export location is ambiguous
-- **THEN** the comparator SHALL return `ERROR` or `UNKNOWN`, preserve diagnostics, and SHALL not silently skip the item
+- **WHEN** TEST deploys the selected DEV artifact
+- **THEN** it SHALL process only declared metadata and definitions and SHALL not move data rows, credentials, schedules, triggers, run history, or SQL endpoints as release content
 
-#### Scenario: Drift report is emitted deterministically
+#### Scenario: TEST deployment is idempotent
 
-- **WHEN** comparison completes or fails for any managed scope
-- **THEN** the lifecycle SHALL write a machine-readable report containing workspace, source root, item, type, status, structured differences or errors, approved exceptions, overall result, and preserved export/report locations without secrets
-
-#### Scenario: DEV definitions drift from source
-
-- **WHEN** a managed notebook, pipeline, or non-approved platform field differs semantically
-- **THEN** the comparison SHALL report the item and difference, and PR creation or merge SHALL remain blocked until local reconciliation completes and validation passes
-
-#### Scenario: Drift export is unavailable
-
-- **WHEN** the Fabric CLI, authentication, workspace, managed item, or parser is unavailable
-- **THEN** the drift stage SHALL return `ERROR` or `UNKNOWN`, preserve diagnostics, and block the DEV PR workflow rather than treating the result as a pass
-
-#### Scenario: Non-Fabric scope reaches the DEV workflow
-
-- **WHEN** the repository or change is explicitly Power BI-only
-- **THEN** the lifecycle SHALL skip Fabric export and leave the applicable Power BI validation path unchanged
-
-#### Scenario: Trusted server-side drift validation is not configured
-
-- **WHEN** local drift checks pass but the required Azure Repos build-validation stage, pinned Fabric CLI, or protected read-only DEV identity is unavailable
-- **THEN** the lifecycle SHALL report the repository as not release-ready and SHALL block protected promotion
-
-### Requirement: Protect the DEV-to-PROD promotion boundary
-
-The lifecycle SHALL keep interactive DEV authoring/reconciliation separate from trusted deployment stages and PROD deployment. A PR SHALL never write to Fabric. After a successful merge to `DEV`, an explicitly configured `fabric-dev` environment MAY run a production-shaped DEV deployment rehearsal using the exact immutable artifact for the merged revision. The rehearsal SHALL use a DEV-specific write guard and identity, verify the managed inventory, and exclude rows, credentials, schedules, triggers, and generated SQL endpoints. A reviewed DEV-to-PROD promotion SHALL consume that same immutable artifact through a protected environment and an approved PROD deployment identity.
-
-#### Scenario: DEV branch merge triggers rehearsal
-
-- **WHEN** a DEV PR passes required validation and is merged and the repository has enabled the DEV rehearsal contract
-- **THEN** the lifecycle SHALL build and verify the merged revision once, run the shared release stages against the DEV workspace through `fabric-dev`, publish verification/audit evidence, and never checkout or rebuild a different revision
-
-#### Scenario: DEV merge has no rehearsal authorization
-
-- **WHEN** a DEV PR passes validation but the DEV environment, identity, or `ALLOW_FABRIC_DEV_WRITE` guard is missing
-- **THEN** the lifecycle SHALL stop before any DEV write, report the missing protected prerequisite, and leave the source-control merge intact
-
-#### Scenario: DEV rehearsal excludes operational state
-
-- **WHEN** the DEV rehearsal deploys the merged artifact
-- **THEN** it SHALL process only declared metadata and definitions and SHALL not move data rows, credentials, schedules, triggers, run history, or SQL endpoints
-
-#### Scenario: DEV rehearsal is idempotent
-
-- **WHEN** the same immutable artifact is rehearsed in DEV more than once
+- **WHEN** the same immutable artifact is deployed to TEST more than once
 - **THEN** repeated runs SHALL converge on the same managed definitions and produce comparable verification evidence without duplicating unmanaged resources
 
-#### Scenario: Pull request validation runs
+#### Scenario: TEST verification fails
 
-- **WHEN** a DEV PR is opened or updated before merge
-- **THEN** the lifecycle SHALL perform source validation and read-only drift checks only and SHALL not import, publish, or overwrite DEV definitions
+- **WHEN** TEST deployment, definition verification, or a required execution or integration check fails or is unknown
+- **THEN** the lifecycle SHALL retain failure evidence and block PROD promotion
+
+#### Scenario: Source validation runs
+
+- **WHEN** the selected DEV commit is validated for release
+- **THEN** the lifecycle SHALL perform secretless source validation and SHALL not import, publish, or overwrite DEV definitions
 
 #### Scenario: PROD promotion is approved
 
-- **WHEN** the DEV-to-PROD promotion is approved, the immutable artifact passes pre-deployment checks, and the PROD write guard is enabled
-- **THEN** the deployment stage SHALL use only the approved protected identity, target the configured PROD workspace, and consume the same artifact that was verified in DEV
+- **WHEN** TEST verification succeeds, applicable governance and PROD approval pass, and the PROD preflight and write guard succeed
+- **THEN** the deployment stage SHALL use only the approved protected identity, target the configured PROD workspace, and consume the exact digest verified in TEST
 
 #### Scenario: PROD deployment prerequisites are invalid
 
@@ -232,16 +197,16 @@ The lifecycle SHALL keep interactive DEV authoring/reconciliation separate from 
 
 ### Requirement: Verify deployment and retain recovery evidence
 
-After a successful DEV rehearsal or PROD deployment, the lifecycle SHALL verify the configured managed items and dependencies in the target workspace, record artifact identity and outcomes, and provide rollback guidance based on a prior known-good immutable artifact. Partial failures SHALL stop subsequent dependent actions and retain item-level evidence. The generated pipeline contract SHALL support shared release stages with thin target wrappers and target-specific write guards.
+After TEST or PROD deployment, the lifecycle SHALL verify configured managed definitions and dependencies in the target workspace, run configured TEST execution/integration checks, record the deployed artifact digest and outcomes, and provide rollback guidance based on a prior known-good immutable artifact. Partial failures SHALL stop subsequent dependent actions and retain item-level evidence. Status SHALL show the artifact digest and verification outcome in TEST and PROD and the promotion relationship. The generated pipeline contract SHALL support shared release stages with thin TEST and PROD wrappers and target-specific write guards.
 
 #### Scenario: Post-deployment checks pass
 
 - **WHEN** the deployed workspace contains the expected managed items and dependency references
-- **THEN** the lifecycle SHALL record a successful release evidence record with artifact, revision, target, approver, environment, and verification results
+- **THEN** the lifecycle SHALL record artifact digest, revision, target, approver where applicable, environment, and verification results and link PROD promotion to successful TEST evidence
 
 #### Scenario: Target verification is unavailable
 
-- **WHEN** the Fabric API cannot verify the managed inventory after a DEV rehearsal or PROD deployment
+- **WHEN** the Fabric API cannot verify the managed inventory after a TEST or PROD deployment
 - **THEN** the lifecycle SHALL mark the stage failed or unknown, preserve diagnostics and the artifact identity, and SHALL not report the target as successfully released
 
 #### Scenario: Post-deployment checks fail
@@ -252,11 +217,11 @@ After a successful DEV rehearsal or PROD deployment, the lifecycle SHALL verify 
 #### Scenario: Rollback is requested
 
 - **WHEN** an authorized operator requests rollback after a partial or failed promotion
-- **THEN** the lifecycle SHALL identify the selected known-good immutable artifact and require the normal protected deployment approval before writing it
+- **THEN** the lifecycle SHALL identify the selected known-good artifact and digest, record its target and verification history, and require the normal protected deployment approval before writing it
 
 ### Requirement: Provide safe lifecycle modes and protect secrets
 
-The capability SHALL expose distinct planning, bootstrap, configure, validate, drift comparison, local reconciliation, release, status, and rollback-oriented operations. Read-only modes SHALL not mutate repository or external state; mutating modes SHALL require explicit authorization, redact credentials from output, and fail closed when required secure inputs are unavailable. Secretless source validation SHALL not retrieve protected Fabric deployment credentials.
+The capability SHALL expose distinct planning, bootstrap, configure, validate, release, status, and rollback-oriented operations. Read-only modes SHALL not mutate repository or external state; mutating modes SHALL require explicit authorization, redact credentials from output, and fail closed when required secure inputs are unavailable. Secretless source validation SHALL not retrieve protected Fabric deployment credentials.
 
 #### Scenario: Plan or status mode runs
 
@@ -270,7 +235,7 @@ The capability SHALL expose distinct planning, bootstrap, configure, validate, d
 
 #### Scenario: Shared pipeline stages use protected target guards
 
-- **WHEN** a generated DEV or PROD wrapper invokes the shared release stages
+- **WHEN** a generated TEST or PROD wrapper invokes the shared release stages
 - **THEN** the wrapper SHALL select the correct workspace, environment, audit scope, and target-specific write guard, and the shared stages SHALL consume the immutable artifact without repository checkout or rebuild
 
 #### Scenario: Sensitive values appear in command output
@@ -280,8 +245,8 @@ The capability SHALL expose distinct planning, bootstrap, configure, validate, d
 
 #### Scenario: Generic branch guard remains in scope
 
-- **WHEN** the lifecycle validates a feature or bugfix branch and Jira key
-- **THEN** it SHALL delegate branch/Jira rules to the existing generic guard and SHALL not embed Fabric workspace, credential, or export logic in that guard
+- **WHEN** the lifecycle handles Power BI or other non-Fabric-data-engineering work, including mixed work
+- **THEN** it SHALL apply the existing feature/bugfix branch and Jira rules to that work; only explicitly scoped Fabric data-engineering work SHALL qualify for the DEV-branch exception
 
 ### Requirement: Bootstrap from a complete reusable starter bundle
 
@@ -290,7 +255,7 @@ The capability SHALL provide a versioned, self-contained bundle of reusable scri
 #### Scenario: A new adopter renders the starter
 
 - **WHEN** the adopter supplies the required approved non-secret inputs for a supported Fabric scope
-- **THEN** bootstrap SHALL produce compatible validation, drift, release, deployment, verification, and documentation assets and an offline validation entry point, without access to the reference repository
+- **THEN** bootstrap SHALL produce compatible validation, release, deployment, verification, and documentation assets and an offline validation entry point, without access to the reference repository
 
 #### Scenario: Optional Power BI scope is absent
 
@@ -307,36 +272,15 @@ The capability SHALL provide a versioned, self-contained bundle of reusable scri
 - **WHEN** bootstrap is repeated or rendered content conflicts with an existing file
 - **THEN** it SHALL provide a reviewable diff, preserve unrelated files, and require an explicit update decision before overwriting conflicts
 
-### Requirement: Isolate trusted PR drift execution
 
-Credentialed DEV drift validation SHALL execute only trusted pipeline definitions, scripts, comparator, and dependencies bound to a protected revision. It SHALL treat PR content as untrusted data and SHALL prevent PR changes from running code with the protected identity. If this boundary cannot be enforced, the trusted gate SHALL fail closed and release readiness SHALL be blocked.
-
-#### Scenario: A PR modifies validation code
-
-- **WHEN** a PR changes pipeline YAML, scripts, dependencies, or comparator code used by the drift gate
-- **THEN** the credentialed stage SHALL use the protected trusted versions and SHALL NOT execute the PR versions with the protected identity
-
-### Requirement: Protect DEV authoring during rehearsal
-
-The lifecycle SHALL serialize managed deployments per target workspace and compare the current DEV managed definitions immediately before rehearsal with the recorded state validated for the merge. It SHALL use an atomic target version precondition when available; otherwise an independently enforced authoring freeze SHALL be required for release readiness. A changed or unverifiable target SHALL block the write and require reconciliation.
-
-#### Scenario: DEV changes after validation
-
-- **WHEN** a managed DEV definition changes between validation and rehearsal
-- **THEN** rehearsal SHALL stop before overwriting that definition and report the reconciliation required
-
-#### Scenario: No atomic concurrency control is available
-
-- **WHEN** a target cannot enforce an atomic precondition and no independently enforced authoring freeze exists
-- **THEN** the lifecycle SHALL report the race as unresolved and SHALL block release readiness
 
 ### Requirement: Bind promotion and rollback to trusted evidence
 
-The lifecycle SHALL retain each release artifact and digest in an access-controlled store for the configured promotion and rollback window. It SHALL bind the trusted producer and run, source revision, DEV verification result, and approval to that digest. PROD SHALL consume the exact DEV-verified artifact and SHALL fail closed if provenance, verification evidence, approval, or retained artifact is unavailable or mismatched. Verification SHALL compare supported managed definitions and dependency references to the artifact. Recovery SHALL track managed ownership and explicitly approved deletions, preserve unmanaged items, and report residual managed items after rollback.
+The lifecycle SHALL retain each release artifact and digest in an access-controlled store for the configured promotion and rollback window. It SHALL bind the trusted producer and run, source revision, TEST deployment and verification result, and approval to that digest. PROD SHALL consume the exact TEST-verified artifact and SHALL fail closed if provenance, verification evidence, approval, or retained artifact is unavailable or mismatched. Verification SHALL compare supported managed definitions and dependency references to the artifact. Recovery SHALL track managed ownership and explicitly approved deletions, preserve unmanaged items, and report residual managed items after rollback.
 
 #### Scenario: A different artifact is selected for PROD
 
-- **WHEN** the requested artifact digest, trusted producer, or DEV verification evidence does not match the approved release
+- **WHEN** the requested artifact digest, trusted producer, or successful TEST verification evidence does not match the approved release
 - **THEN** PROD deployment SHALL stop before any write
 
 #### Scenario: Failed release introduced a managed item
@@ -346,14 +290,14 @@ The lifecycle SHALL retain each release artifact and digest in an access-control
 
 ### Requirement: Exercise the lifecycle with PREQIN-1
 
-The implementation SHALL include a live end-to-end exercise using `C:\Development\PREQIN-1` after offline template tests pass. The exercise SHALL inventory definitions and dependencies, explicitly select supported managed items, and report unsupported types and unresolved dependencies before deployment. It SHALL create dedicated DEV and PROD workspaces using the Fabric CLI and a selected capacity, and SHALL grant Power BI EOT (Service Principal), application ID `e4b14c44-12a7-4882-a5ed-dbcb036c9d7b` and service principal object ID `97937f89-9a24-49f4-a3be-c757d283b03d`, Contributor in both workspaces. The service principal SHALL be the test deployment identity; trusted drift SHALL use a separate protected read-only identity. Test-specific identifiers SHALL NOT become defaults in reusable assets.
+The implementation SHALL include a live end-to-end exercise using `C:\Development\PREQIN-1` after offline template tests pass. The exercise SHALL inventory definitions and dependencies, explicitly select supported managed items, and report unsupported types and unresolved dependencies before deployment. It SHALL create dedicated DEV authoring, TEST and PROD workspaces using the Fabric CLI and a selected capacity, and SHALL grant Power BI EOT (Service Principal), application ID `e4b14c44-12a7-4882-a5ed-dbcb036c9d7b` and service principal object ID `97937f89-9a24-49f4-a3be-c757d283b03d`, Contributor in all three workspaces. The service principal SHALL be the TEST and PROD test deployment identity. Test-specific identifiers SHALL NOT become defaults in reusable assets.
 
-The exercise SHALL bootstrap PREQIN-1, establish an explicit initial DEV baseline before DEV-authoritative reconciliation, run the applicable trusted validation, build one revision-bound artifact, deploy and verify it in DEV, and promote the same verified artifact to PROD through the protected release path. It SHALL retain workspace, role-assignment, artifact, approval, deployment, and verification evidence without secrets. Missing capacity, identities, permissions, protected resources, or required dependencies SHALL block the affected live step and be reported; plan/status and offline tests SHALL NOT create resources or run deployments.
+The exercise SHALL bootstrap PREQIN-1, establish an initial DEV workspace-to-branch baseline without release-pipeline deployment to DEV, exercise DEV extension authoring, selected-item commit and source validation, select a DEV revision and build one revision-bound artifact, deploy and verify it in TEST, and promote the same verified artifact to PROD through the protected release path. It SHALL retain workspace, role-assignment, artifact digest, approval, deployment, and verification evidence without secrets. Missing capacity, identities, permissions, protected resources, or required dependencies SHALL block the affected live step and be reported; plan/status and offline tests SHALL NOT create resources or run deployments.
 
 #### Scenario: PREQIN-1 live deployment succeeds
 
 - **WHEN** offline tests pass and the selected scope, capacity, identities, workspace role assignments, and protected release resources are available
-- **THEN** the exercise SHALL create and verify the dedicated workspaces and Contributor assignments, deploy the artifact to DEV and PROD, and retain definition and dependency verification evidence linked to the same artifact digest
+- **THEN** the exercise SHALL create and verify the three workspaces and Contributor assignments, deploy the artifact to TEST and PROD, and retain definition, dependency, and applicable integration verification evidence linked to the same artifact digest
 
 #### Scenario: PREQIN-1 contains an unsupported or unresolved item
 
@@ -363,4 +307,18 @@ The exercise SHALL bootstrap PREQIN-1, establish an explicit initial DEV baselin
 #### Scenario: Newly created DEV workspace is empty
 
 - **WHEN** a new DEV workspace does not yet contain the selected managed definitions
-- **THEN** the exercise SHALL establish and verify the approved initial baseline before running DEV-to-repository reconciliation and SHALL NOT interpret the empty workspace as authority to erase source files
+- **THEN** the exercise SHALL establish and verify the approved initial baseline before DEV authoring and release and SHALL NOT interpret the empty workspace as authority to erase source files
+
+### Requirement: Provide cross-harness lifecycle routing
+
+The lifecycle SHALL provide equivalent scope-first intake, branch handoff, and release behavior through Codex, GitHub Copilot, and Claude using each harness’s supported discovery and interaction mechanisms. When structured choices are unavailable it SHALL support explicit plain-text responses. Verification SHALL identify the result for each harness separately and report unavailable harnesses as unverified.
+
+#### Scenario: Fabric data-engineering bug is routed
+
+- **WHEN** a user in any supported harness selects Fabric data engineering and then bug with exclusive scope
+- **THEN** the lifecycle SHALL route to the configured DEV branch guard without requiring a feature or bugfix branch
+
+#### Scenario: Harness interaction is unavailable
+
+- **WHEN** the harness lacks a structured choice control
+- **THEN** the lifecycle SHALL present equivalent choices in text and wait for the user response
