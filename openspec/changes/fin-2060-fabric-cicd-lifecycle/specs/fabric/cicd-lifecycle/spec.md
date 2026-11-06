@@ -64,7 +64,7 @@ The capability SHALL be able to configure or validate path-scoped Azure DevOps b
 #### Scenario: Protected deployment resources are missing
 
 - **WHEN** the release lifecycle requires an environment, service connection, variable group, or agent pool permission that is absent
-- **THEN** the capability SHALL identify the missing protected resource and block release readiness until it is configured or explicitly waived by an authorized user
+- **THEN** the capability SHALL identify the missing protected resource and block release readiness until it is configured; required identity, protected approval, target guard, and agent authorization SHALL NOT be waived
 
 #### Scenario: Governance configuration is already compliant
 
@@ -108,6 +108,23 @@ The lifecycle SHALL validate manifests, source definitions, supported item types
 ### Requirement: Enforce DEV reconciliation and definition drift
 
 For a Fabric-scoped repository, the lifecycle SHALL provide a read-only DEV definition export and semantic comparison against canonical source before DEV PR creation and required DEV PR validation. The comparator SHALL expose a stable per-item result of `MATCH`, `DRIFT`, or `ERROR` and an overall result of `PASS`, `DRIFT`, `ERROR`, or `UNKNOWN` to local and trusted callers. Notebook comparison SHALL preserve cell type, order, and normalized source while ignoring IDs, execution counts, outputs, and notebook-level execution metadata. Pipeline comparison SHALL parse JSON and ignore only approved export identity fields; activities, expressions, dependencies, connections, parameters, and references remain significant. Lakehouse `.platform` comparison SHALL allow only manifest-verified environment identity exceptions and SHALL report those exceptions explicitly. Unsupported types, missing canonical files, malformed exports, ambiguous locations, or incomplete exports SHALL fail closed rather than be skipped. The gate SHALL preserve export/report evidence and SHALL never import Git content into DEV. A trusted server-side DEV drift stage with the approved protected identity SHALL be required for release readiness; the local PR helper MAY provide an earlier equivalent check but SHALL not replace the server-side policy.
+
+The lifecycle SHALL also provide an explicitly invoked local reconciliation operation that treats DEV as authoritative and overwrites corresponding manifest-mapped repository source files with validated DEV definitions when drift exists. It SHALL convert supported exports to the canonical source format, preserve recoverable previous file contents including uncommitted edits, report affected files, and leave the resulting Git diff for review. It SHALL re-run semantic comparison after synchronization and block PR creation if the result is not `PASS`. It SHALL not change unrelated files, commit or push changes, or write to Fabric. The server-side PR gate SHALL compare only and SHALL NOT synchronize repository files.
+
+#### Scenario: Managed DEV definitions differ from repository source
+
+- **WHEN** the operator invokes local reconciliation and a complete, validated DEV export differs from a managed repository definition
+- **THEN** the lifecycle SHALL overwrite the corresponding source with the canonical form of the DEV definition, retain recoverable prior contents, report the file and resulting diff, and revalidate before allowing PR creation
+
+#### Scenario: Synchronization cannot complete safely
+
+- **WHEN** export, conversion, mapping, validation, or a repository write fails during reconciliation
+- **THEN** the lifecycle SHALL restore any affected source files to their prior contents, retain diagnostics, and block PR creation
+
+#### Scenario: DEV changes after local synchronization
+
+- **WHEN** trusted PR validation detects new drift after local synchronization
+- **THEN** the server-side gate SHALL report drift and block merge without modifying source or DEV
 
 #### Scenario: DEV definitions match source
 
@@ -157,7 +174,7 @@ For a Fabric-scoped repository, the lifecycle SHALL provide a read-only DEV defi
 #### Scenario: DEV definitions drift from source
 
 - **WHEN** a managed notebook, pipeline, or non-approved platform field differs semantically
-- **THEN** the drift stage SHALL return a nonzero result, identify the item and difference, and prevent DEV PR creation or merge
+- **THEN** the comparison SHALL report the item and difference, and PR creation or merge SHALL remain blocked until local reconciliation completes and validation passes
 
 #### Scenario: Drift export is unavailable
 
@@ -239,7 +256,7 @@ After a successful DEV rehearsal or PROD deployment, the lifecycle SHALL verify 
 
 ### Requirement: Provide safe lifecycle modes and protect secrets
 
-The capability SHALL expose distinct planning, bootstrap, configure, validate, drift, release, status, and rollback-oriented operations. Read-only modes SHALL not mutate repository or external state; mutating modes SHALL require explicit authorization, redact credentials from output, and fail closed when required secure inputs are unavailable. Secretless source validation SHALL not retrieve protected Fabric deployment credentials.
+The capability SHALL expose distinct planning, bootstrap, configure, validate, drift comparison, local reconciliation, release, status, and rollback-oriented operations. Read-only modes SHALL not mutate repository or external state; mutating modes SHALL require explicit authorization, redact credentials from output, and fail closed when required secure inputs are unavailable. Secretless source validation SHALL not retrieve protected Fabric deployment credentials.
 
 #### Scenario: Plan or status mode runs
 
@@ -265,3 +282,85 @@ The capability SHALL expose distinct planning, bootstrap, configure, validate, d
 
 - **WHEN** the lifecycle validates a feature or bugfix branch and Jira key
 - **THEN** it SHALL delegate branch/Jira rules to the existing generic guard and SHALL not embed Fabric workspace, credential, or export logic in that guard
+
+### Requirement: Bootstrap from a complete reusable starter bundle
+
+The capability SHALL provide a versioned, self-contained bundle of reusable scripts, pipeline YAML templates, configuration templates, dependency inputs, and operator guidance derived from the reference CI/CD assets. It SHALL record the source revision and a disposition for every reference file, including Power BI and sample pipeline assets. Bootstrap SHALL render a coherent starter from explicit scope, target, identity-reference, branch, path, and protected-resource inputs, without requiring the reference repository. It SHALL validate rendered syntax, required values, unresolved placeholders, dependencies, and cross-file references. Reference-project identifiers, credentials, item lists, and operational records SHALL NOT be embedded as adopter defaults.
+
+#### Scenario: A new adopter renders the starter
+
+- **WHEN** the adopter supplies the required approved non-secret inputs for a supported Fabric scope
+- **THEN** bootstrap SHALL produce compatible validation, drift, release, deployment, verification, and documentation assets and an offline validation entry point, without access to the reference repository
+
+#### Scenario: Optional Power BI scope is absent
+
+- **WHEN** no Power BI mapping is approved
+- **THEN** bootstrap SHALL keep Power BI deployment disabled and SHALL NOT render enabled Power BI release assets
+
+#### Scenario: Template inputs are incomplete or inconsistent
+
+- **WHEN** required inputs or template references are missing, malformed, or unresolved
+- **THEN** bootstrap SHALL identify the affected fields or files and SHALL NOT report a usable configuration
+
+#### Scenario: Rendered assets already exist
+
+- **WHEN** bootstrap is repeated or rendered content conflicts with an existing file
+- **THEN** it SHALL provide a reviewable diff, preserve unrelated files, and require an explicit update decision before overwriting conflicts
+
+### Requirement: Isolate trusted PR drift execution
+
+Credentialed DEV drift validation SHALL execute only trusted pipeline definitions, scripts, comparator, and dependencies bound to a protected revision. It SHALL treat PR content as untrusted data and SHALL prevent PR changes from running code with the protected identity. If this boundary cannot be enforced, the trusted gate SHALL fail closed and release readiness SHALL be blocked.
+
+#### Scenario: A PR modifies validation code
+
+- **WHEN** a PR changes pipeline YAML, scripts, dependencies, or comparator code used by the drift gate
+- **THEN** the credentialed stage SHALL use the protected trusted versions and SHALL NOT execute the PR versions with the protected identity
+
+### Requirement: Protect DEV authoring during rehearsal
+
+The lifecycle SHALL serialize managed deployments per target workspace and compare the current DEV managed definitions immediately before rehearsal with the recorded state validated for the merge. It SHALL use an atomic target version precondition when available; otherwise an independently enforced authoring freeze SHALL be required for release readiness. A changed or unverifiable target SHALL block the write and require reconciliation.
+
+#### Scenario: DEV changes after validation
+
+- **WHEN** a managed DEV definition changes between validation and rehearsal
+- **THEN** rehearsal SHALL stop before overwriting that definition and report the reconciliation required
+
+#### Scenario: No atomic concurrency control is available
+
+- **WHEN** a target cannot enforce an atomic precondition and no independently enforced authoring freeze exists
+- **THEN** the lifecycle SHALL report the race as unresolved and SHALL block release readiness
+
+### Requirement: Bind promotion and rollback to trusted evidence
+
+The lifecycle SHALL retain each release artifact and digest in an access-controlled store for the configured promotion and rollback window. It SHALL bind the trusted producer and run, source revision, DEV verification result, and approval to that digest. PROD SHALL consume the exact DEV-verified artifact and SHALL fail closed if provenance, verification evidence, approval, or retained artifact is unavailable or mismatched. Verification SHALL compare supported managed definitions and dependency references to the artifact. Recovery SHALL track managed ownership and explicitly approved deletions, preserve unmanaged items, and report residual managed items after rollback.
+
+#### Scenario: A different artifact is selected for PROD
+
+- **WHEN** the requested artifact digest, trusted producer, or DEV verification evidence does not match the approved release
+- **THEN** PROD deployment SHALL stop before any write
+
+#### Scenario: Failed release introduced a managed item
+
+- **WHEN** rollback selects an earlier artifact that does not contain a managed item introduced by the failed release
+- **THEN** the lifecycle SHALL preserve the item unless an explicit deletion plan is approved, report it as residual, and verify the resulting managed definitions
+
+### Requirement: Exercise the lifecycle with PREQIN-1
+
+The implementation SHALL include a live end-to-end exercise using `C:\Development\PREQIN-1` after offline template tests pass. The exercise SHALL inventory definitions and dependencies, explicitly select supported managed items, and report unsupported types and unresolved dependencies before deployment. It SHALL create dedicated DEV and PROD workspaces using the Fabric CLI and a selected capacity, and SHALL grant Power BI EOT (Service Principal), application ID `e4b14c44-12a7-4882-a5ed-dbcb036c9d7b` and service principal object ID `97937f89-9a24-49f4-a3be-c757d283b03d`, Contributor in both workspaces. The service principal SHALL be the test deployment identity; trusted drift SHALL use a separate protected read-only identity. Test-specific identifiers SHALL NOT become defaults in reusable assets.
+
+The exercise SHALL bootstrap PREQIN-1, establish an explicit initial DEV baseline before DEV-authoritative reconciliation, run the applicable trusted validation, build one revision-bound artifact, deploy and verify it in DEV, and promote the same verified artifact to PROD through the protected release path. It SHALL retain workspace, role-assignment, artifact, approval, deployment, and verification evidence without secrets. Missing capacity, identities, permissions, protected resources, or required dependencies SHALL block the affected live step and be reported; plan/status and offline tests SHALL NOT create resources or run deployments.
+
+#### Scenario: PREQIN-1 live deployment succeeds
+
+- **WHEN** offline tests pass and the selected scope, capacity, identities, workspace role assignments, and protected release resources are available
+- **THEN** the exercise SHALL create and verify the dedicated workspaces and Contributor assignments, deploy the artifact to DEV and PROD, and retain definition and dependency verification evidence linked to the same artifact digest
+
+#### Scenario: PREQIN-1 contains an unsupported or unresolved item
+
+- **WHEN** discovery finds an unsupported type or a dependency that cannot be resolved within the selected scope
+- **THEN** the exercise SHALL report it explicitly and SHALL NOT claim that item or its dependent deployment was verified
+
+#### Scenario: Newly created DEV workspace is empty
+
+- **WHEN** a new DEV workspace does not yet contain the selected managed definitions
+- **THEN** the exercise SHALL establish and verify the approved initial baseline before running DEV-to-repository reconciliation and SHALL NOT interpret the empty workspace as authority to erase source files
