@@ -322,3 +322,49 @@ The lifecycle SHALL provide equivalent scope-first intake, branch handoff, and r
 
 - **WHEN** the harness lacks a structured choice control
 - **THEN** the lifecycle SHALL present equivalent choices in text and wait for the user response
+
+### Requirement: Bootstrap an explicitly selected isolated target
+
+The lifecycle SHALL support selecting an explicit target workspace name or ID and an approved capacity when a workspace must be created. Read-only planning SHALL distinguish a unique absent but creatable target from ambiguous or incompatible state. A rehearsal target SHALL remain distinct from configured DEV, TEST and PROD mappings and SHALL NOT authorize production promotion unless the release contract explicitly approves its target and evidence. The lifecycle SHALL NOT automatically delete or reset a workspace.
+
+#### Scenario: New target can be created
+
+- **WHEN** an explicit unique target does not exist and an approved capacity is supplied
+- **THEN** planning SHALL report a proposed creation and pending IDs without external or repository writes
+
+#### Scenario: Rehearsal targets an existing protected workspace
+
+- **WHEN** a proposed rehearsal target resolves to an unintended configured environment workspace
+- **THEN** the lifecycle SHALL stop before any write and report the conflict
+
+### Requirement: Generate reusable assets and verify target bindings
+
+The lifecycle SHALL generate target-specific deployment configuration from versioned scripts and templates, and SHALL package adopter-owned notebook and pipeline definitions from the selected source revision without reconstructing business logic. It SHALL verify schema-enabled Lakehouse and endpoint readiness, managed inventory, identity and connection permissions, notebook default Lakehouse bindings, and pipeline workspace, Lakehouse and connection destinations before runtime. An exclusive protected lock SHALL cover deployment through final verification. Source ingestion and integration execution SHALL require explicit selection and schedules SHALL remain disabled.
+
+#### Scenario: Deployed notebook points to the wrong Lakehouse
+
+- **WHEN** a notebook binding or pipeline destination is unresolved or points to an unintended target
+- **THEN** the lifecycle SHALL stop runtime execution and report the affected item
+
+#### Scenario: Runtime execution is not selected
+
+- **WHEN** deployment is requested without explicitly selecting runtime execution
+- **THEN** the lifecycle SHALL NOT run source ingestion or other data-writing checks
+
+### Requirement: Separate Spark-first data recovery from artifact rollback
+
+The initial managed data engineering contract SHALL favor Spark notebooks for Lakehouse schemas, Delta transformations, validation and materialized tables, with pipelines focused on ingestion and orchestration. Artifact rollback SHALL redeploy a retained known-good artifact through the protected verified target path. Delta data recovery SHALL be a separate reviewed operation requiring an explicit scope and recovery point. The lifecycle SHALL preserve unrelated data and items and report residual managed items without deleting them absent an approved deletion plan.
+
+#### Scenario: Data recovery is requested
+
+- **WHEN** a user requests recovery of Delta data
+- **THEN** the lifecycle SHALL require an explicit reviewed scope and recovery point and record the outcome separately from artifact rollback
+
+### Requirement: Retain evidence and revalidate on resume
+
+Before a protected deployment the lifecycle SHALL require an approved evidence location and retention period. It SHALL record redacted source, asset versions, artifact digest and provenance, target, identity, run, verification and recovery evidence. Resume SHALL revalidate target, authorization and lock state rather than relying solely on saved evidence.
+
+#### Scenario: Target changes after planning
+
+- **WHEN** a saved operation is resumed and its target identity or required permissions have changed
+- **THEN** the lifecycle SHALL stop before writing until the plan is reconciled

@@ -2,18 +2,18 @@
 
 - [ ] 1.1 Implement repository discovery for `fabric/`, `pbi/`, `cicd/`, Git remotes, target branches, Fabric Git connection state, initial synchronization evidence, and existing pipeline assets; verify the plan distinguishes Fabric-only, Power BI-only, mixed, and unconfigured repositories.
 - [ ] 1.2 Define and validate `cicd/managed-items.yml` for DEV/TEST/PROD workspaces, DEV branch mapping, protected resources, items, dependencies and exclusions; validate the initial workspace-to-branch baseline.
-- [ ] 1.3 Define a separate `pbi-assets.yml` contract for Power BI source-to-workspace mappings and Fabric prerequisites; verify a `pbi/` folder alone does not trigger Power BI or Fabric deployment setup.
+- [x] 1.3 Define a separate `pbi-assets.yml` contract for Power BI source-to-workspace mappings and Fabric prerequisites; verify a `pbi/` folder alone does not trigger Power BI or Fabric deployment setup.
 - [ ] 1.4 Add explicit cross-domain dependency validation so a Power BI release can require a successful Fabric release without sharing workspace credentials; verify invalid or cyclic dependency fixtures are rejected.
 
 ## 2. Repository bootstrap and templates
 
-- [ ] 2.1 Inventory all 29 tracked files in Analytics Reporting `cicd/` at commit `db118e88dff09f5c422a4351eeb024d8ba539cf0`, record each file's disposition and provenance, and verify the inventory matches the source tree.
+- [x] 2.1 Inventory all 29 tracked files in Analytics Reporting `cicd/` at commit `db118e88dff09f5c422a4351eeb024d8ba539cf0`, record each file's disposition and provenance, and verify the inventory matches the source tree.
 - [ ] 2.2 Port and generalize all applicable reference Python scripts, dependency inputs, and guidance into a versioned skill bundle; verify no project-specific identity, workspace, item list, secret, or operational record becomes a default.
 - [ ] 2.3 Parameterize the reference pipeline YAML and four configuration files, adapting the DEV release wrapper to TEST while preserving independent Power BI and Key Vault examples; verify each of the nine YAML references has a documented disposition and all rendered cross-file paths resolve.
 - [ ] 2.4 Implement a minimal-input offline bootstrap with a single validation entry point; verify a synthetic adopter can render and validate without the reference checkout or network access, and missing placeholders fail with actionable errors.
 - [ ] 2.5 Add idempotent templates for manifest/configuration, dependency locks, validation entry points, release packaging, deployment guards, post-deployment checks, and lifecycle documentation; verify bootstrap produces a reviewable diff and preserves unrelated files.
 - [ ] 2.6 Generate secretless Fabric source-validation assets and path-scoped pipeline definitions; verify they never request Fabric deployment credentials.
-- [ ] 2.7 Document Data Engineering extension authoring, review and commit to DEV, initial workspace-to-branch synchronization, and deliberate DEV revision selection for release.
+- [x] 2.7 Document Data Engineering extension authoring, review and commit to DEV, initial workspace-to-branch synchronization, and deliberate DEV revision selection for release.
 - [ ] 2.8 Generate shared release-stage templates plus thin `fabric-test.yml` and `fabric-prod.yml` wrappers with target-specific configuration; verify both consume the same immutable artifact without repository checkout or rebuild and no DEV deployment wrapper is generated.
 - [ ] 2.9 Generate immutable release and protected TEST/PROD deployment templates for the Fabric scope; verify the artifact includes revision, manifest, dependency, and content-hash metadata.
 - [ ] 2.10 Generate Power BI validation/release assets only when `pbi-assets.yml` contains an explicit approved mapping; verify Fabric-only repositories receive no Power BI pipeline files.
@@ -77,3 +77,12 @@
 - [ ] 8.6 Build one revision-bound immutable artifact and deploy it to TEST using the approved deployment principal; verify supported definitions, dependencies, configured execution/integration checks, identity, guards, and artifact digest and retain evidence.
 - [ ] 8.7 Promote the exact TEST-verified artifact through the protected PROD path using the approved deployment principal; verify PROD definitions and dependencies, both target digests and approvals, and retain evidence without secrets.
 - [ ] 8.8 Confirm PREQIN-specific workspace and service-principal identifiers are confined to adopter configuration and test evidence; verify reusable templates contain no PREQIN or Power BI EOT defaults.
+
+## 9. Target-neutral bootstrap and recovery
+
+- [ ] 9.1 Add explicit target name/ID and capacity inputs, isolated rehearsal target planning and target-ID alias checks; verify existing DEV/TEST/PROD mappings remain unchanged and plan/status make no writes.
+- [ ] 9.2 Generate target-specific deployment configuration from versioned plugin scripts/templates and package selected revision definitions without rebuilding business logic; verify idempotency, diffs and preservation of unrelated files.
+- [ ] 9.3 Verify schema-enabled Lakehouse, endpoint, identities, managed shells, notebook Lakehouse bindings and pipeline workspace/Lakehouse/connection destinations; test missing, mismatched and encoded references.
+- [ ] 9.4 Enforce an exclusive lock for deployment through verification and require explicit selection of data-writing runtime checks; verify schedules remain disabled and unexpected target writes fail closed.
+- [ ] 9.5 Document and validate Spark-first data engineering, protected artifact rollback, separately reviewed Delta recovery and residual-item handling.
+- [ ] 9.6 Require an approved evidence location and retention period, record provenance-bound redacted results and revalidate mutable state on resume; test target and permission changes.

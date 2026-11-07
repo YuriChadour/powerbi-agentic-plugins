@@ -1,44 +1,18 @@
 # Sample prompts — git-branch-guard
 
-Copy-pasteable prompts that exercise
-`plugins/devops/skills/git-branch-guard/SKILL.md` directly, and prompts
-showing how it is invoked automatically as the second half of the
-`jira-workflow` flow (see `.github/prompts/jira-workflow.md`).
+For implementation work, `jira-workflow` first obtains the user-provided Jira
+key, records it in `RESUME.md`, and asks for work area then work type. A
+plain-text prompt is equivalent when structured choices are unavailable.
 
-## Direct usage (no Jira ticket context)
+- `I want to work on FIN-1740`: select the work area and bug, feature, or
+  story. Explicit exclusive Fabric data engineering in an adopter project
+  uses the configured DEV branch and mandatory scope-aware guard.
+- `Create a branch for FIN-1740`: resolve scope and type first. Other work
+  searches for existing ticket branches and asks before switching or creating;
+  run the guard after branch selection.
+- `Check my current branch`: the guard can validate the current branch with no
+  arguments. Starting implementation still requires scope-first intake and a
+  user-provided Jira key. Broad Fabric, mixed or unknown scope never qualifies
+  for the DEV exception.
 
-```
-Check my current branch before I start coding
-```
-```
-Validate my branch name
-```
-
-Expected agent behavior: runs
-`check_git_branch_guard.txt`, reports whether the current branch is
-protected, missing a Jira key, or missing the `feature/`/`bugfix/` prefix,
-and suggests a compliant replacement name if it fails.
-
-## Manual branch creation (no MCP involved)
-
-```
-Create a branch for FIN-1740, it's a feature, call it jira-mcp-integration
-```
-
-Expected agent behavior: creates
-`feature/FIN-1740-jira-mcp-integration` directly, without invoking
-`jira-workflow` (use this when you already know the ticket details and don't
-need Jira fetched/assigned/transitioned).
-
-## Combined usage (jira-workflow → git-branch-guard)
-
-```
-I want to work on FIN-1740
-```
-
-Expected agent behavior: `jira-workflow` (see
-`.github/prompts/jira-workflow.md`) fetches/assigns/transitions the ticket
-first, derives `ticket_key` and `short_description` from the ticket
-summary, and then invokes `git-branch-guard` with those exact values to
-create the branch — you should not need to type the branch name yourself in
-this flow.
+The guard validates branches; it does not create them or modify remote policies.

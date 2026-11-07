@@ -28,6 +28,25 @@ Before invoking branch validation or selecting a branch-creation route, the syst
 - **WHEN** the work includes Power BI or other work, or its scope is unclear
 - **THEN** the system SHALL apply the existing feature/bugfix branch rules rather than the DEV exception
 
+### Requirement: Record the user's Jira ticket for every work area
+
+For work in every area, the system SHALL obtain the Jira ticket key from the user and record the current ticket key in `RESUME.md` for commit traceability, independently of the branch name. If the user has not provided a ticket key, the system SHALL ask for it and SHALL NOT invent one or infer it from the branch. If Jira integration is unavailable, the system SHALL still record the user-provided ticket key. Updating the current ticket SHALL preserve unrelated existing content in the record.
+
+#### Scenario: Fabric data engineering on a shared DEV branch
+
+- **WHEN** the user supplies a Jira ticket for Fabric data-engineering work on the configured DEV branch
+- **THEN** the system SHALL record that key in `RESUME.md` so it is available for the commit workflow
+
+#### Scenario: Other work areas
+
+- **WHEN** the user supplies a Jira ticket for Power BI, other, mixed, or another work area
+- **THEN** the system SHALL record that key in `RESUME.md` for commit traceability
+
+#### Scenario: Ticket is missing or Jira is unavailable
+
+- **WHEN** a ticket key has not been supplied or Jira integration is unavailable
+- **THEN** the system SHALL ask the user for the key when needed and record the supplied key without inventing one
+
 ### Requirement: Validate the DEV working branch for Fabric data engineering
 
 The branch guard SHALL run before implementation, including Fabric development. It SHALL permit the explicitly configured DEV working branch only for Fabric data-engineering-only work, without a feature/bugfix prefix or Jira key in that branch name. The exception SHALL NOT apply to implementation of the plugin itself. If the DEV exception is requested and its configured branch is missing, invalid, or cannot be determined, the guard SHALL fail closed with an actionable diagnostic. The exception SHALL NOT authorize main, master, prod, production, or test as a DEV working branch.

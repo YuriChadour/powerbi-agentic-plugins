@@ -18,6 +18,15 @@ The repository currently has Fabric workload skills and a DevOps PR helper, but 
 - Route work using user-selected work area first, then bug/feature/story, with a narrowly scoped DEV-branch exception for Fabric data engineering; preserve feature/bugfix and Jira rules for other and mixed work. The related `fin-2060-fabric-de-branch-guard` change owns guard and intake behavior.
 - Provide plan, bootstrap, configure, validate, release, status, and rollback-oriented operating modes.
 
+### Target-neutral bootstrap and recovery
+
+- Generate reusable scripts, YAML and configuration templates from versioned plugin assets; package adopter-owned notebook and pipeline definitions from the selected source revision instead of reconstructing business logic.
+- Accept an explicit target workspace name or ID and capacity when needed. A separately selected rehearsal target is isolated from configured DEV, TEST and PROD mappings; it is not a fourth permanent environment and cannot supply production-promotion evidence unless explicitly authorized by the applicable release contract.
+- Verify schema-enabled Lakehouse readiness, identities, managed shells, notebook bindings and pipeline destinations; lock deployment through verification. Run data ingestion and integration checks only when explicitly selected, and keep schedules disabled.
+- Prefer Spark notebooks for initial Lakehouse schemas, Delta transformations, validation and materialized data; keep pipelines focused on ingestion and orchestration.
+- Redeploy retained known-good artifacts through protected verification; treat Delta data recovery as a distinct reviewed action with an explicit scope and recovery point. Preserve unrelated items and report residual managed items.
+- Record redacted, provenance-bound evidence in an explicitly configured approved location with a retention period; revalidate mutable state when resuming.
+
 ## Capabilities
 
 ### New Capabilities

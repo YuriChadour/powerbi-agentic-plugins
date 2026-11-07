@@ -15,8 +15,7 @@ Follow the steps in order, exactly as written. Do not skip steps. Do not
 invent tool names. Do not guess status/transition IDs.
 
 This skill does **not** create or validate git branches — that is the job of
-the separate `git-branch-guard` skill. This skill only supplies
-`ticket_key` and `short_description` to it (see Step 2.6).
+the separate `git-branch-guard` skill. This skill resolves scope, work type and the user-provided ticket before handing branch routing to the caller.
 
 ## Dependencies
 
@@ -24,7 +23,7 @@ the separate `git-branch-guard` skill. This skill only supplies
 |---|---|---|
 | `com.atlassian/atlassian-mcp-server` MCP server (primary, confirmed) | Fetch/assign/transition Jira tickets, add comments | Preferred — try first in Step 0 |
 | `atlassian-rovo-mcp` MCP server (alternate name, some orgs) | Same as above | Only if the primary is not connected |
-| `git` / `git-branch-guard` skill | Creates the branch using `ticket_key` + `short_description` | Always, after Step 2 |
+| `git` / `git-branch-guard` skill | Validates the selected branch after scope-first intake | Always before implementation |
 | `git-branch-guard/assets/pbip-pr-summary/commit_diff_summary.ps1`/`.sh` | Grounded, structurally-diffed PBIP change summary for a single commit | Optional, Step 4.3.2 — only when the commit touches files under a `*.Report/` or `*.SemanticModel/` project folder |
 
 `com.atlassian/atlassian-mcp-server` is the server actually registered in
@@ -39,41 +38,52 @@ around.
 
 ---
 
-## Step 0 — Confirm MCP tool names (single targeted search, not a fishing expedition)
+## Required intake before branch handling
 
-The CLI's tool-search interface truncates long tool names, so the exact
-string returned by `tool_search_tool` may not exactly match the theoretical
-`com-atlassian-atlassian-mcp-server-<ToolName>` pattern — always use the
-**exact string returned by the search**, never construct it by hand.
+Apply this intake when work starts, regardless of work area or Jira availability.
+Obtain a ticket key directly from the user's request or ask for it; never infer
+it from a branch or invent one. Require an uppercase key matching `[A-Z]+-\d+`;
+if absent or unresolved, ask and stop until supplied. Record the current key in
+repository-root `RESUME.md`, creating the file if absent and preserving all
+unrelated content. Use the following uniquely delimited block; replace only its
+contents when switching tickets, and fail with a diagnostic if markers are
+ambiguous or the record cannot be written:
 
-1. Make **one** `tool_search_tool` call with a combined regex covering every
-   job this skill needs, anchored with `$` where the tool name could
-   otherwise prefix-match a longer sibling tool name:
-   ```
-   pattern: "getAccessible|atlassianUserInfo|getJiraIssue$|getTransitionsForJiraIssue|transitionJiraIssue|editJiraIssue|addCommentToJiraIssue"
-   limit: 10
-   ```
-   (`getJiraIssue$` avoids also matching `getJiraIssueRemoteIssueLinks` /
-   `getJiraIssueTypeMetaWithFields`.)
-2. Map the returned tool names to these 7 jobs by the distinctive suffix
-   each contains — this is the known-good mapping, confirmed working:
-   - site/cloudId discovery → tool whose name contains `getAccessible...` (site discovery tool)
-   - get a single issue → tool whose name ends in `getJiraIssue`
-   - list transitions → tool whose name ends in `getTransitionsForJiraIssue`
-   - execute a transition → tool whose name ends in `transitionJiraIssue`
-   - edit issue fields (assignee, etc.) → tool whose name ends in `editJiraIssue`
-   - add a comment → tool whose name ends in `addCommentToJiraIssue`
-   - current-user lookup → tool whose name ends in `atlassianUserInfo`
-3. IF the combined search returns **zero** tools for all 7 jobs → retry once
-   with the broader fallback pattern `jira|atlassian`.
-   - IF that also returns zero tools → go directly to the **Fallback
-     algorithm** at the bottom of this document, and stop. Do not attempt
-     Steps 1-4.
-4. Reuse the exact discovered tool names for the rest of this session — do
-   not re-run `tool_search_tool` again once all 7 are resolved, and never
-   call a tool name you have not confirmed exists in this session's search
-   results.
+```markdown
+<!-- jira-current-ticket:start -->
+Current Jira ticket: FIN-123
+<!-- jira-current-ticket:end -->
+```
 
+The example is illustrative; use the user's actual key. This record is distinct
+from `SESSION_RESUME.md`. When preparing a commit, use the current key from
+this block; if absent or ambiguous, ask the user. Never infer it from the branch.
+
+Then ask the work area first: **Fabric data engineering only**, **Power BI**,
+**Other**, **Mixed**, or **Fabric (needs clarification)**. Ask for explicit
+confirmation of exclusive Fabric data-engineering scope before granting the
+exception. Broad Fabric does not qualify. Then ask the independent work type:
+**bug**, **feature**, or **story**. If either selection is declined, cancelled,
+or unresolved, stop before branch lookup, validation, planning or implementation.
+Do not derive either answer from Jira metadata, ticket wording, paths, or branch.
+Offer these choices as plain text when the harness has no structured selector.
+
+Return `ticket_key`, selected `work_area`, `work_type`, exclusive scope, and
+`short_description` (from Jira or the user's manual description) to the caller.
+The caller validates the configured DEV branch only for explicit exclusive
+Fabric DE in adopter projects; all other scopes use normal branch rules and
+branch reuse. If DEV configuration is missing or invalid, stop. The guard
+validates but does not create branches. Never bypass remote Git permissions or
+Azure DevOps policies; report any conflict.
+## Step 0 — Discover Jira capabilities
+
+Complete Required intake before branch handling even if Jira tools are missing.
+Use the current harness's supported tool discovery to find Jira site discovery,
+issue retrieval, user lookup, issue edit, transition listing and execution,
+and comment tools. In a harness that provides `tool_search_tool`, search for
+`getAccessible|atlassianUserInfo|getJiraIssue|transition|editJiraIssue|addComment`.
+Use only discovered tools and their actual input schemas. If discovery or Jira
+is unavailable, use the fallback algorithm; do not assume a specific MCP name.
 ## Step 1 — Resolve the Atlassian `cloudId` (once per session)
 
 1. Call the site-discovery tool found in Step 0 with no arguments.
@@ -99,7 +109,7 @@ ticket key is any token matching the regex `[A-Z]+-\d+`):
 - "pick up <KEY>"
 - "I'm starting <KEY>"
 
-When one of these matches, extract `<KEY>` and do the following, in order.
+First complete Required intake before branch handling for all start-work requests, including when no trigger phrase or Jira tool is available. Use the user-provided `<KEY>` and do the following when Jira is available, in order.
 **Parameter shapes below are confirmed from a live run — use them exactly,
 do not invent alternate field names like `issue_key`, `assignee` (flat), or
 `transition_id`:**
@@ -144,32 +154,17 @@ do not invent alternate field names like `issue_key`, `assignee` (flat), or
    it, replace anything that is not `[a-z0-9]` with a single hyphen, collapse
    repeated hyphens, trim leading/trailing hyphens, and truncate to at most
    40 characters. This becomes `short_description`.
-6. Hand off `ticket_key = <KEY>` and `short_description` (from Step 2.5) to
-   the `git-branch-guard` skill so it can create/validate the
-   `feature/<KEY>-<short_description>` or `bugfix/<KEY>-<short_description>`
-   branch. Ask the user which of `feature` or `bugfix` applies if the
-   ticket's `issuetype` (from Step 2.1) does not make it obvious (e.g.
-   `issuetype` containing "Bug" → `bugfix`; anything else → `feature`).
+6. Return the intake state and description to the caller. The caller executes
+   the scope-aware branch route and mandatory guard before implementation.
 
-### Step 2.7 — Mandatory architecture and work-category gate
+### Step 2.7 — Downstream planning gates
 
-After Jira assignment, status transition, and branch validation, ask the user
-to select exactly one category. Present these choices verbatim:
-
-1. **Bug**
-2. **Report Development Story**
-3. **Fabric Development**
-4. **Other**
-
-Show the Jira summary and description as context, but never infer or silently
-select a category from Jira metadata, issue type, wording, or branch name.
-This prompt is required for every started ticket, including tickets already in
-`In Progress` and tickets started through the fallback algorithm.
-
-If the user declines, cancels, or gives an unresolved answer, stop before
-planning or implementation and report: `Routing remains unresolved; no
-planning or implementation workflow was started.`
-
+Use the user's already selected work area and independent work type; do not ask
+another conflicting category question. The caller performs branch handling only
+after both selections. Bug work follows troubleshooting. For Power BI report
+work that is not a bug, apply the report subtype gate below. Fabric work follows
+Fabric Development routing. Other investigative work follows Bug and Other
+routing. Preserve all unresolved-state and explicit implementation gates.
 #### Report Development Story subtype gate
 
 For **Report Development Story**, ask the user to select exactly one subtype:
@@ -252,6 +247,7 @@ implementation automatically; a later explicit request is required.
 The repository record roles are fixed: `MEMORY.md` contains only durable,
 vendor-neutral facts; route records contain planned work and progress;
 `TROUBLESHOOTING.md` contains investigation history and shared guidance;
+`RESUME.md` records the user-provided current ticket for commit traceability;
 `SESSION_RESUME.md` is a local, gitignored convenience only; Jira contains
 external ticket status and comments. No workflow step may depend on
 `SESSION_RESUME.md` existing.
@@ -268,15 +264,7 @@ external ticket status and comments. No workflow step may depend on
 
 When one of these matches:
 
-1. Determine `<KEY>`:
-   - IF the message contains a token matching `[A-Z]+-\d+` → use that as
-     `<KEY>`.
-   - ELSE → extract the ticket key from the current git branch name using
-     the same regex `[A-Z]+-\d+` (this matches how `git-branch-guard` names
-     branches: `feature/<KEY>-...` or `bugfix/<KEY>-...`). Run
-     `git branch --show-current` if needed to read the branch name.
-   - IF no key can be determined either way → ask the user: "Which ticket
-     key should I transition?" and use their answer.
+1. Determine <KEY> from the user's current request or the uniquely marked current ticket in RESUME.md; if absent or ambiguous, ask the user. Never infer it from the branch.
 2. Call the list-transitions tool with `{ cloudId, issueIdOrKey: <KEY> }`.
    - Search case-insensitively for a transition whose `name` is exactly
      **"Ready to Test"**.
@@ -322,65 +310,17 @@ session, in order:
 
 ---
 
-## Fallback algorithm (used whenever a step above says "go to Fallback")
+## Fallback algorithm
 
-1. Tell the user plainly: "The Jira/Atlassian MCP isn't available, so I
-   can't fetch, assign, or transition the ticket automatically."
-2. Ask the user two explicit questions:
-   1. "What type of ticket is this — feature or bugfix?"
-   2. "Give me a short kebab-case description for the branch name."
-3. Hand off the user's two answers directly to `git-branch-guard` to
-   create/validate the branch, exactly as it works today. Do not attempt any
-   further Jira MCP calls for the rest of this flow. After branch validation,
-   continue with Step 2.7's category gate. Step 4's post-commit prompt should
-   still be offered, but if the user says yes, tell them the comment can't be
-   posted automatically and they should add it manually in Jira.
+Tell the user Jira is unavailable and automatic ticket updates cannot run.
+Complete Required intake before branch handling, including obtaining the
+user-provided key, updating `RESUME.md`, and asking work area then work type.
+Ask for a short description if needed; return the same scope, type and ticket
+contract to the caller. The caller performs branch selection and validation.
+Offer the post-commit Jira comment prompt when applicable; if accepted, explain
+that the user must add the comment manually. Do not invent Jira tool names.
 
 ---
+## Worked example
 
-## Worked example (Steps 0-2, MCP available — reproduced from a real run)
-
-```
-User: I want to work on FIN-1740
-
-Agent (Step 0): [calls tool_search_tool with the combined pattern]
-  -> finds (names truncated by the CLI's search index, use verbatim):
-     com-atlassian-atlassian-mcp-server-getAccessibleAtlassianResourc
-     com-atlassian-atlassian-mcp-server-getJiraIssue
-     com-atlassian-atlassian-mcp-server-getTransitionsForJiraIssue
-     com-atlassian-atlassian-mcp-server-transitionJiraIssue
-     com-atlassian-atlassian-mcp-server-editJiraIssue
-     com-atlassian-atlassian-mcp-server-addCommentToJiraIssue
-     com-atlassian-atlassian-mcp-server-atlassianUserInfo
-
-Agent (Step 1): [calls the getAccessibleAtlassianResourc tool, no args]
-  -> two entries returned, both with the same id, different scopes
-  -> cloudId = "b3fcc1a7-23ed-45d2-a353-ebd4c9f5043e"
-
-Agent (Step 2.1): [calls getJiraIssue({ cloudId, issueIdOrKey: "FIN-1740" })]
-  -> fields.summary = "Update Agentic tooling for developers to
-     automatically link to relevant jira and create latest comments on
-     jira ticket"
-  -> fields.status.name = "Not Started", fields.issuetype.name = "Story"
-
-Agent (Step 2.2): [calls atlassianUserInfo, no args]
-  -> account_id = "712020:35e0a254-a41b-4606-8895-efa6b7c6aed1"
-
-Agent (Step 2.3): [calls editJiraIssue({ cloudId, issueIdOrKey: "FIN-1740",
-  fields: { assignee: { accountId: "712020:35e0a254-a41b-4606-8895-efa6b7c6aed1" } } })]
-  -> success, fields.assignee now reflects the current user
-
-Agent (Step 2.4): [calls getTransitionsForJiraIssue({ cloudId, issueIdOrKey: "FIN-1740" })]
-  -> finds transitions[] entry { id: "31", name: "In Progress" }
-  [calls transitionJiraIssue({ cloudId, issueIdOrKey: "FIN-1740",
-  transition: { id: "31" } })] -> success, fields.status.name = "In Progress"
-
-Agent (Step 2.5): slugify summary ->
-  "update-agentic-tooling-for-developers-to-autom" (truncated to 40 chars)
-
-Agent (Step 2.6): hands off ticket_key="FIN-1740",
-  short_description="update-agentic-tooling-for-developers-to-autom" to
-  git-branch-guard, asks: "This looks like a Story — should the branch be
-  feature/ or bugfix/?" -> user says feature ->
-  git-branch-guard creates feature/FIN-1740-update-agentic-tooling-for-developers-to-autom
-```
+For FIN-1740, record the user-provided key, ask work area then work type, and route explicit exclusive Fabric DE through the configured DEV guard. A Power BI story instead uses a Jira-keyed feature branch and the report subtype gate. If Jira is unavailable, preserve the same intake and use the manual fallback.

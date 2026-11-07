@@ -189,6 +189,18 @@ Use `fab` to create dedicated DEV, TEST and PROD workspaces on the selected capa
 
 Bootstrap PREQIN-1, establish the DEV workspace-to-branch baseline, exercise extension authoring, review and commit selected items to DEV, then select and build the validated DEV revision once. Deploy and verify it in TEST and promote the same digest through protected PROD.
 
+### 13. Generate once for an explicitly selected target
+
+The versioned plugin bundle owns executable generators, templates, dependency inputs and instructions; adopter repositories provide non-secret target and managed-item configuration and retain generated outputs. Do not recreate notebooks or pipeline business logic by hand. Package versioned definitions from the reviewed source revision; apply target bindings through validated configuration. Repeat generation must preserve unrelated files, show conflicts and require an explicit update decision.
+
+Require an explicit workspace name or ID and, for creation, an approved capacity. Plan and status remain read-only: report a unique missing target as a planned create with pending IDs, and reject ambiguous, incompatible or unauthorized targets. A rehearsal workspace is a separate selected target, not a fourth permanent environment or an implicit replacement of TEST. Resolve and compare actual IDs to DEV, TEST and PROD before protected writes. Rehearsal verification cannot by itself authorize production promotion unless the promotion contract explicitly approves that exact target and evidence.
+
+Verify schema-enabled Lakehouse and endpoint readiness, managed inventory, approved identity and connection permissions. After deployment verify notebook default Lakehouse bindings and pipeline workspace, Lakehouse and connection references, including encoded references; stop on unresolved or unintended destinations. Protect deployment through final verification using an exclusive target lock. Keep schedules disabled and run source ingestion and integration checks only on explicit selection. Runtime checks can write target data; release artifacts never transport data rows.
+
+Finalize reviewed generated inputs, capture the resulting commit, queue a trusted build for that exact revision and deploy its one immutable artifact. Bind source revision, target contract, artifact digest, identity, run and verification evidence. Require approved evidence location and retention before protected release and recheck mutable state on resume.
+
+For initial data engineering, use Spark notebooks as the primary authoring surface for schemas, Delta transformations, validation and materialized tables; use pipelines for ingestion and orchestration. SQL-authored procedures or views are an explicit extension. Restore definitions with a retained known-good artifact under the same protected approval and verification. Delta data recovery is a separate reviewed action with an explicit recovery point and scope; never delete unrelated or residual managed items without an approved deletion plan.
+
 ## Risks / Trade-offs
 
 - **Bootstrap changes differ from a repository's conventions** → Render to a temporary plan, show diffs, validate existing assets, and require explicit confirmation before replacement.

@@ -20,6 +20,11 @@ before handoff.
 
 ## Durable project conventions
 
+- `C:\Development\Glasslake CICD` is the Power BI CI/CD proof-of-concept
+  project; `C:\Development\Analytics Reporting` is the Fabric data-engineering
+  CI/CD proof-of-concept project. Treat both as read-only references when
+  developing reusable plugin skills, scripts, and templates; do not modify
+  either project unless the user explicitly requests it.
 - Fabric work follows Bronze → Silver → Gold medallion boundaries, with Delta
   Lake tables for Lakehouse storage.
 - Power BI new-report work follows approved business planning, canonical

@@ -29,7 +29,7 @@ repo's own `TROUBLESHOOTING.md`.
 | Dependency | Purpose | Required When |
 |---|---|---|
 | `jira-workflow` skill | Fetch/assign/transition the ticket to "In Progress" (Step 1), and post the findings comment + offer the next transition (Step 9) | Always — falls back to its own manual prompt if no Atlassian MCP is connected |
-| `git-branch-guard` skill | Create/validate the `feature/`/`bugfix/` branch for the ticket | Always, right after Step 1 |
+| `git-branch-guard` skill | Validate the scope-appropriate branch for the ticket | Always, after scope-first intake |
 | A live-query tool matching the repo's data platform (`mssql` MCP, Fabric MCP, a DAX/Power BI MCP, Postgres, etc.) | Confirm or refute root-cause candidates against real data | Step 6-7 — discovered per-repo, never assumed |
 | `tool_search_tool` (or equivalent MCP discovery) | Find the right live-query tool for this repo's platform | Step 6b, only when no working connection is already documented |
 
@@ -50,11 +50,19 @@ repo's own `TROUBLESHOOTING.md`.
 
 ## Step 2 — Get on the right branch (hand off to `git-branch-guard`)
 
-1. Invoke `git-branch-guard` with the `ticket_key` and `short_description`
-   returned from Step 1 to create/validate the
-   `feature/<KEY>-<description>` or `bugfix/<KEY>-<description>` branch.
-   Do not begin investigation (Step 5 onward) until this passes.
-
+Use `jira-workflow` Required intake before branch handling: obtain the user
+provided ticket and record it in `RESUME.md`; ask work area first and then
+bug, feature, or story. Do not infer scope or type. Stop if unresolved.
+For explicit exclusive Fabric data engineering in an adopter project, load
+its configured DEV branch and invoke the guard with
+`-Scope fabric-data-engineering-only -DevBranch <configured-name>`. Missing or
+invalid configuration stops work. If the current branch differs, apply normal
+checks. For Power BI, other, mixed, broad Fabric or unknown scope, use normal
+feature/bugfix rules. The DevOps agent's local/remote reuse and confirmation
+flow applies whenever a normal branch is needed. Always run the guard after
+switching or creating; it validates rather than creates branches. Do not begin
+investigation until validation passes. Report remote policy conflicts without
+bypassing them.
 ## Step 3 — Bootstrap or resume this repo's `TROUBLESHOOTING.md`
 
 1. Check the repo root for `TROUBLESHOOTING.md`.
@@ -221,7 +229,7 @@ User: investigate FIN-1806, current month is stuck on July instead of August
 
 Step 0: ticket key = FIN-1806
 Step 1: jira-workflow assigns + transitions FIN-1806 to "In Progress"
-Step 2: git-branch-guard creates feature/FIN-1806-research-current-month-data
+Step 2: scope and work type are selected; the guard validates the appropriate branch
 Step 3: TROUBLESHOOTING.md doesn't exist yet -> bootstrapped from template
 Step 4: /memories/repo/ has no convention file yet -> bootstrapped from template
 Step 5: traced CDC copy -> lakehouse table -> notebook gate -> semantic model;

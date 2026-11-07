@@ -38,10 +38,9 @@ sections + `Other Changes`).
 
 ## 3. Extract the Jira ticket ID
 
-Parse the current branch name for a ticket ID (e.g. `feature/FIN-1783-...` → `FIN-1783`,
-`bugfix/FIN-1757-...` → `FIN-1757`). If found, prefix the generated message with it, per this
-repo's commit convention. If no ticket ID is identifiable, omit the prefix rather than guessing.
-
+Use the user-provided ticket from the uniquely marked current-ticket block in
+repository-root `RESUME.md`. If it is absent or ambiguous, ask the user. Prefix
+the message with the confirmed key; do not infer it from the branch name.
 ## 4. Synthesize the message (do not dump raw output)
 Read the reviewer's Markdown and preserve its information architecture in the deliverable.
 The reviewer output is the source of facts, while the generated text is a readable synthesis.

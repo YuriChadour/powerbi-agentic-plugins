@@ -1,80 +1,51 @@
 ---
 name: git-branch-guard
-description: Ensures development starts on a valid bugfix/ or feature/ branch that includes a Jira ticket number.
+description: Validate the Git branch before implementation, including Fabric development; allow the configured DEV branch only for explicit exclusive Fabric data engineering and require Jira-keyed feature/bugfix branches otherwise.
 ---
 
 # Git Branch Guard (Windows)
 
-## Purpose
-Validate that development starts on a separate working branch and not on a protected branch.
+## Purpose and inputs
 
-## Mandatory rule
-This check must run before:
-- code changes
-- SQL / DAX changes
-- Fabric development
-- semantic model updates
-- notebook or pipeline edits
-- documentation changes tied to implementation work
+Run the guard before implementation, including Fabric development. Before branch
+lookup or validation, obtain the user's work area and then independent work type
+(bug, feature, or story). Clarify broad Fabric scope; if either selection is
+unresolved, stop. Use plain-text choices if the harness has no selection control.
+Do not infer exclusive scope from a ticket, path, or branch name.
 
-## Branch requirements
-A valid development branch must:
-1. Not be a protected or shared branch:
-   - main
-   - master
-   - prod
-   - production
-   - dev
-   - develop
-2. Follow the preferred pattern:
-   - `bugfix/JIRA-123-short-description`
-   - `feature/JIRA-123-short-description`
-3. Include a Jira ticket key in uppercase format:
-   - `ABC-123`
+For explicit **exclusive** Fabric data engineering in an adopter repository,
+pass `-Scope fabric-data-engineering-only` and the adopter's explicitly
+configured `-DevBranch` (the exact local branch name). Missing, malformed or
+prohibited configuration fails closed. The plugin implementation repository is
+not eligible. A different current branch receives normal checks. Jira intake
+and ticket traceability remain independent of the DEV branch name.
 
-## Expected behavior
-1. Detect the current Git branch.
-2. Fail if the branch is protected.
-3. Fail if the branch does not contain a Jira ticket.
-4. Fail if the branch does not start with `bugfix/` or `feature/`.
-5. Suggest a compliant replacement branch name.
-6. Do not proceed to implementation until the branch check passes.
+For Power BI, other, mixed, or unknown scope, run with the corresponding
+`-Scope power-bi`, `other`, `mixed`, or `unknown`, or omit arguments. Normal
+validation requires `feature/` or `bugfix/` and an uppercase Jira key; it
+rejects main, master, prod, production, dev, develop and test. When a working
+branch is needed, preserve the DevOps agent's local/remote branch reuse and
+user confirmation flow. Always validate after switching or creating a branch.
 
-## Script to run
+## Invocation and result
+
+From the target Git repository, use the installed script's actual path:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File check_git_branch_guard.ps1
+powershell -ExecutionPolicy Bypass -File <skill-path>/check_git_branch_guard.ps1
+powershell -ExecutionPolicy Bypass -File <skill-path>/check_git_branch_guard.ps1 -Scope fabric-data-engineering-only -DevBranch dev
 ```
 
-## Example valid branches
-- bugfix/BI-123-fix-allocation-bug
-- feature/DATA-456-add-audit-table
+Exit code 0 permits implementation on the current branch; a nonzero exit
+stops it. Detached HEAD, Git errors, invalid DEV configuration and prohibited
+DEV names (`main`, `master`, `prod`, `production`, `test`) fail. Exact branch
+matching is case-sensitive. A valid normal example is
+`feature/FIN-123-description`; `feature/fin-123-description` is invalid.
 
-## Example invalid branches
-- dev
-- main
-- feature/test
-- drv/no-ticket
-
-## Related skill: jira-workflow
-
-This skill only validates/creates branch names — it does not talk to Jira.
-When a user starts work on a ticket (e.g. "I want to work on FIN-1740"), the
-`devops` agent invokes the `jira-workflow` skill **first** to
-fetch/assign/transition the ticket via the `atlassian-rovo-mcp` or
-`com.atlassian/atlassian-mcp-server` MCP server (see
-`plugins/devops/skills/jira-workflow/SKILL.md` Step 0), then — before
-handing off to this skill — searches for an existing local/remote branch
-matching the resulting `ticket_key` (a pre-creation existence check owned
-by the `devops` agent's own orchestration, not by this skill; see
-`devops.agent.md` Step 1) and offers to switch to it instead of creating a
-duplicate. Only when no existing branch match is found (or the user
-declines switching in favor of a new name/description) does the agent hand
-this skill the resulting `ticket_key` + `short_description` to build the
-branch name. If neither MCP server is connected, `jira-workflow` falls back
-to asking the user directly for ticket type + description, which are passed
-to this skill unchanged.
-
+The guard validates locally; Git permissions and Azure DevOps policies remain
+independent. Report a rejected commit or policy conflict and do not bypass or
+change remote protections automatically. It does not create branches or talk to
+Jira. Invoke `jira-workflow` for applicable ticket intake and tracking.
 ## Note: assets/pbip-pr-summary/
 
 This folder holds a standalone PBIP/PBIR change-summary tool (not part of
@@ -123,6 +94,5 @@ installed and ready:
 This is a one-time, per-machine setup — see
 `assets/azure-devops-cli-setup.md` for the manual steps and
 `assets/setup_azure_cli.ps1` for an idempotent script that automates all of
-them. Branch validation/creation (`check_git_branch_guard.ps1`) does not
+them. Branch validation (`check_git_branch_guard.ps1`) does not
 depend on the Azure DevOps CLI; only PR creation does.
-
