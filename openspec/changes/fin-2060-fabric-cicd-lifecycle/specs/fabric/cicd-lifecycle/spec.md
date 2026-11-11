@@ -288,26 +288,24 @@ The lifecycle SHALL retain each release artifact and digest in an access-control
 - **WHEN** rollback selects an earlier artifact that does not contain a managed item introduced by the failed release
 - **THEN** the lifecycle SHALL preserve the item unless an explicit deletion plan is approved, report it as residual, and verify the resulting managed definitions
 
-### Requirement: Exercise the lifecycle with PREQIN-1
+### Requirement: Test the installed lifecycle skills
 
-The implementation SHALL include a live end-to-end exercise using `C:\Development\PREQIN-1` after offline template tests pass. The exercise SHALL inventory definitions and dependencies, explicitly select supported managed items, and report unsupported types and unresolved dependencies before deployment. It SHALL create dedicated DEV authoring, TEST and PROD workspaces using the Fabric CLI and a selected capacity, and SHALL grant Power BI EOT (Service Principal), application ID `e4b14c44-12a7-4882-a5ed-dbcb036c9d7b` and service principal object ID `97937f89-9a24-49f4-a3be-c757d283b03d`, Contributor in all three workspaces. The service principal SHALL be the TEST and PROD test deployment identity. Test-specific identifiers SHALL NOT become defaults in reusable assets.
+After offline checks pass, the implementation SHALL install the relevant skills for selected harnesses using their supported installation workflows and SHALL verify discovery and behavior from the installed copies. It SHALL record the source revision or installed version, harness, test context and individual outcomes. Tests SHALL cover scope and branch routing, read-only planning, offline rendering and validation, failure and recovery behavior, Fabric-only and explicitly opted-in Power BI scope, and declared cross-domain dependencies. Unavailable harnesses and untested paths SHALL be reported as unverified.
 
-The exercise SHALL bootstrap PREQIN-1, establish an initial DEV workspace-to-branch baseline without release-pipeline deployment to DEV, exercise DEV extension authoring, selected-item commit and source validation, select a DEV revision and build one revision-bound artifact, deploy and verify it in TEST, and promote the same verified artifact to PROD through the protected release path. It SHALL retain workspace, role-assignment, artifact digest, approval, deployment, and verification evidence without secrets. Missing capacity, identities, permissions, protected resources, or required dependencies SHALL block the affected live step and be reported; plan/status and offline tests SHALL NOT create resources or run deployments.
+#### Scenario: Installed skills are exercised
 
-#### Scenario: PREQIN-1 live deployment succeeds
+- **WHEN** the selected harnesses and installation targets are established and offline checks pass
+- **THEN** the implementation SHALL verify installation and discovery for each selected harness and invoke the installed skills against a controlled test context, retaining the results
 
-- **WHEN** offline tests pass and the selected scope, capacity, identities, workspace role assignments, and protected release resources are available
-- **THEN** the exercise SHALL create and verify the three workspaces and Contributor assignments, deploy the artifact to TEST and PROD, and retain definition, dependency, and applicable integration verification evidence linked to the same artifact digest
+#### Scenario: Live testing is not selected
 
-#### Scenario: PREQIN-1 contains an unsupported or unresolved item
+- **WHEN** no live target has been selected for testing
+- **THEN** the implementation SHALL report live deployment and promotion as unverified and SHALL NOT infer them from offline or installed-skill tests
 
-- **WHEN** discovery finds an unsupported type or a dependency that cannot be resolved within the selected scope
-- **THEN** the exercise SHALL report it explicitly and SHALL NOT claim that item or its dependent deployment was verified
+#### Scenario: A live test is separately selected
 
-#### Scenario: Newly created DEV workspace is empty
-
-- **WHEN** a new DEV workspace does not yet contain the selected managed definitions
-- **THEN** the exercise SHALL establish and verify the approved initial baseline before DEV authoring and release and SHALL NOT interpret the empty workspace as authority to erase source files
+- **WHEN** live testing is selected
+- **THEN** the implementation SHALL resolve the scope, target, permissions and protected resources before execution and retain redacted results separately from offline test results
 
 ### Requirement: Provide cross-harness lifecycle routing
 
@@ -368,3 +366,50 @@ Before a protected deployment the lifecycle SHALL require an approved evidence l
 
 - **WHEN** a saved operation is resumed and its target identity or required permissions have changed
 - **THEN** the lifecycle SHALL stop before writing until the plan is reconciled
+
+### Requirement: Provide an explicit one-click setup contract
+
+The lifecycle SHALL provide a single entry point coordinating discovery, read-only plan, approved application and optional protected deployment queueing. It SHALL collect repository and source roots, DEV branch and exact revision, target name or ID and creation capacity, Lakehouse and managed-item/dependency mappings, principal object IDs and roles, Azure DevOps project, pipeline and protected-resource references, write guard, verification selection, evidence location and retention, and timeout as applicable. It SHALL report missing inputs and SHALL NOT use reference tenant identities, capacity, workspace or item names as reusable defaults. Credentials SHALL remain external.
+
+#### Scenario: A target plan is requested
+
+- **WHEN** an operator requests plan or status
+- **THEN** the lifecycle SHALL return a redacted plan without local or external writes; saving it SHALL require a separate explicit output action to a selected location
+
+#### Scenario: An isolated target is prepared
+
+- **WHEN** an approved plan is applied
+- **THEN** the lifecycle SHALL create or verify the selected workspace, capacity and schema-enabled Lakehouse, verify endpoint readiness and approved identity roles, prepare only selected managed shells, and generate an isolated target contract and overlay without changing shared mappings or source definitions
+
+#### Scenario: Shell creation is unavailable to the deployment principal
+
+- **WHEN** the supported creation path returns the documented `FeatureNotAvailable` condition
+- **THEN** the lifecycle MAY use an explicitly authorized operator fallback for only missing approved shells, verify inventory and IDs, and SHALL stop on other unresolved failures
+
+#### Scenario: Queue inputs differ from the contract
+
+- **WHEN** the resolved target, source revision or queue inputs differ from the approved target contract
+- **THEN** the lifecycle SHALL stop before queueing and report the mismatch
+
+### Requirement: Separate isolated-target deployment and verification
+
+The isolated-target starter SHALL deploy definitions without automatically executing notebooks, ingestion, pipelines or table readbacks. It SHALL publish deployment evidence and generate a developer verification checklist based on the adopter's approved workload contract. Manual verification SHALL record its own status, target, artifact digest, run IDs and results; a checklist alone SHALL NOT count as success. Automated runtime checks MAY be offered only as an explicitly selected, authorized operation with separate evidence. Protected TEST-to-PROD promotion SHALL continue to require the evidence specified by its release contract.
+
+#### Scenario: Deployment succeeds and verification is pending
+
+- **WHEN** an isolated-target deployment succeeds before manual verification is completed
+- **THEN** the lifecycle SHALL report deployment success and verification pending separately and SHALL NOT claim the target is verified
+
+#### Scenario: An operator resumes a saved operation
+
+- **WHEN** a saved operation is resumed
+- **THEN** the lifecycle SHALL revalidate target, permissions, source revision, target contract, protected resources and lock state, and SHALL continue only applicable incomplete stages without duplicate or destructive actions
+
+### Requirement: Deliver setup documentation and a traceable reference inventory
+
+The reusable starter SHALL provide `SETUP.md` covering prerequisites, permissions, inputs, offline rendering and validation, read-only planning and explicit persistence, approved application, protected Azure DevOps setup, deployment, separate verification, evidence, resume, troubleshooting and rollback. The implementation SHALL retain the historical reference inventory and assess the later Analytics Reporting `4a77113ec051907c3e10e6da9d4a89e62bfb58ea` snapshot, recording per-file provenance, dependencies, disposition and tests without requiring that checkout at runtime.
+
+#### Scenario: An adopter follows the setup guide
+
+- **WHEN** an adopter uses the generated starter without the reference repository
+- **THEN** the guide SHALL identify required inputs and approvals, explain deployment and verification outcomes separately, and provide actionable commands and recovery steps without exposing credentials

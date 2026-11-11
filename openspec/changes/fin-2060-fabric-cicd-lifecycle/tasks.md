@@ -9,7 +9,7 @@
 
 - [x] 2.1 Inventory all 29 tracked files in Analytics Reporting `cicd/` at commit `db118e88dff09f5c422a4351eeb024d8ba539cf0`, record each file's disposition and provenance, and verify the inventory matches the source tree.
 - [ ] 2.2 Port and generalize all applicable reference Python scripts, dependency inputs, and guidance into a versioned skill bundle; verify no project-specific identity, workspace, item list, secret, or operational record becomes a default.
-- [ ] 2.3 Parameterize the reference pipeline YAML and four configuration files, adapting the DEV release wrapper to TEST while preserving independent Power BI and Key Vault examples; verify each of the nine YAML references has a documented disposition and all rendered cross-file paths resolve.
+- [ ] 2.3 Parameterize the reference pipeline YAML and four configuration files, adapting the DEV release wrapper to TEST while preserving independent Power BI and Key Vault examples; verify every YAML reference in both dated inventories has a documented disposition and all rendered cross-file paths resolve.
 - [ ] 2.4 Implement a minimal-input offline bootstrap with a single validation entry point; verify a synthetic adopter can render and validate without the reference checkout or network access, and missing placeholders fail with actionable errors.
 - [ ] 2.5 Add idempotent templates for manifest/configuration, dependency locks, validation entry points, release packaging, deployment guards, post-deployment checks, and lifecycle documentation; verify bootstrap produces a reviewable diff and preserves unrelated files.
 - [ ] 2.6 Generate secretless Fabric source-validation assets and path-scoped pipeline definitions; verify they never request Fabric deployment credentials.
@@ -62,21 +62,18 @@
 - [ ] 7.1 Add unit fixtures for manifest parsing, mixed-scope routing, dependencies, source validation, excluded content and reports.
 - [ ] 7.2 Test bootstrap idempotency, scoped branch routing, DEV commit selection and validation, immutable artifacts, protected deployment and rollback; verify TEST failure blocks PROD and PROD receives the TEST-verified digest.
 - [ ] 7.3 Run the orchestrator in report-only mode against the reference Analytics Reporting `cicd/` asset map; verify existing assets are inventoried before any generated replacement is proposed.
-- [ ] 7.4 Validate templates offline and validate secretless source checks, release stages, TEST and PROD on authorized agents, including protected-resource connectivity and TEST-gated promotion.
+- [ ] 7.4 Validate templates and secretless source checks offline; exercise release gates with controlled fixtures, and report protected-resource connectivity and live TEST/PROD promotion as unverified until separately tested.
 - [ ] 7.5 Validate OpenSpec artifacts and document adoption, dry-run, confirmation, rollback, and separate Fabric/Power BI workspace procedures; verify the final status reports all planning artifacts complete.
 
-- [ ] 7.6 Apply skill-creator guidance to the Fabric lifecycle skill triggers, inputs and handoffs; test Codex, GitHub Copilot, and Claude independently for discovery, scope-first intake, DEV routing and release entry points, including plain-text fallback. Record unavailable harnesses as unverified.
+- [ ] 7.6 Apply skill-creator guidance to the Fabric lifecycle skill triggers, inputs and handoffs; after installation test selected harnesses independently for discovery, scope-first intake, DEV routing and release entry points, including plain-text fallback. Record unavailable or unselected harnesses as unverified.
 
-## 8. PREQIN-1 live end-to-end exercise
+## 8. Installed skill testing
 
-- [ ] 8.1 After offline tests pass, inventory `C:\Development\PREQIN-1` source items and dependencies, select explicit supported managed scope, and report unsupported types and unresolved dependencies; verify the test manifest accounts for each selected item and does not silently include unsupported assets.
-- [ ] 8.2 Resolve DEV/TEST/PROD workspaces, capacity, branch mappings, permissions and TEST/PROD protected resources; report missing prerequisites.
-- [ ] 8.3 Create the dedicated DEV authoring, TEST and PROD workspaces with Fabric CLI using the selected capacity; verify workspace IDs, capacity assignments, and creation evidence.
-- [ ] 8.4 Grant Power BI EOT (Service Principal), application ID `e4b14c44-12a7-4882-a5ed-dbcb036c9d7b` and object ID `97937f89-9a24-49f4-a3be-c757d283b03d`, Contributor on all three workspaces; verify role assignments using the service principal object ID and retain redacted evidence.
-- [ ] 8.5 Bootstrap PREQIN-1 and establish the DEV workspace-to-branch baseline; exercise extension authoring, review and commit of selected items, and DEV revision selection with source validation without allowing an empty workspace to erase source.
-- [ ] 8.6 Build one revision-bound immutable artifact and deploy it to TEST using the approved deployment principal; verify supported definitions, dependencies, configured execution/integration checks, identity, guards, and artifact digest and retain evidence.
-- [ ] 8.7 Promote the exact TEST-verified artifact through the protected PROD path using the approved deployment principal; verify PROD definitions and dependencies, both target digests and approvals, and retain evidence without secrets.
-- [ ] 8.8 Confirm PREQIN-specific workspace and service-principal identifiers are confined to adopter configuration and test evidence; verify reusable templates contain no PREQIN or Power BI EOT defaults.
+- [ ] 8.1 After offline checks pass, select target harnesses and install the relevant plugin skills using their supported installation workflows; record source revision and installed version.
+- [ ] 8.2 Verify discovery separately in each selected harness; verify Codex through installed skills and agents and Copilot through its plugin list, and record unavailable harnesses as unverified.
+- [ ] 8.3 Invoke installed skills against a controlled test context for scope and branch routing, read-only planning, offline starter rendering, validation, and failure and recovery behavior; retain results.
+- [ ] 8.4 Exercise Fabric-only and explicitly opted-in Power BI paths and declared cross-domain dependency behavior from the installed skills; report untested paths rather than inferring success.
+- [ ] 8.5 If a live exercise is separately selected, resolve explicit scope, target, permissions and protected resources before execution; retain redacted results and distinguish live verification from offline tests.
 
 ## 9. Target-neutral bootstrap and recovery
 
@@ -86,3 +83,14 @@
 - [ ] 9.4 Enforce an exclusive lock for deployment through verification and require explicit selection of data-writing runtime checks; verify schedules remain disabled and unexpected target writes fail closed.
 - [ ] 9.5 Document and validate Spark-first data engineering, protected artifact rollback, separately reviewed Delta recovery and residual-item handling.
 - [ ] 9.6 Require an approved evidence location and retention period, record provenance-bound redacted results and revalidate mutable state on resume; test target and permission changes.
+
+## 10. One-click reference reconciliation and operator setup
+
+- [ ] 10.1 Inventory every tracked `cicd/` file at Analytics Reporting commit `4a77113ec051907c3e10e6da9d4a89e62bfb58ea` alongside the historical baseline; record per-file provenance, dependencies, disposition, modifications and tests, distinguishing reference task claims from independently verified evidence.
+- [ ] 10.2 Assess and generalize `uat_bootstrap.py`, `create_uat.ps1`, target/plan/result/evidence/tasklist schemas, `release_contract.py`, `compare_release.py`, notebook validation, UAT YAML and bootstrap tests as a compatible set; verify no reference-specific workspace, capacity, identity or item defaults enter the bundle.
+- [ ] 10.3 Define and validate the adopter input contract, including source revision, target and capacity, managed scope and dependencies, principal object IDs and roles, protected resources, write guard, verification selection, timeout, evidence location and retention; test missing, ambiguous and inconsistent inputs.
+- [ ] 10.4 Implement coordinated plan, approved apply and optional queueing with isolated overlays, schema-enabled Lakehouse readiness, exact managed shells and identity readback; test incompatible targets, target aliasing, two-target isolation, protected preflight and the authorized `FeatureNotAvailable` fallback.
+- [ ] 10.5 Keep plan/status free of local and external writes; offer separately requested redacted plan persistence to an explicit location, and test both modes and secret exclusion.
+- [ ] 10.6 Generate isolated-target deployment and an adopter-specific manual verification checklist with separate evidence; verify deployment does not run workloads, pending verification is not reported as success, and optional automation requires explicit selection.
+- [ ] 10.7 Revalidate target, roles, source revision, target contract, protected resources and lock on resume; test changed state and incomplete stages without duplicate or destructive actions.
+- [ ] 10.8 Generate and validate `SETUP.md` covering prerequisites, permissions, inputs, offline bootstrap, plan and explicit persistence, approved apply, protected setup, deployment, manual verification, evidence, resume, troubleshooting and rollback.

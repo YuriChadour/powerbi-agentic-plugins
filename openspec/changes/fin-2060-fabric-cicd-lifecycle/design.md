@@ -1,6 +1,6 @@
 ## Context
 
-The existing Fabric and DevOps plugins provide workload skills and PR behavior. The reference Analytics Reporting `cicd/` directory at commit `db118e88dff09f5c422a4351eeb024d8ba539cf0` contains assets to adapt for this lifecycle.
+The existing Fabric and DevOps plugins provide workload skills and PR behavior. The reference Analytics Reporting `cicd/` directory at commit `db118e88dff09f5c422a4351eeb024d8ba539cf0` provides the historical baseline. Also assess commit `4a77113ec051907c3e10e6da9d4a89e62bfb58ea`, which incorporates the UAT bootstrap and manual verification changes; preserve provenance for both snapshots.
 
 See `proposal.md` and `specs/fabric/cicd-lifecycle/spec.md` for the motivation and behavior contract. The separate drift-gate change is outside this lifecycle.
 
@@ -175,19 +175,32 @@ Inventory every tracked file at the reference commit and document its source, di
 
 Bootstrap gathers an explicit scope contract, renders a compatible bundle, validates placeholders and cross-file references, and provides an offline validation entry point. Parameterize paths, branches, identities, and workspace mappings without copying tenant-specific details.
 
+#### Later Analytics Reporting UAT snapshot
+
+Assess the following assets at `4a77113ec051907c3e10e6da9d4a89e62bfb58ea` alongside the historical inventory. Record each tracked file's provenance, dependencies, disposition and tests during implementation. This assessment does not claim the assets have been ported or independently validated.
+
+| Reference assets | Intended disposition |
+| --- | --- |
+| `uat_bootstrap.py`, `create_uat.ps1` | Assess orchestration and the thin Windows entry point; generalize target handling and remove project-specific defaults. |
+| `schemas/uat-contract.schema.json`, `uat-plan.schema.json`, `uat-result.schema.json`, `uat-evidence.schema.json`, `uat-tasklist.schema.json` | Assess versioned target, plan, result, evidence and task-list contracts; retain validation and redaction. |
+| `fabric-uat.yml`, `fabric-test.yml`, `fabric-prod.yml`, `fabric-validation.yml`, `validation-steps.yml` | Assess compatible wrappers and validation. The UAT wrapper deploys definitions without executing workloads; generate an isolated-target example only when selected. |
+| `release_contract.py`, `compare_release.py`, `validate_notebooks.py`, `build_release.py`, `deploy_artifact.py`, `deploy_runner.py`, `auth_check.py`, `post_deploy_check.py`, `record_release.py`, `secret_scan.py`, `validate.py`, `validate_config.py` | Assess as a dependency set for contracts, packaging, validation, deployment and verification; document applicability and exclusions. |
+| `run_uat_runtime.py`, `test_uat_bootstrap.py` | Assess the runtime helper only for explicitly selected optional use; adapt meaningful isolation, failure, contract and resume fixtures. |
+| Configuration files, Power BI and Key Vault YAML, dependency inputs, `README.md`, `branch-policies.md` | Reconcile with the historical inventory, parameterize approved scope and adapt guidance into `SETUP.md`; retain independent Power BI opt-in. |
+
+The newer reference marks manual verification and controlled rehearsal complete. This review has not independently verified the run evidence; retain that distinction.
+
 ### 11. Bind trusted execution and release evidence
 
 PR validation uses secretless source checks. Protected deployment identities are available only to authorized release stages; PR changes must not execute with those identities.
 
 Build once from the selected validated DEV revision in a trusted producer, retain the immutable artifact and its digest in an access-controlled artifact store, and bind successful TEST verification, approvals, and PROD deployment to that digest and producer/run identity. PROD retrieves the TEST-verified artifact, not a second build from its own branch; TEST failure, missing or mismatched evidence blocks promotion. Retention must cover promotion and the configured rollback window. Target verification compares supported managed definitions and dependencies against the artifact and includes configured TEST execution/integration checks. Status and evidence record target, digest, verification result, and promotion history. Track owned inventory and explicit tombstones; rollback selects a known-good digest, requires normal protected approval, preserves unmanaged resources and does not delete newly introduced managed items unless an approved deletion plan explicitly authorizes them, then verifies the resulting state and reports any residual items.
 
-### 12. Exercise the lifecycle with PREQIN-1
+### 12. Install and test the delivered skills
 
-After offline template and fixture tests pass, use `C:\Development\PREQIN-1` as the named live adopter. First inventory its source definitions and dependencies, establish an explicit supported managed scope, and report unsupported items rather than silently omitting them. The repository contains Lakehouse, notebook, pipeline, semantic model, report, data agent, and Copy Job assets; their presence does not imply all are supported or approved for deployment. Resolve workspace names, capacity, target branches, source roots, deployment dependencies, and protected resources before creation or deployment.
+After offline tests pass, select the harnesses and install the relevant plugin skills through each harness's supported installation workflow. For the repository installer, establish whether Codex, Copilot or both are requested before choosing its target; verify Codex through its installed skills and agents and Copilot through its plugin list. Use the documented separate mechanism for Claude if selected. Record installed version or source revision, harness, discovery and execution results; unavailable harnesses and untested behavior remain unverified.
 
-Use `fab` to create dedicated DEV, TEST and PROD workspaces on the selected capacity and grant Power BI EOT (Service Principal) Contributor on all three: application ID `e4b14c44-12a7-4882-a5ed-dbcb036c9d7b`, service-principal object ID `97937f89-9a24-49f4-a3be-c757d283b03d`. Verify roles using the object ID and retain identifiers only in adopter-specific evidence. Configure protected TEST and PROD identities.
-
-Bootstrap PREQIN-1, establish the DEV workspace-to-branch baseline, exercise extension authoring, review and commit selected items to DEV, then select and build the validated DEV revision once. Deploy and verify it in TEST and promote the same digest through protected PROD.
+Invoke the installed skills to exercise discovery, scope and branch routing, read-only planning, offline starter rendering and validation, and applicable failure and recovery cases using a controlled test context. Test Fabric-only and opted-in Power BI paths and their declared dependency boundary. Live workspace creation, deployment or promotion is a separately selected test requiring explicit targets and prerequisites; do not imply that a successful offline or installed-skill test verifies live deployment.
 
 ### 13. Generate once for an explicitly selected target
 
@@ -200,6 +213,18 @@ Verify schema-enabled Lakehouse and endpoint readiness, managed inventory, appro
 Finalize reviewed generated inputs, capture the resulting commit, queue a trusted build for that exact revision and deploy its one immutable artifact. Bind source revision, target contract, artifact digest, identity, run and verification evidence. Require approved evidence location and retention before protected release and recheck mutable state on resume.
 
 For initial data engineering, use Spark notebooks as the primary authoring surface for schemas, Delta transformations, validation and materialized tables; use pipelines for ingestion and orchestration. SQL-authored procedures or views are an explicit extension. Restore definitions with a retained known-good artifact under the same protected approval and verification. Delta data recovery is a separate reviewed action with an explicit recovery point and scope; never delete unrelated or residual managed items without an approved deletion plan.
+
+### 14. One-click target contract and operator experience
+
+A single entry point coordinates discovery, plan review, approved apply and optional queueing without bypassing protected-resource checks or approvals. Resolve the target, source and scope; create or reuse the approved workspace; verify capacity, schema-enabled Lakehouse, endpoint and principal roles; prepare only approved managed shells; generate an isolated overlay; and optionally queue deployment from the exact source revision. If the supported service-principal creation path returns the documented `FeatureNotAvailable` condition, an explicitly authorized operator fallback may create only missing approved shells. Other unresolved failures stop. Never delete an incompatible target automatically.
+
+Collect repository and source roots, DEV branch and exact revision, target workspace name or ID and creation capacity, Lakehouse and managed-item/dependency mappings, principal object IDs and roles, Azure DevOps organization/project/pipeline and protected environment, service connection or variable-group references, write guard, optional verification choices, evidence location and retention, and timeout as applicable. Credentials remain in protected resources; reference tenant values are not reusable defaults.
+
+Keep plan and status strictly read-only, including local files, and return a redacted plan to the caller. Saving a plan is a separate explicit output action to a selected location; adapt the reference's default plan-file write accordingly. Target contracts and overlays are isolated per target and do not rewrite shared mappings or source definitions. Compare source, target and queue inputs before deployment. On resume revalidate target, permissions, source revision, contract, protected resources and lock state, and report stage-level results.
+
+The isolated rehearsal starter deploys definitions and records deployment evidence. A developer separately follows a generated checklist based on the adopter's workload contract and records verification status, target, digest, run IDs and results. A checklist is not proof of success. Automated runtime checks require explicit selection and authorization and separate evidence. Rehearsal evidence cannot authorize PROD promotion without an applicable explicit release contract.
+
+Generate `SETUP.md` covering prerequisites, permissions, input collection, offline rendering and validation, read-only plan and explicit persistence, approved apply, protected Azure DevOps configuration, queueing, deployment versus verification, evidence, resume, troubleshooting and rollback. Explain that protected approvals and manual checks remain separate steps.
 
 ## Risks / Trade-offs
 
@@ -219,9 +244,9 @@ For initial data engineering, use Spark notebooks as the primary authoring surfa
 4. Implement secretless validation, build-once artifact promotion, protected deployment and verification; validate with synthetic fixtures.
 5. Integrate scope-aware `FabricDataEngineer` routing and the DEV branch exception while retaining existing branch/Jira and PR behavior for other work.
 6. Bootstrap the reference Analytics Reporting project in report-only mode, reconcile its existing `cicd/` assets against TEST/PROD shared release stages, target guards, and verification, and record intentional deviations including replacement of its DEV rehearsal.
-7. Enable governance writes and branch policies after an approved plan, resource connectivity checks, and end-to-end validation.
+7. Enable governance writes and branch policies only for a selected target after an approved plan and applicable resource connectivity checks.
 8. Roll back by disabling generated policy references and removing only lifecycle-owned templates/configuration; retain existing source definitions and unrelated DevOps/Fabric skills.
-9. Execute the PREQIN-1 exercise with dedicated workspaces and Contributor assignments; retain DEV commit, TEST and PROD evidence.
+9. Install the skills for selected harnesses and exercise the installed copies; record successful, failed and unverified cases separately, with any live testing scoped separately.
 
 ## Open Questions
 
