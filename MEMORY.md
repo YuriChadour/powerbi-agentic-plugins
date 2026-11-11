@@ -20,6 +20,7 @@ before handoff.
 
 ## Durable project conventions
 
+- Draw diagrams vertically, with the primary flow running from top to bottom.
 - `C:\Development\Glasslake CICD` is the Power BI CI/CD proof-of-concept
   project; `C:\Development\Analytics Reporting` is the Fabric data-engineering
   CI/CD proof-of-concept project. Treat both as read-only references when
