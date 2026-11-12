@@ -20,6 +20,8 @@ before handoff.
 
 ## Durable project conventions
 
+- **Hard rule — OpenSpec authority:** OpenSpec is authoritative. Implementation sessions are execution sessions, not architecture sessions. Do not add capabilities, abstractions, refactors, utilities, validation frameworks, or architectural changes that are not required by the approved OpenSpec. Report potentially valuable out-of-scope improvements separately only after completing the requested work; do not implement them.
+- **Hard rule — requirement mapping:** Before modifying code, map every planned code change to a specific approved OpenSpec requirement. If a change cannot be mapped to a requirement, do not make it.
 - Draw diagrams vertically, with the primary flow running from top to bottom.
 - `C:\Development\Glasslake CICD` is the Power BI CI/CD proof-of-concept
   project; `C:\Development\Analytics Reporting` is the Fabric data-engineering

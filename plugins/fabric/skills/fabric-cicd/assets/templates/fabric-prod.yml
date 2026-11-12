@@ -1,0 +1,67 @@
+trigger:
+  branches:
+    include: [{{prod_branch}}]
+  paths:
+    include: [{{fabric_source_folder}}/**, {{ci_folder}}/**]
+    exclude: [pbi/**]
+pr: none
+
+resources:
+  pipelines:
+  - pipeline: testRelease
+    source: {{test_pipeline_name}}
+    branch: {{dev_branch}}
+    trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: VerifyTestArtifact
+  jobs:
+  - job: Verify
+    steps:
+    - checkout: self
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.11'
+    - script: python -m pip install PyYAML==6.0.2
+    - download: testRelease
+      artifact: fabric-release
+    - pwsh: |
+        $digest = python ./{{ci_folder}}/scripts/bootstrap.py source-digest --config ./{{ci_folder}}/bootstrap-config.json --manifest ./{{ci_folder}}/managed-items.yml --repo . | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot determine PROD Fabric source digest.' }
+        python ./{{ci_folder}}/scripts/bootstrap.py release-gate --config ./{{ci_folder}}/bootstrap-config.json --manifest ./{{ci_folder}}/managed-items.yml --artifact "$(Pipeline.Workspace)/testRelease/fabric-release/fabric-release.zip" --expected-digest $digest.source_digest
+        if ($LASTEXITCODE -ne 0) { throw 'The TEST artifact is not the PROD candidate.' }
+      displayName: Require the matching TEST-built artifact
+
+- stage: DeployFabricProd
+  dependsOn: VerifyTestArtifact
+  condition: succeeded()
+  jobs:
+  - deployment: Deploy
+    environment: {{prod_environment}}
+    variables:
+    - group: {{prod_variable_group}}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - download: testRelease
+            artifact: fabric-release
+          - task: AzureCLI@2
+            displayName: Deploy the verified TEST artifact to PROD
+            inputs:
+              azureSubscription: {{prod_service_connection}}
+              scriptType: pscore
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                python -m pip install ms-fabric-cli
+                $env:FAB_SPN_CLIENT_ID = $env:servicePrincipalId
+                $env:FAB_TENANT_ID = $env:tenantId
+                $env:FAB_SPN_FEDERATED_TOKEN = $env:idToken
+                ./{{ci_folder}}/Initialize-FabricCicd.ps1 -Mode Deploy -ConfigPath ./{{ci_folder}}/bootstrap-config.json -ManifestPath ./{{ci_folder}}/managed-items.yml -Target PROD -ArtifactPath "$(Pipeline.Workspace)/testRelease/fabric-release/fabric-release.zip" -AllowTargetWrite
+            env:
+              ALLOW_FABRIC_PROD_WRITE: $({{prod_write_guard}})

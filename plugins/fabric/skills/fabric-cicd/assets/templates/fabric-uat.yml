@@ -1,0 +1,23 @@
+trigger: none
+pr: none
+
+parameters:
+- name: sourceRevision
+  type: string
+  default: ''
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: PackageUatArtifact
+  jobs:
+  - job: ValidateAndPackage
+    steps:
+    - template: validation-steps.yml
+    - script: |
+        test -n '${{ parameters.sourceRevision }}'
+        python {{ci_folder}}/scripts/bootstrap.py package --config {{ci_folder}}/bootstrap-config.json --manifest {{ci_folder}}/managed-items.yml --repo . --target UAT --revision '${{ parameters.sourceRevision }}' --out "$(Build.ArtifactStagingDirectory)/fabric-uat-release.zip"
+      displayName: Package explicit UAT artifact
+    - publish: $(Build.ArtifactStagingDirectory)/fabric-uat-release.zip
+      artifact: fabric-uat-release

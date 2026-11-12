@@ -1,0 +1,15 @@
+version: 1
+source_root: REPLACE_FABRIC_SOURCE_FOLDER
+managed_items:
+  - folder: REPLACE_ITEM.Notebook
+    type: Notebook
+    dependencies: []
+excluded:
+  - path: REPLACE_FABRIC_SOURCE_FOLDER/**/Files/**
+    reason: Lakehouse data rows are not deployed by this bootstrap
+  - path: REPLACE_FABRIC_SOURCE_FOLDER/**/Tables/**
+    reason: Lakehouse table rows are not deployed by this bootstrap
+  - path: pbi/**
+    reason: Power BI CI/CD has an independent bootstrap
+  - path: '**/*credential*'
+    reason: Credentials and secrets remain protected runtime inputs

@@ -1,0 +1,52 @@
+trigger:
+  branches:
+    include: [{{dev_branch}}]
+  paths:
+    include: [{{fabric_source_folder}}/**, {{ci_folder}}/**]
+    exclude: [pbi/**]
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: BuildFabricTestArtifact
+  jobs:
+  - job: ValidateAndPackage
+    steps:
+    - template: validation-steps.yml
+    - script: python {{ci_folder}}/scripts/bootstrap.py package --config {{ci_folder}}/bootstrap-config.json --manifest {{ci_folder}}/managed-items.yml --repo . --target TEST --revision "$(Build.SourceVersion)" --out "$(Build.ArtifactStagingDirectory)/fabric-release.zip"
+      displayName: Package immutable DEV-branch Fabric artifact
+    - publish: $(Build.ArtifactStagingDirectory)/fabric-release.zip
+      artifact: fabric-release
+
+- stage: DeployFabricTest
+  dependsOn: BuildFabricTestArtifact
+  condition: succeeded()
+  jobs:
+  - deployment: Deploy
+    environment: {{test_environment}}
+    variables:
+    - group: {{test_variable_group}}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - download: current
+            artifact: fabric-release
+          - task: AzureCLI@2
+            displayName: Deploy selected Fabric definitions only
+            inputs:
+              azureSubscription: {{test_service_connection}}
+              scriptType: pscore
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                python -m pip install ms-fabric-cli
+                $env:FAB_SPN_CLIENT_ID = $env:servicePrincipalId
+                $env:FAB_TENANT_ID = $env:tenantId
+                $env:FAB_SPN_FEDERATED_TOKEN = $env:idToken
+                ./{{ci_folder}}/Initialize-FabricCicd.ps1 -Mode Deploy -ConfigPath ./{{ci_folder}}/bootstrap-config.json -ManifestPath ./{{ci_folder}}/managed-items.yml -Target TEST -ArtifactPath "$(Pipeline.Workspace)/fabric-release/fabric-release.zip" -AllowTargetWrite
+            env:
+              ALLOW_FABRIC_TEST_WRITE: $({{test_write_guard}})

@@ -1,0 +1,12 @@
+steps:
+- checkout: self
+  persistCredentials: false
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.11'
+- script: python -m pip install PyYAML==6.0.2
+  displayName: Install focused bootstrap validator dependency
+- script: python {{ci_folder}}/scripts/bootstrap.py validate --config {{ci_folder}}/bootstrap-config.json --manifest {{ci_folder}}/managed-items.yml
+  displayName: Validate non-secret Fabric bootstrap contracts
+- script: python {{ci_folder}}/scripts/bootstrap.py scan --config {{ci_folder}}/bootstrap-config.json --manifest {{ci_folder}}/managed-items.yml --repo .
+  displayName: Scan selected Fabric source for secret-like fields

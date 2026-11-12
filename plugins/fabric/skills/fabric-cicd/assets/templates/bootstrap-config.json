@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "repository": {
+    "fabric_source_folder": "REPLACE_FABRIC_SOURCE_FOLDER",
+    "ci_folder": "REPLACE_CI_FOLDER",
+    "dev_branch": "REPLACE_DEV_BRANCH",
+    "prod_branch": "REPLACE_PROD_BRANCH"
+  },
+  "azure_devops": {
+    "organization": "REPLACE_ORGANIZATION",
+    "project": "REPLACE_PROJECT",
+    "repository": "REPLACE_REPOSITORY"
+  },
+  "dev_workspace": {
+    "workspace_name": "REPLACE_DEV_WORKSPACE",
+    "workspace_id": "REPLACE_DEV_WORKSPACE_ID"
+  },
+  "targets": {
+    "TEST": {
+      "workspace_name": "REPLACE_TEST_WORKSPACE",
+      "workspace_id": null,
+      "capacity_name": "REPLACE_TEST_CAPACITY",
+      "environment": "REPLACE_TEST_ENVIRONMENT",
+      "variable_group": "REPLACE_TEST_VARIABLE_GROUP"
+    },
+    "PROD": {
+      "workspace_name": "REPLACE_PROD_WORKSPACE",
+      "workspace_id": "REPLACE_PROD_WORKSPACE_ID",
+      "capacity_name": null,
+      "environment": "REPLACE_PROD_ENVIRONMENT",
+      "variable_group": "REPLACE_PROD_VARIABLE_GROUP"
+    }
+  },
+  "roles": [],
+  "pipelines": {
+    "TEST": {
+      "name": "REPLACE_TEST_PIPELINE_NAME",
+      "yaml_path": "REPLACE_CI_FOLDER/fabric-test.yml",
+      "source_branch": "REPLACE_DEV_BRANCH"
+    },
+    "PROD": {
+      "name": "REPLACE_PROD_PIPELINE_NAME",
+      "yaml_path": "REPLACE_CI_FOLDER/fabric-prod.yml",
+      "source_branch": "REPLACE_PROD_BRANCH"
+    }
+  },
+  "protected_resources": {
+    "TEST": {
+      "service_connection": "REPLACE_TEST_SERVICE_CONNECTION",
+      "write_guard": "ALLOW_FABRIC_TEST_WRITE"
+    },
+    "PROD": {
+      "service_connection": "REPLACE_PROD_SERVICE_CONNECTION",
+      "write_guard": "ALLOW_FABRIC_PROD_WRITE"
+    }
+  }
+}
