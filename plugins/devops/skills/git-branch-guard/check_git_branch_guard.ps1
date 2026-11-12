@@ -1,10 +1,18 @@
 param(
     [ValidateSet('unknown', 'fabric-data-engineering-only', 'power-bi', 'other', 'mixed')]
     [string]$Scope = 'unknown',
-    [string]$DevBranch
+    [string]$DevBranch,
+    [ValidateSet('bug', 'feature', 'story')]
+    [string]$WorkType,
+    [ValidatePattern('^[A-Z][A-Z0-9]*-[0-9]+$')]
+    [string]$Ticket
 )
 
 $ErrorActionPreference = 'Continue'
+if ([string]::IsNullOrWhiteSpace($WorkType) -xor [string]::IsNullOrWhiteSpace($Ticket)) {
+    Write-Host 'Supply both the selected work type and user-provided Jira ticket when passing intake context.' -ForegroundColor Red
+    exit 1
+}
 $protectedBranches = @('main', 'master', 'prod', 'production', 'dev', 'develop', 'test')
 $neverDevBranches = @('main', 'master', 'prod', 'production', 'test')
 $allowedPrefixes = @('bugfix/', 'feature/')

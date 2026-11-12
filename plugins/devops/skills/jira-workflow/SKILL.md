@@ -1,6 +1,6 @@
 ---
 name: jira-workflow
-description: Fetches, assigns, and transitions Jira tickets via the Atlassian MCP when a user starts or finishes work, and offers to post a commit summary comment. Falls back to a manual prompt when no Jira MCP is available.
+description: 'Use when starting work in any area or finishing Jira ticket work: capture the user-provided ticket, resolve work area then work type, hand off branch routing, and manage available Jira updates. Use a manual fallback when Jira integration is unavailable.'
 ---
 
 # Jira Workflow (MCP-driven)
@@ -26,15 +26,9 @@ the separate `git-branch-guard` skill. This skill resolves scope, work type and 
 | `git` / `git-branch-guard` skill | Validates the selected branch after scope-first intake | Always before implementation |
 | `git-branch-guard/assets/pbip-pr-summary/commit_diff_summary.ps1`/`.sh` | Grounded, structurally-diffed PBIP change summary for a single commit | Optional, Step 4.3.2 — only when the commit touches files under a `*.Report/` or `*.SemanticModel/` project folder |
 
-`com.atlassian/atlassian-mcp-server` is the server actually registered in
-this environment's `~/.copilot/mcp.json` / `mcp-config.json` (gallery entry,
-endpoint `https://mcp.atlassian.com/v1/mcp`) and has been verified working
-end-to-end (fetch, assign, transition, comment) in a prior session on
-FIN-1740. Treat its tool names and parameter shapes below as **known-good
-defaults** — do not re-derive them from scratch every time. If neither
-server is connected, this skill degrades automatically to the **Fallback
-algorithm** — this is expected, non-error behavior, not a failure to work
-around.
+Server availability and tool schemas vary by harness and session. Discover the
+actual tools before using them; examples below do not override their schemas.
+If Jira is unavailable, use the **Fallback algorithm**.
 
 ---
 
@@ -55,6 +49,13 @@ Current Jira ticket: FIN-123
 <!-- jira-current-ticket:end -->
 ```
 
+On Windows use `py -3 <skill-path>/scripts/record_current_ticket.py --repo
+<repository-root> --ticket <user-provided-key>`; elsewhere use `python3` with
+the same arguments. Run it in both the normal
+and manual Jira paths and stop on a nonzero exit. Python 3 is required for this
+operation; if it is unavailable, report the missing dependency and stop rather
+than infer or silently omit the record.
+
 The example is illustrative; use the user's actual key. This record is distinct
 from `SESSION_RESUME.md`. When preparing a commit, use the current key from
 this block; if absent or ambiguous, ask the user. Never infer it from the branch.
@@ -72,7 +73,9 @@ Return `ticket_key`, selected `work_area`, `work_type`, exclusive scope, and
 `short_description` (from Jira or the user's manual description) to the caller.
 The caller validates the configured DEV branch only for explicit exclusive
 Fabric DE in adopter projects; all other scopes use normal branch rules and
-branch reuse. If DEV configuration is missing or invalid, stop. The guard
+branch reuse. Pass `work_type` and `ticket_key` to the guard as `-WorkType` and
+`-Ticket`, in addition to the selected scope and applicable `-DevBranch`.
+If DEV configuration is missing or invalid, stop. The guard
 validates but does not create branches. Never bypass remote Git permissions or
 Azure DevOps policies; report any conflict.
 ## Step 0 — Discover Jira capabilities

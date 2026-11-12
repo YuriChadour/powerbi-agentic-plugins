@@ -19,6 +19,9 @@ configured `-DevBranch` (the exact local branch name). Missing, malformed or
 prohibited configuration fails closed. The plugin implementation repository is
 not eligible. A different current branch receives normal checks. Jira intake
 and ticket traceability remain independent of the DEV branch name.
+When invoked after Jira intake, also pass its selected `-WorkType` and
+user-provided `-Ticket`. These optional context inputs are validated but do not
+change the branch policy; the Jira workflow remains responsible for tracking.
 
 For Power BI, other, mixed, or unknown scope, run with the corresponding
 `-Scope power-bi`, `other`, `mixed`, or `unknown`, or omit arguments. Normal
@@ -45,7 +48,18 @@ matching is case-sensitive. A valid normal example is
 The guard validates locally; Git permissions and Azure DevOps policies remain
 independent. Report a rejected commit or policy conflict and do not bypass or
 change remote protections automatically. It does not create branches or talk to
-Jira. Invoke `jira-workflow` for applicable ticket intake and tracking.
+Jira. Invoke `jira-workflow` for the required user-provided ticket intake and
+tracking in every work area, including DEV work.
+
+The adopter supplies the DEV branch from its own explicit configuration or
+confirmed workspace-to-branch mapping; do not assume `dev` or treat the example
+as a default. Verify the current repository and branch before running the
+command. A successful guard only validates the local branch: it neither tests
+direct-push permission nor provides path-level protection. If a Git server or
+Azure DevOps policy rejects a commit or push, report the target and rejection,
+stop the affected operation, and have the repository owner resolve the policy
+or permissions through their normal process. Never retry by force-pushing,
+bypassing checks, or changing policy automatically.
 ## Note: assets/pbip-pr-summary/
 
 This folder holds a standalone PBIP/PBIR change-summary tool (not part of
