@@ -18,12 +18,15 @@ Fabric data-engineering content.
   interface and common non-secret CI/CD parameters as `fabric-cicd`, with a
   Power BI source mapping and dependency manifest in place of Fabric managed
   items.
-- Configure protected `dev`, `test`, and `main` promotion branches and
-  Git-disconnected DEV/TEST/PROD Power BI targets, plus explicitly configured
-  optional UAT or Rehearsal targets. The pipeline deploys only the reviewed
-  `pbi/` artifact through sequential repository, workspace, identity,
-  governance, and pilot readiness gates. Use developer-authenticated `fab` and
-  `az` for setup; reserve protected runtime identity for deployment.
+- Configure `dev` as an unprotected integration branch that accepts direct
+  commits for any workload, and `test` and `main` as pull-request-only
+  promotion branches (one required reviewer, required validation, merge-commit
+  completion). Configure Git-disconnected DEV/TEST/PROD Power BI targets, an
+  isolated HOTFIX validation target, and explicitly configured optional UAT or
+  Rehearsal targets. The pipeline deploys only the packaged `pbi/` artifact
+  through sequential repository, workspace, identity, governance, and pilot
+  readiness gates. Use developer-authenticated `fab` and `az` for setup;
+  reserve protected runtime identity for deployment.
 - Generate reviewable Azure DevOps assets and keep offline PR validation
   separate from trusted deployment. Render a populated, non-secret CI/CD review
   and verification record containing configured and resolved workspace IDs,
@@ -31,12 +34,16 @@ Fabric data-engineering content.
   service-principal references, role mappings, supported item scope,
   prerequisites, and recovery guidance; require developer approval of that
   contract before `Apply` may register or reconcile external resources.
-- Build a single immutable Power BI artifact from the protected `dev` revision
-  and promote that same digest through reviewed `dev`-to-`test` and
-  `test`-to-`main` pull requests. Required PR review and validation are the
-  manual release approvals; deployment environments supply only target guards
-  and exclusive locks. Include post-deployment verification, audit evidence,
-  drift detection, and known-good rollback guidance.
+- Build a single immutable Power BI artifact once from a `dev` revision and
+  promote that same artifact through reviewed `dev`-to-`test` and
+  `test`-to-`main` pull requests; TEST and PROD locate it by revision lineage
+  and never rebuild. Required PR review and validation are the manual release
+  approvals; deployment environments supply only target guards and exclusive
+  locks. Support a `hotfix/<Jira-key>` route from `main`: build once, validate
+  in the isolated HOTFIX workspace with the PROD mapping, deploy PROD through a
+  reviewed PR to `main`, then forward-port to `test` and `dev`. Include
+  post-deployment verification, audit evidence, drift detection, and
+  known-good rollback guidance.
 - Route Power BI work through the existing scope-first Jira and branch-guard
   workflow: Power BI, mixed, other, and unknown work use normal Jira-keyed
   feature/bugfix rules; only explicit Fabric-data-engineering-only work may

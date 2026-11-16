@@ -19,9 +19,10 @@
 ## 3. Protected release and integration
 
 - [x] 3.1 Require verified DEV Fabric Git connection and baseline and consume the existing scope-aware branch guard; test invalid baseline and non-Fabric scope routing.
-- [x] 3.2 Adapt TEST and PROD release pipelines to build once and consume the identical TEST-verified artifact under protected identity, approval and locking; test changed digest, failed TEST and missing approval.
+- [ ] 3.2 Rework TEST and PROD release pipelines to build once, trigger on merges to the PR-only `test` and `main` branches, and consume the identical TEST-verified artifact located by revision lineage under protected identity and an exclusive lock, with the reviewed PR as the approval and no environment approval check; replace the missing-approval test with tests for changed digest, failed TEST and missing build.
 - [x] 3.3 Support known-good artifact selection and protected recovery guidance; verify rollback preserves unrelated items and reports remaining managed items.
 - [x] 3.4 Preserve the boundary for a future independently scoped Power BI bootstrap; verify a Power BI folder without its approved mapping does not create Fabric or Power BI deployment, and that the Fabric pipeline triggers and package exclude it.
+- [ ] 3.5 Implement the hotfix route: cherry-pick onto a `hotfix/<Jira-key>` branch, package once, validate in TEST or the isolated HOTFIX environment (PROD mapping, never writes PROD), and deploy the same artifact after a reviewed PR located by the hotfix branch tip; verify a cherry-pick merged from a non-hotfix branch blocks and a missing hotfix build blocks.
 
 ## 4. Validate and roll out
 
@@ -29,4 +30,4 @@
 - [ ] 4.2 Install and test the relevant skills separately in Codex and Copilot using their supported workflows; record discovery, routing, source revision and unavailable tests.
 - [ ] 4.3 If a live exercise is separately selected, verify target, permissions and protected resources, then retain redacted deployment and verification results; otherwise report live behavior as unverified.
 - [x] 4.4 Validate OpenSpec and setup documentation against the delivered workflow, and verify existing user files and unrelated repository scope are preserved.
-- [ ] 4.5 Render populated non-secret `CICD-SETUP.md` and `CICD-VERIFICATION.md` records from a synthetic adopter contract, including requested/resolved workspace IDs, branches, Azure DevOps resources, protected identity references, direct role mappings, managed scope, prerequisites, and recovery steps; require and revalidate an explicit developer approval record before `Apply`, and verify credentials and secret values are absent.
+- [ ] 4.5 Using the record and approval schema shared with the Power BI CI/CD change under `common/`, render populated non-secret `CICD-SETUP.md` and `CICD-VERIFICATION.md` records from a synthetic adopter contract, including requested/resolved workspace IDs, branches, Azure DevOps resources, protected identity references, direct role mappings, managed scope, prerequisites, and recovery steps; require and revalidate an explicit developer approval record before `Apply`, and verify credentials and secret values are absent.

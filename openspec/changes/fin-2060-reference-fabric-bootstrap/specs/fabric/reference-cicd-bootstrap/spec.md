@@ -84,11 +84,26 @@ The capability SHALL report deployment and verification separately. File checks 
 - **THEN** the result SHALL show deployment success and verification pending with a usable manual checklist
 
 ### Requirement: Promote the TEST-verified artifact
-Protected PROD promotion SHALL consume the exact artifact digest verified in TEST, after required approvals, rather than rebuild it. Failed or missing TEST verification SHALL block promotion.
+TEST and PROD deployments SHALL be triggered by merges into the `test` and `main` branches, which SHALL accept changes only through pull requests with one required reviewer, required validation and merge-commit completion; the reviewed pull request is the release approval and deployment environments SHALL NOT add an approval check. Protected PROD promotion SHALL consume the exact artifact digest verified in TEST rather than rebuild it, located by revision lineage (the merge-base of the promoted commit with the DEV branch, or the branch tip for a `hotfix/*` pull request). Failed or missing TEST verification, or no successful build for the resolved revision, SHALL block promotion.
 
 #### Scenario: PROD artifact differs
 - **WHEN** the candidate PROD digest differs from the TEST-verified digest
 - **THEN** promotion SHALL stop before target writes
+
+#### Scenario: No build exists for the promoted revision
+- **WHEN** a merge into `test` or `main` resolves to a revision with no successful build
+- **THEN** deployment SHALL stop before target writes
+
+### Requirement: Hotfixes use cherry-pick branches
+A fix authored on the DEV branch SHALL reach `test` or `main` through a `hotfix/<Jira-key>` branch that carries the cherry-picked commits. The capability SHALL package that branch once, validate it in TEST when TEST has no unrelated work or otherwise in an isolated HOTFIX environment that uses the PROD mapping and never writes PROD, and deploy the same artifact after a reviewed pull request merges, locating it by the hotfix branch tip.
+
+#### Scenario: Cherry-picked fix is promoted
+- **WHEN** a hotfix artifact is verified and its pull request merges into `main`
+- **THEN** PROD SHALL deploy that artifact without rebuilding
+
+#### Scenario: Cherry-pick bypasses the hotfix branch
+- **WHEN** a cherry-picked change merges into `test` or `main` from a non-hotfix branch
+- **THEN** deployment SHALL block rather than select an older DEV artifact
 
 ### Requirement: Independent Power BI scope
 Power BI deployment SHALL be separately scoped and opt-in through a distinct future bootstrap; a Power BI folder alone SHALL NOT initiate Fabric or Power BI deployment setup.

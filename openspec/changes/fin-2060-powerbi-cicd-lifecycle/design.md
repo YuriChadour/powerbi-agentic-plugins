@@ -47,6 +47,8 @@ and the capability specification for the behavior contract.
 
 ## Architecture Diagram
 
+### Request routing and setup
+
 ```mermaid
 flowchart TD
     U[User requests Fabric or Power BI CI/CD] --> P[Plan and discover repository]
@@ -80,6 +82,30 @@ flowchart TD
     PC --> P
 ```
 
+### Branch and artifact flow: Power BI and Fabric together
+
+Both lifecycles share these branches. Each pipeline triggers on the shared
+branches but filters by its own source folder, so a merge only runs the
+pipeline whose folder changed.
+
+```mermaid
+flowchart TD
+    F[Power BI or Fabric data-engineering work] -->|direct commit| D[dev, unprotected]
+    D --> V[Validate and package once]
+    V --> DD[Deploy DEV: Power BI only; Fabric DEV is Git-authored]
+    D -->|reviewed PR, merge commit| T[test, PR only]
+    T --> L[Locate artifact: merge-base with dev]
+    L --> TD[Deploy and verify TEST]
+    TD -->|reviewed PR, merge commit| M[main, PR only]
+    M --> L2[Locate same artifact and TEST evidence]
+    L2 --> PD[Deploy PROD]
+    H[hotfix branch: fix or cherry-pick] --> HV[Package once; validate in TEST or HOTFIX workspace]
+    HV -->|reviewed PR; located by branch tip| M
+    PD -.->|Power BI hotfix: forward-port PRs| T
+    PD -.->|Power BI hotfix: forward-port PRs| D
+    PD -.->|Fabric hotfix: fix already on dev| D
+```
+
 ## Decisions
 
 ### 1. Add a sibling `powerbi-cicd` skill, not Power BI behavior to `fabric-cicd`
@@ -105,14 +131,15 @@ operator interface as `Initialize-FabricCicd.ps1`:
 ```powershell
 Initialize-PowerBiCicd.ps1 -Mode Render|Plan|Apply|Status|Resume|Deploy `
   -ConfigPath <path> -ManifestPath <path> -RepoRoot <path> `
-  -OutputRoot <path> -Target <UAT|TEST|PROD|REHEARSAL> -ArtifactPath <path> `
+  -OutputRoot <path> -Target <UAT|TEST|PROD|REHEARSAL|HOTFIX> -ArtifactPath <path> `
   [-AllowOverwrite] [-AllowTargetWrite]
 ```
 
 The configuration preserves the shared `repository`, `azure_devops`,
 `dev_workspace`, `targets`, `roles`, `pipelines`, and
 `protected_resources` sections. TEST and PROD are required profiles; UAT and
-REHEARSAL are the only optional deployment profiles. Each optional profile
+REHEARSAL are the only optional deployment profiles, and HOTFIX is a built-in
+validation profile used only from `hotfix/*`. Each optional profile
 must declare its workspace, pipeline, protected resources, artifact route,
 and verification policy. The configuration changes `fabric_source_folder` to
 `powerbi_source_folder`, and its manifest maps supported Power BI assets,
@@ -134,7 +161,9 @@ environment references, service-connection and service-principal references,
 direct role mappings, supported item scope, target-specific inputs,
 prerequisites, verification, and recovery. They never contain credential
 values. A developer records explicit approval of the reviewed contract revision
-before apply can create or reconcile an external resource.
+before apply can create or reconcile an external resource. The record and
+approval schema is one shared contract under `common/`, also consumed by
+`fin-2060-reference-fabric-bootstrap`, and is not implemented twice.
 
 This mirrors the Fabric bootstrap's plan/apply discipline while avoiding an
 assumption that `pbi/` or a workspace name is a deployable target. A broad
@@ -144,11 +173,19 @@ target state act as authorization.
 ### 3. Use the Glasslake gated environment topology as the bootstrap baseline
 
 The reusable default is Git-disconnected DEV, TEST, and PROD workspaces that
-receive only the reviewed `pbi/` release artifact; optional UAT/REHEARSAL
-targets follow the same boundary. Feature and bugfix pull requests merge to
-protected `dev` and deploy DEV. A reviewed `dev`-to-`test` pull request deploys
-the recorded DEV artifact to TEST, and a reviewed `test`-to-`main` pull request
-deploys that same artifact to PROD. Each configured target has its own
+receive only the packaged `pbi/` release artifact; optional UAT/REHEARSAL
+targets follow the same boundary. `dev` is an unprotected integration branch
+that accepts direct commits for any workload, so a shared repository can keep
+Fabric data-engineering direct commits there; a validated push to `dev`
+packages the artifact and deploys DEV. `test` and `main` are pull-request-only
+(one reviewer, required validation, merge-commit completion): a reviewed
+`dev`-to-`test` pull request deploys the recorded artifact to TEST, and a
+reviewed `test`-to-`main` pull request deploys that same artifact to PROD. For
+a small team, the first reviewed gate is therefore `dev`-to-`test`; branch
+policy is the standard policy applied to `test` and `main` only. Production
+hotfixes use a `hotfix/<Jira-key>` branch from `main`, an isolated HOTFIX
+workspace with the PROD mapping, and forward-port pull requests to `test` and
+`dev`. Each configured target has its own
 workspace, generated and registered pipeline, target guard, environment
 mapping, verification policy, and non-secret evidence. The bootstrap has five
 gates: repository, workspace, identity-and-secret, governance, and pilot.
@@ -176,6 +213,15 @@ access; preflight rejects missing, unexpected, or personal-cloud bindings, and
 post-deployment verification compares live model connections with the selected
 mapping. RDL deployment requires an explicit data-source/model contract. Any
 item without a safe approved path remains a blocking, classified result.
+
+Substitutions and bindings use the adapter's native, per-environment keyed
+rules (`find_replace`, `$items`/`$workspace` variables, and
+`semantic_model_binding`), stored inside the hashed artifact and applied only
+after artifact verification. Preflight checks that every rule has a value for
+the target environment and matches a packaged file; deploy-time-resolved IDs go
+into the evidence. The connection verifier is a port of the Glasslake
+`validate_semantic_model_connections.py`, since the adapter binds but does not
+verify live connections.
 
 This follows the Glasslake design while avoiding generic REST wrappers and
 file-copy "deployment." The exact implementation client is intentionally not
@@ -208,6 +254,16 @@ approval checks: the reviewed PR and successful validation are the manual
 release gates for DEV, TEST, and PROD. The pipeline never rebuilds from a
 different checkout for a deployment target.
 
+TEST and PROD find the artifact by revision lineage, as the Glasslake
+reference does: the source revision is the merge-base of the promoted commit
+with `dev`, and the artifact is the one downloaded from the successful `dev`
+build for that revision. A hotfix is found by the second parent of the merge
+commit, restricted to builds from `hotfix/*`. Pull requests into `test` and
+`main` therefore require merge-commit completion; a missing build blocks. The
+stored `source_digest` is the existing PROD gate against promoting a different
+artifact; no additional digest recomputation or hash manifest is added for a
+trusted team and platform-held artifacts.
+
 This resolves the Glasslake concern that a production result could differ from
 the reviewed revision. Per-environment rebuilds were rejected because they
 weaken provenance and make rollback evidence ambiguous.
@@ -221,7 +277,9 @@ approved DAX execution to the existing test framework. It will invoke the
 DevOps/Jira and `git-branch-guard` route before implementation work, passing
 Power BI scope so the established normal feature/bugfix policy applies. It
 will not duplicate branch policy, authoring implementation, or test
-frameworks.
+frameworks. The local branch guard is unchanged and keeps feature/bugfix
+naming for Power BI work, while remote branch policy imposes no pull request
+on `dev`.
 
 The lifecycle acts as the coordinator of release evidence, not as a new
 general Power BI authoring agent. Altering `FabricDataEngineer` to own Power
@@ -258,6 +316,11 @@ it bypasses evidence and risks unmanaged items.
   per-environment least privilege, read-only preflight, and redacted evidence.
 - [Cross-harness discovery may drift] → make source-owned skill metadata and
   targeted Codex, Copilot, and Claude discovery checks part of acceptance.
+- [Unreviewed commits reach DEV] → run offline validation on every push to
+  `dev` and require it on the `dev`-to-`test` pull request; DEV uses its own
+  scoped identity, and the first review gate is accepted as `dev`-to-`test`.
+- [Promotion by merge depends on ancestry] → require merge-commit completion on
+  `test` and `main`; squash or rebase completion blocks as a missing build.
 
 ## Migration Plan
 
@@ -285,8 +348,11 @@ route.
 
 ## Open Questions
 
-- Which supported Power BI/Fabric service operation is available for each
-  current PBIP/PBIR/TMDL and RDL item family in a representative non-production
-  tenant?
+- Does the supported `fabric-cicd` 1.3.0 adapter operate for each PBIP/PBIR/TMDL
+  and RDL item family in a representative non-production tenant? The Glasslake
+  dry run suggests so but did not authenticate; live support is unverified.
+- Does `fabric-cicd` fail when a `find_value` matches no file or a rule lacks a
+  target-environment value? The documentation only states that an invalid
+  parameter file blocks deployment, so preflight must check coverage itself.
 - Does the existing `pbi-assets.yml` contract have external adopters that
   require a compatibility period rather than an immediate relocation?

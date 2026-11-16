@@ -14,7 +14,7 @@ flowchart TD
     G --> Z[Register or verify named Fabric pipelines through az]
     Z --> T[Validate and package selected DEV revision once]
     T --> U[Protected TEST deployment and separate verification]
-    U -->|TEST verified and approved| R[PROD consumes same artifact]
+    U -->|TEST verified; reviewed PR merges to main| PR[PROD consumes same artifact]
     P -->|Power BI folder only| X[No Power BI setup or deployment]
 ```
 
@@ -31,8 +31,9 @@ flowchart TD
 3. **Folder scope is the workload boundary.** The adopter declares a Fabric source folder and generated CI folder. Rendering, validation, packaging and Azure Pipeline path filters use those folders only. A Power BI folder is excluded and receives no template, registration or deployment action here; its independently approved bootstrap will own its folder and pipelines.
 4. **Register, do not just render, Fabric pipelines.** Apply first verifies that the rendered YAML is committed to the configured Azure Repos branch. It lists the named pipeline and creates it with `az pipelines create` only when absent. A different repository, branch or YAML path is a blocking mismatch. Protected resources remain references that are verified and authorized separately; they are never copied into YAML or silently replaced.
 5. **Keep source checks modest.** Reuse useful manifest, source and secret checks in the pipeline; they do not run notebooks. Preserve deployment and verification as separate outcomes. Manual verification follows a generated checklist; automated workloads run only when explicitly selected and authorized.
-6. **Promote one artifact.** The reference TEST and PROD pipelines independently build. Adapt that topology to build once from the selected DEV revision, record its digest, verify it in TEST, and have protected PROD consume the same artifact after approval.
+6. **Promote one artifact by branch.** The reference TEST and PROD pipelines independently build. Adapt that topology to build once from the selected DEV revision and record its digest. `test` and `main` are pull-request-only (one reviewer, required validation, merge-commit completion), and a merge triggers TEST or PROD; the reviewed PR is the release approval and environments keep only the target guard and exclusive lock. TEST and PROD locate the artifact by revision lineage (merge-base with the DEV branch, or the branch tip for a `hotfix/*` pull request) and never rebuild; PROD consumes the TEST-verified digest, and a missing build blocks. This is the same model as the Power BI CI/CD change.
 7. **Constrain packaged scope and honor DEV authoring.** Package only the configured Fabric definitions and required tooling, excluding data, secrets and Power BI files, and verify revision and hashes. An isolated rehearsal cannot replace TEST promotion evidence. Fabric releases require the DEV Git connection and initial baseline; the related branch-guard change owns scope-first routing.
+8. **Hotfix by cherry-pick.** A fix is authored on the DEV branch through the Fabric Git connection, then cherry-picked onto a `hotfix/<Jira-key>` branch from `main` (or `test`). The pipeline packages that branch once and validates it in TEST when TEST has no unrelated work, otherwise in an isolated HOTFIX environment that uses the PROD mapping; a reviewed PR then deploys the same artifact, located by the hotfix branch tip. Cherry-picks always use a `hotfix/*` branch, because a cherry-picked commit is not in the DEV ancestry and a merge-base lookup would select an older artifact. No forward-port to DEV is needed. A meaningful HOTFIX workspace needs its own Lakehouse and data, which is unverified here.
 
 ## Risks / Trade-offs
 

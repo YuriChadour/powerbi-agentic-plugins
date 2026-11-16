@@ -40,7 +40,8 @@ same modes and base parameters as `fabric-cicd`: `Render`, `Plan`, `Apply`,
 `AllowTargetWrite`. Its non-secret configuration SHALL retain the common
 repository, Azure DevOps, DEV workspace, required TEST/PROD target, role,
 pipeline, and protected-resource fields, and SHALL optionally accept UAT and
-REHEARSAL target profiles. It SHALL replace the Fabric source-folder and
+REHEARSAL target profiles and a built-in HOTFIX validation profile. It SHALL
+replace the Fabric source-folder and
 managed-item values with an explicit Power BI source-folder, supported-item,
 dependency, model/report, and RDL-binding mapping.
 
@@ -84,8 +85,9 @@ pipeline, branch promotion path, target-specific runtime inputs, semantic-model
 source-connection bindings, protection, and verification profile before
 generating deployment assets or performing a write. Folder presence, workspace
 discovery, or a guessed environment SHALL NOT constitute approval. Workspace,
-Lakehouse/item, and connection binding IDs are target inputs or generated
-target overlays, not shared identity variables.
+Lakehouse/item, and connection binding IDs SHALL be per-environment keyed
+entries inside the artifact or deploy-time inputs recorded as evidence; no
+target-specific overlay SHALL change the artifact.
 
 #### Scenario: Complete mapping is supplied
 
@@ -193,6 +195,14 @@ reports only after their configured bindings are resolvable. No later
 environment stage SHALL rebuild from a branch or check out a different
 revision.
 
+Environment-specific substitutions (for example TMDL expression values and
+notebook or report Lakehouse and model references) and semantic-model
+connection bindings SHALL be per-environment keyed rules inside the artifact.
+They SHALL be applied only after artifact verification and SHALL NOT be
+re-hashed. Values resolved at deploy time SHALL be recorded in the release
+evidence. Preflight SHALL block when a rule lacks a value for the target
+environment or matches no packaged file.
+
 #### Scenario: Artifact promotion succeeds
 
 - **WHEN** the selected artifact has matching revision and content hashes and
@@ -212,13 +222,19 @@ revision.
 
 Only trusted deployment stages SHALL resolve the approved protected runtime
 identity, and they SHALL perform an authenticated read-only preflight before
-writing. A feature or bugfix revision SHALL deploy DEV only after its reviewed,
-validated merge to protected `dev`. TEST SHALL deploy only the recorded DEV
-artifact after its reviewed, validated `dev`-to-`test` pull request merges; PROD
-SHALL deploy that same artifact only after its reviewed, validated
-`test`-to-`main` pull request merges. PR review and required validation are the
-manual release approvals; deployment stages SHALL NOT require environment
-approval checks. Bypassed or unreviewed source SHALL NOT be eligible.
+writing. `dev` SHALL be an unprotected integration branch that permits direct
+commits for any workload; a validated push to `dev` SHALL package one artifact
+and deploy DEV. `test` and `main` SHALL accept changes only through pull
+requests with one required reviewer, required validation, and merge-commit
+completion; direct pushes SHALL be rejected by branch policy. TEST SHALL deploy
+only the artifact recorded for the `dev` revision promoted by its reviewed,
+validated `dev`-to-`test` pull request; PROD SHALL deploy that same artifact
+only after its reviewed, validated `test`-to-`main` pull request merges. TEST
+and PROD SHALL locate that artifact from the promoted commit's revision
+lineage (the merge-base with `dev`, or the second parent for a hotfix branch)
+and SHALL block when no successful build exists for that revision. PR review
+and required validation are the manual release approvals; deployment stages
+SHALL NOT require environment approval checks.
 For every configured semantic-model source connection, preflight SHALL verify
 the selected target connection identifier and direct deployment-identity access
 before publication; it SHALL reject a missing, unexpected, or personal-cloud
@@ -231,15 +247,14 @@ SHALL retain non-secret evidence of the artifact, target, managed items,
 identity reference, PR/validation evidence, timestamps, and verification
 result. TEST verification and the matching artifact digest SHALL be required
 before PROD writes; UAT or REHEARSAL evidence SHALL NOT replace that TEST
-gate unless a future approved requirement changes the promotion policy.
+gate. HOTFIX verification of the same artifact SHALL satisfy that gate only for
+a `hotfix/*` release.
 
 #### Scenario: DEV deployment is authorized
 
-- **WHEN** a feature or bugfix pull request passes required validation and
-  merges to protected `dev`
-- **THEN** the corresponding approved revision may package and deploy only to
-  DEV after automated preflight and target guards, without an environment
-  approval check
+- **WHEN** a revision is pushed to `dev` and passes required validation
+- **THEN** the revision may package one artifact and deploy only to DEV after
+  automated preflight and target guards, without an environment approval check
 
 #### Scenario: TEST deployment is authorized
 
@@ -250,8 +265,10 @@ gate unless a future approved requirement changes the promotion policy.
 
 #### Scenario: Unreviewed source is presented for TEST
 
-- **WHEN** the revision lacks the required PR review or validation, including a bypassed direct push
-- **THEN** TEST deployment is blocked before any workspace write
+- **WHEN** a direct push to `test` or `main` is attempted, or a TEST run has no
+  successful `dev` build for its resolved revision
+- **THEN** branch policy rejects the push or TEST deployment is blocked before
+  any workspace write
 
 #### Scenario: TEST-ready release is promoted
 
@@ -274,6 +291,30 @@ gate unless a future approved requirement changes the promotion policy.
   policy
 - **THEN** it deploys only to its mapped workspace, retains verification
   evidence, and does not authorize a PROD deployment by itself
+
+### Requirement: Hotfixes use an isolated validation route
+
+A production defect SHALL be released from a `hotfix/<Jira-key>` branch that
+starts from the current protected `main` revision; its fix MAY be authored on
+`dev` and delivered by cherry-pick. The lifecycle SHALL package
+the hotfix once, validate that artifact in an isolated HOTFIX workspace that
+uses the PROD mapping and never writes PROD, and deploy PROD only after a
+reviewed, validated pull request merges the hotfix into `main`; PROD SHALL
+consume the same artifact, located by the hotfix branch tip. The resolved fix
+SHALL be forward-ported through reviewed pull requests to `test` and `dev`.
+
+#### Scenario: Hotfix is released
+
+- **WHEN** a `hotfix/<Jira-key>` artifact passes HOTFIX verification and its
+  pull request merges into `main`
+- **THEN** PROD deploys that artifact without rebuilding and the forward-port
+  pull requests to `test` and `dev` are recorded as open follow-ups
+
+#### Scenario: Hotfix merge has no validated build
+
+- **WHEN** a pull request into `main` carries a hotfix commit with no
+  successful HOTFIX-verified build
+- **THEN** PROD deployment is blocked before any workspace write
 
 ### Requirement: Live state is verified, drift-aware, and recoverable
 
