@@ -5,9 +5,10 @@ data-engineering-only bootstrap. Its optional `pbi-assets.yml` validator
 proves that Power BI mapping must be explicit, but it is not a Power BI
 deployment implementation. The Glasslake `setup-fabric-cicd-environments`
 change supplies the Power BI environment-bootstrap reference: an explicit
-`pbi/` boundary, DEV Git integration, idempotent `fab` workspace setup,
-Azure DevOps governance, Key Vault-backed deployment identity, sequential
-readiness gates, pilot isolation, and immutable TEST/PROD promotion.
+`pbi/` boundary, Git-disconnected deployment targets, idempotent `fab`
+workspace setup, Azure DevOps PR governance, Key Vault-backed deployment
+identity, sequential readiness gates, pilot isolation, and immutable
+DEV/TEST/PROD promotion.
 
 The new lifecycle must reuse those control-plane ideas without reusing
 Glasslake resource names, identifiers, service-principal assumptions, or
@@ -51,8 +52,9 @@ flowchart TD
     U[User requests Fabric or Power BI CI/CD] --> P[Plan and discover repository]
     P --> R{Scope and approved assets resolved?}
     R -->|No| Q[Request missing decisions]
-    R -->|Yes| B[Bootstrap mapped repository contract]
-    B --> C[Configure approved Azure DevOps resources]
+    R -->|Yes| B[Render mapped repository contract and review records]
+    B --> A[Developer explicitly approves non-secret contract]
+    A --> C[Configure approved Azure DevOps resources]
     C --> V[Validate source and pipeline configuration]
     V --> WA[User selects work area]
     WA --> WT[User selects bug, feature, or story]
@@ -122,8 +124,17 @@ The skill will first run read-only discovery. Its plan mode renders the
 proposed source boundary and external actions with no writes; its apply mode
 revalidates the approved contract before it creates or updates scoped Azure
 DevOps resources. Developer-authenticated `fab` and `az` sessions provision
-or verify the selected topology, direct role mappings, DEV Git binding, and
+or verify the selected topology, direct role mappings, branch protections, and
 named pipelines. Protected service identities are deployment-only.
+
+Render also produces populated non-secret `CICD-SETUP.md` and
+`CICD-VERIFICATION.md` records. They identify configured and resolved
+workspace IDs, source and promotion branches, Azure DevOps pipeline and
+environment references, service-connection and service-principal references,
+direct role mappings, supported item scope, target-specific inputs,
+prerequisites, verification, and recovery. They never contain credential
+values. A developer records explicit approval of the reviewed contract revision
+before apply can create or reconcile an external resource.
 
 This mirrors the Fabric bootstrap's plan/apply discipline while avoiding an
 assumption that `pbi/` or a workspace name is a deployable target. A broad
@@ -132,22 +143,25 @@ target state act as authorization.
 
 ### 3. Use the Glasslake gated environment topology as the bootstrap baseline
 
-The reusable default is an approved DEV workspace bound only to the configured
-Power BI folder and DEV branch, with required TEST/PROD and optional
-UAT/REHEARSAL targets Git-disconnected and updated by a validated artifact.
-Each configured non-DEV target has its own workspace, generated and registered
-pipeline, target guard, environment mapping, verification policy, and
-non-secret evidence. The bootstrap has five gates: repository, workspace,
-identity-and-secret, governance, and pilot. Every gate records non-secret
-evidence and prevents the next phase after a failure. A configured adopter
-repository is the source of truth; copying a source repository into a
-dedicated CI/CD repository is an explicit configuration decision, not a
-hardcoded Glasslake behavior.
+The reusable default is Git-disconnected DEV, TEST, and PROD workspaces that
+receive only the reviewed `pbi/` release artifact; optional UAT/REHEARSAL
+targets follow the same boundary. Feature and bugfix pull requests merge to
+protected `dev` and deploy DEV. A reviewed `dev`-to-`test` pull request deploys
+the recorded DEV artifact to TEST, and a reviewed `test`-to-`main` pull request
+deploys that same artifact to PROD. Each configured target has its own
+workspace, generated and registered pipeline, target guard, environment
+mapping, verification policy, and non-secret evidence. The bootstrap has five
+gates: repository, workspace, identity-and-secret, governance, and pilot.
+Every gate records non-secret evidence and prevents the next phase after a
+failure. A configured adopter repository is the source of truth; copying a
+source repository into a dedicated CI/CD repository is an explicit
+configuration decision, not a hardcoded Glasslake behavior.
 
 This takes the safety model from the Glasslake implementation without
-embedding its workspace names, branches, Key Vault names, or capacity. Direct
-Git synchronization to TEST or PROD was rejected because it would bypass
-artifact provenance and approval evidence.
+embedding its workspace names, branches, Key Vault names, or capacity. Git
+synchronization of any deployment target was rejected because it would bypass
+artifact provenance, promotion evidence, and the pipeline's explicit target
+contract.
 
 ### 4. Treat the Power BI adapter as a supported-item boundary
 
@@ -155,9 +169,13 @@ The release adapter will expose stable `validate`, `package`, `preflight`,
 `deploy`, and `verify` operations for the item formats explicitly approved in
 the contract. It will determine the tenant-supported Power BI/Fabric API or
 client operation during read-only preflight and retain a tested supported-item
-matrix. Semantic models deploy before reports; RDL deployment requires an
-explicit data-source/model contract. Any item without a safe approved path
-remains a blocking, classified result.
+matrix. Semantic models deploy before reports and carry an explicit
+per-environment source-connection binding map. Each map selects approved,
+non-secret connection identifiers and requires direct deployment-identity
+access; preflight rejects missing, unexpected, or personal-cloud bindings, and
+post-deployment verification compares live model connections with the selected
+mapping. RDL deployment requires an explicit data-source/model contract. Any
+item without a safe approved path remains a blocking, classified result.
 
 This follows the Glasslake design while avoiding generic REST wrappers and
 file-copy "deployment." The exact implementation client is intentionally not
@@ -184,9 +202,11 @@ configuration, dependency lock, manifest, revision, and content hashes once.
 Each configured UAT, TEST, PROD, or REHEARSAL stage verifies that artifact
 before writes. TEST validation produces the evidence and digest required for
 protected PROD promotion; UAT or REHEARSAL is an independently configured
-pre-production route and cannot substitute for TEST. Azure DevOps
-environments carry target-specific approval and exclusive-lock controls. The
-pipeline never rebuilds from a different checkout for a deployment target.
+pre-production route and cannot substitute for TEST. Azure DevOps environments
+carry target-specific guards and exclusive-lock controls, but no deployment
+approval checks: the reviewed PR and successful validation are the manual
+release gates for DEV, TEST, and PROD. The pipeline never rebuilds from a
+different checkout for a deployment target.
 
 This resolves the Glasslake concern that a production result could differ from
 the reviewed revision. Per-environment rebuilds were rejected because they
@@ -211,8 +231,10 @@ data-engineering-focused.
 ### 8. Verify live state, preserve evidence, and recover by redeployment
 
 After each deployment, verification compares the manifest with live managed
-items, model/report bindings, configured substitutions, model readiness, and
-applicable RDL bindings. The audit record identifies source revision, hashes,
+items, model/report bindings, configured substitutions, semantic-model source
+connection bindings, model readiness, and applicable RDL bindings. The
+immutable artifact carries the semantic-model connection verifier and selected
+non-secret binding map. The audit record identifies source revision, hashes,
 environment, workspace, identity reference, approval, timing, changed scope,
 and result. Unexpected drift blocks promotion. Recovery selects a prior
 known-good artifact and runs the same protected route; it does not converge or
@@ -250,8 +272,8 @@ it bypasses evidence and risks unmanaged items.
 4. Implement a supported, tenant-verified deployment adapter and protected
    Azure DevOps YAML for a synthetic non-production adopter; retain live
    target operations behind explicit operator selection.
-5. Exercise the exact artifact through TEST verification, approved PROD
-   promotion, drift blocking, and known-good rollback. Record unavailable live
+5. Exercise the exact artifact through TEST verification, reviewed `test`-to-
+   `main` promotion, drift blocking, and known-good rollback. Record unavailable live
    evidence as unverified.
 6. Update Fabric, Power BI, DevOps, and multi-harness documentation; remove
    stale ownership language only after the new skill is validated.

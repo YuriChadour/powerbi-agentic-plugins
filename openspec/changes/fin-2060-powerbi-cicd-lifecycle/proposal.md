@@ -1,9 +1,9 @@
 ## Why
 
 The reference Fabric bootstrap deliberately excludes Power BI, while the
-Glasslake environment bootstrap establishes the connected Power BI setup shape
-that must be generalized: governed Dev/Test/Prod workspaces, DEV Git
-integration, `fab`/`az` setup, protected identity, approvals, and pilot gates.
+Glasslake environment bootstrap establishes the Power BI setup shape that must
+be generalized: governed Dev/Test/Prod workspaces, an artifact-only deployment
+path, `fab`/`az` setup, protected identity, PR governance, and pilot gates.
 A separately scoped lifecycle is needed so Power BI CI/CD can use the same
 plan-and-recovery operator experience without incorrectly treating Power BI as
 Fabric data-engineering content.
@@ -18,17 +18,25 @@ Fabric data-engineering content.
   interface and common non-secret CI/CD parameters as `fabric-cicd`, with a
   Power BI source mapping and dependency manifest in place of Fabric managed
   items.
-- Configure an explicit DEV Git-connected Power BI source root and protected,
-  Git-disconnected TEST/PROD targets, plus explicitly configured optional UAT
-  or Rehearsal targets, through sequential repository, workspace, identity,
+- Configure protected `dev`, `test`, and `main` promotion branches and
+  Git-disconnected DEV/TEST/PROD Power BI targets, plus explicitly configured
+  optional UAT or Rehearsal targets. The pipeline deploys only the reviewed
+  `pbi/` artifact through sequential repository, workspace, identity,
   governance, and pilot readiness gates. Use developer-authenticated `fab` and
   `az` for setup; reserve protected runtime identity for deployment.
 - Generate reviewable Azure DevOps assets and keep offline PR validation
-  separate from trusted deployment.
-- Build a single immutable Power BI artifact from the selected revision and
-  promote that same digest through TEST and PROD, with environment approvals,
-  exclusive locking, post-deployment verification, audit evidence, drift
-  detection, and known-good rollback guidance.
+  separate from trusted deployment. Render a populated, non-secret CI/CD review
+  and verification record containing configured and resolved workspace IDs,
+  source and promotion scope, Azure DevOps resources, service-connection and
+  service-principal references, role mappings, supported item scope,
+  prerequisites, and recovery guidance; require developer approval of that
+  contract before `Apply` may register or reconcile external resources.
+- Build a single immutable Power BI artifact from the protected `dev` revision
+  and promote that same digest through reviewed `dev`-to-`test` and
+  `test`-to-`main` pull requests. Required PR review and validation are the
+  manual release approvals; deployment environments supply only target guards
+  and exclusive locks. Include post-deployment verification, audit evidence,
+  drift detection, and known-good rollback guidance.
 - Route Power BI work through the existing scope-first Jira and branch-guard
   workflow: Power BI, mixed, other, and unknown work use normal Jira-keyed
   feature/bugfix rules; only explicit Fabric-data-engineering-only work may
@@ -36,9 +44,11 @@ Fabric data-engineering content.
 - Keep the existing Fabric data-engineering bootstrap unchanged: its Fabric
   folder boundary remains exclusive, and a Power BI folder does not enable it.
 - Fail closed for unsupported item types, unresolved report/model or RDL
-  bindings, incomplete environment contracts, absent protected identities, or
-  artifact-digest mismatches. No generic REST automation layer or implicit
-  migration is introduced.
+  bindings, incomplete environment contracts, absent protected identities,
+  missing or mismatched semantic-model connection bindings, or artifact-digest
+  mismatches. Semantic-model source connections use approved, non-secret,
+  target-specific connection identifiers and direct deployment-identity access;
+  no generic REST automation layer or implicit migration is introduced.
 
 ## Capabilities
 

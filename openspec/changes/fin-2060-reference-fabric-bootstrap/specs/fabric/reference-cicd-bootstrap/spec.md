@@ -11,6 +11,31 @@ The capability SHALL provide a lightweight, parameterized Fabric data-engineerin
 - **WHEN** a user provides a valid source, target, managed scope and protected-resource configuration
 - **THEN** the capability SHALL render a coherent starter and setup guide without embedding reference-project identifiers or secrets
 
+### Requirement: Rendered review and approval records gate setup
+Before an external setup write, the capability SHALL render populated,
+non-secret `CICD-SETUP.md` and `CICD-VERIFICATION.md` records alongside the
+configuration and pipeline YAML. The setup record SHALL identify the requested
+and resolved workspace names and IDs, source folder and branch scope, Azure
+DevOps repository/pipeline/environment references, service-connection and
+service-principal references, direct role mappings, managed scope, unresolved
+prerequisites, and rollback route. The verification record SHALL identify the
+required deployment and runtime checks. Credentials, tokens, client secrets,
+and secret values SHALL NOT be rendered. The developer SHALL explicitly approve
+the reviewed non-secret contract before `Apply` creates or changes an external
+resource.
+
+#### Scenario: Rendered contract is awaiting review
+- **WHEN** render or plan completes with a complete non-secret mapping
+- **THEN** the generated records SHALL identify any unresolved prerequisite and
+  `Apply` SHALL stop before an external write until the developer approval is
+  recorded for the rendered contract revision
+
+#### Scenario: Approved contract is applied
+- **WHEN** the developer records approval for the reviewed contract and invokes
+  `Apply`
+- **THEN** setup SHALL revalidate that approved revision before reconciling
+  only the mapped workspace roles and named pipelines
+
 ### Requirement: Folder-scoped Fabric routing
 The capability SHALL render and register only Fabric CI/CD assets for the configured Fabric source folder and generated CI folder. Its validation, package selection and Azure Pipeline path filters SHALL use those configured folders. A Power BI folder or files alone SHALL NOT enable, render or register a Power BI pipeline.
 

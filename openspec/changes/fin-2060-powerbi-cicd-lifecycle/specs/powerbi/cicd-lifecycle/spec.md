@@ -46,7 +46,8 @@ dependency, model/report, and RDL-binding mapping.
 
 The setup entry point SHALL use the invoking developer's authenticated `fab`
 and `az` sessions to plan or reconcile only the selected workspace topology,
-direct role mappings, DEV Git connection, and named Azure DevOps pipelines.
+direct role mappings, protected branch governance, and named Azure DevOps
+pipelines.
 It SHALL NOT accept or persist credentials, fall back to a service principal,
 or use a generic REST automation layer for setup. Protected identities SHALL
 be reserved for trusted deployments.
@@ -79,9 +80,12 @@ CI/CD assets without changing local, Azure DevOps, Fabric, or Power BI state.
 It SHALL require an explicit approved, non-secret mapping of each selected
 Power BI source root, supported item, dependency, required DEV/TEST/PROD or
 optional UAT/REHEARSAL target workspace, target owner, capacity, environment,
-pipeline, protection, and verification profile before generating deployment
-assets or performing a write. Folder presence, workspace discovery, or a
-guessed environment SHALL NOT constitute approval.
+pipeline, branch promotion path, target-specific runtime inputs, semantic-model
+source-connection bindings, protection, and verification profile before
+generating deployment assets or performing a write. Folder presence, workspace
+discovery, or a guessed environment SHALL NOT constitute approval. Workspace,
+Lakehouse/item, and connection binding IDs are target inputs or generated
+target overlays, not shared identity variables.
 
 #### Scenario: Complete mapping is supplied
 
@@ -98,26 +102,53 @@ guessed environment SHALL NOT constitute approval.
 - **THEN** validation fails before pipeline registration, protected identity
   use, or workspace write
 
+### Requirement: Rendered review and approval records gate setup
+Before an external setup write, the lifecycle SHALL render populated,
+non-secret `CICD-SETUP.md` and `CICD-VERIFICATION.md` records alongside the
+configuration, manifest, and pipeline YAML. The setup record SHALL identify
+the requested and resolved workspace names and IDs, source and promotion
+branches, Azure DevOps repository/pipeline/environment references,
+service-connection and service-principal references, direct role mappings,
+supported item scope, target-specific runtime inputs, unresolved prerequisites,
+and rollback route. The verification record SHALL identify required deployment,
+binding, and runtime checks. Credentials, tokens, client secrets, connection
+credentials, and secret values SHALL NOT be rendered. The developer SHALL
+explicitly approve the reviewed non-secret contract before `Apply` creates or
+changes an external resource.
+
+#### Scenario: Rendered contract is awaiting review
+
+- **WHEN** render or plan completes with a complete non-secret mapping
+- **THEN** the generated records SHALL identify unresolved prerequisites and
+  `Apply` SHALL stop before an external write until developer approval is
+  recorded for the rendered contract revision
+
+#### Scenario: Approved contract is applied
+
+- **WHEN** the developer records approval for the reviewed contract and invokes
+  `Apply`
+- **THEN** setup SHALL revalidate that approved revision before reconciling
+  only the mapped workspace roles, governance, and named pipelines
+
 ### Requirement: Environment bootstrap is gated and isolated
 
 The bootstrap SHALL create or reuse only explicitly selected DEV, TEST, and
 PROD workspaces, plus configured UAT or REHEARSAL workspaces, idempotently;
 validate exact workspace IDs, capacity, region, owner, and isolation before
-reuse; and retain non-secret readiness evidence. It SHALL attach only the
-approved Power BI source folder from the protected DEV branch to DEV. TEST,
-PROD, UAT, and REHEARSAL SHALL remain Git-disconnected for the scripted
-deployment path and SHALL receive only an immutable validated artifact.
+reuse; and retain non-secret readiness evidence. Every deployment target SHALL
+remain Git-disconnected and SHALL receive only an immutable validated artifact
+from the approved `pbi/` source boundary.
 Repository, workspace, identity-and-secret, governance, and pilot validation
 gates SHALL each record evidence and block the next phase on failure. A pilot
 SHALL use isolated non-production targets and SHALL NOT alter enterprise
 production workspaces.
 
-#### Scenario: DEV Git and protected targets are prepared
+#### Scenario: Git-disconnected targets are prepared
 
 - **WHEN** the repository and workspace gates pass
-- **THEN** DEV is connected only to the approved Power BI folder and branch,
-  while TEST, PROD, and each configured UAT or REHEARSAL target are recorded
-  as Git-disconnected protected targets
+- **THEN** DEV, TEST, PROD, and each configured UAT or REHEARSAL target are
+  recorded as Git-disconnected protected targets, and only the pipeline may
+  deploy the approved `pbi/` artifact to them
 
 #### Scenario: A bootstrap gate fails
 
@@ -153,12 +184,14 @@ validation rather than be converted, ignored, or deployed partially.
 
 After the selected revision passes validation, the lifecycle SHALL package the
 exact approved Power BI source subset, non-secret configuration, dependency
-lock, manifest, revision identifier, and content hashes into one immutable
+lock, manifest, target-specific semantic-model source-connection binding map,
+connection verifier, revision identifier, and content hashes into one immutable
 release artifact. Trusted deployment SHALL verify the artifact identity and
 hashes before a target write, deploy semantic models before dependent reports,
-and deploy paginated reports only after their configured bindings are
-resolvable. No later environment stage SHALL rebuild from a branch or check
-out a different revision.
+bind models only to the approved target connections, and deploy paginated
+reports only after their configured bindings are resolvable. No later
+environment stage SHALL rebuild from a branch or check out a different
+revision.
 
 #### Scenario: Artifact promotion succeeds
 
@@ -169,8 +202,9 @@ out a different revision.
 
 #### Scenario: Artifact or dependency is invalid
 
-- **WHEN** an artifact digest differs, a report lacks its model, or a
-  paginated report lacks a configured binding
+- **WHEN** an artifact digest differs, a report lacks its model, a semantic
+  model lacks an approved source-connection binding, or a paginated report
+  lacks a configured binding
 - **THEN** deployment stops before the affected workspace write and records
   the reason
 
@@ -178,22 +212,53 @@ out a different revision.
 
 Only trusted deployment stages SHALL resolve the approved protected runtime
 identity, and they SHALL perform an authenticated read-only preflight before
-writing. TEST and PROD SHALL require their configured approval controls.
+writing. A feature or bugfix revision SHALL deploy DEV only after its reviewed,
+validated merge to protected `dev`. TEST SHALL deploy only the recorded DEV
+artifact after its reviewed, validated `dev`-to-`test` pull request merges; PROD
+SHALL deploy that same artifact only after its reviewed, validated
+`test`-to-`main` pull request merges. PR review and required validation are the
+manual release approvals; deployment stages SHALL NOT require environment
+approval checks. Bypassed or unreviewed source SHALL NOT be eligible.
+For every configured semantic-model source connection, preflight SHALL verify
+the selected target connection identifier and direct deployment-identity access
+before publication; it SHALL reject a missing, unexpected, or personal-cloud
+connection and SHALL NOT require elevated connection-sharing access.
 Each configured UAT or REHEARSAL profile SHALL have an explicit target guard,
-pipeline, verification profile, and configured approval policy. Concurrent
-deployments to the same target SHALL be serialized. Each completed, failed, or
-partial deployment SHALL retain non-secret evidence of the artifact, target,
-managed items, identity reference, approval, timestamps, and verification
+pipeline, promotion-eligibility policy, and verification profile; it SHALL NOT
+use a deployment environment approval check. Concurrent deployments to the
+same target SHALL be serialized. Each completed, failed, or partial deployment
+SHALL retain non-secret evidence of the artifact, target, managed items,
+identity reference, PR/validation evidence, timestamps, and verification
 result. TEST verification and the matching artifact digest SHALL be required
 before PROD writes; UAT or REHEARSAL evidence SHALL NOT replace that TEST
 gate unless a future approved requirement changes the promotion policy.
 
+#### Scenario: DEV deployment is authorized
+
+- **WHEN** a feature or bugfix pull request passes required validation and
+  merges to protected `dev`
+- **THEN** the corresponding approved revision may package and deploy only to
+  DEV after automated preflight and target guards, without an environment
+  approval check
+
+#### Scenario: TEST deployment is authorized
+
+- **WHEN** a reviewed `dev`-to-`test` pull request passes required validation
+  and merges to protected `test`
+- **THEN** TEST may deploy only the recorded immutable DEV artifact after its
+  automated preflight and target guards, without an environment approval check
+
+#### Scenario: Unreviewed source is presented for TEST
+
+- **WHEN** the revision lacks the required PR review or validation, including a bypassed direct push
+- **THEN** TEST deployment is blocked before any workspace write
+
 #### Scenario: TEST-ready release is promoted
 
-- **WHEN** the TEST deployment verifies the exact artifact and the required
-  PROD approval is granted
-- **THEN** PROD consumes that same artifact under the protected target guard
-  and records its verification evidence
+- **WHEN** the TEST deployment verifies the exact artifact and a reviewed,
+  validated `test`-to-`main` pull request merges to protected `main`
+- **THEN** PROD consumes that same artifact under the protected target guard,
+  without an environment approval check, and records its verification evidence
 
 #### Scenario: Protected prerequisite fails
 
@@ -205,7 +270,8 @@ gate unless a future approved requirement changes the promotion policy.
 #### Scenario: UAT or Rehearsal deployment is requested
 
 - **WHEN** a configured UAT or REHEARSAL pipeline receives a validated
-  immutable artifact and satisfies its target guard and approval policy
+  immutable artifact and satisfies its target guard and promotion-eligibility
+  policy
 - **THEN** it deploys only to its mapped workspace, retains verification
   evidence, and does not authorize a PROD deployment by itself
 
@@ -213,7 +279,14 @@ gate unless a future approved requirement changes the promotion policy.
 
 Post-deployment verification SHALL confirm the selected item scope, intended
 semantic-model/report bindings, configured environment substitutions, model
-readiness, and applicable paginated-report data-source bindings. The
+readiness, and applicable paginated-report data-source bindings. For each
+external paginated-report source, preflight SHALL require an approved
+environment connection, gateway/data-source binding, and deployment-identity
+access; verification SHALL confirm the resulting report binding. The
+post-deployment verifier SHALL compare every managed semantic model's live
+source connections with the immutable artifact's selected target binding map.
+Any mismatch SHALL fail the stage and prevent a successful deployment audit
+record. The
 lifecycle SHALL detect unexpected managed-item metadata or binding drift and
 block later promotion pending documented reconciliation. Rollback SHALL use
 the normal protected path to redeploy a retained known-good artifact and
@@ -222,7 +295,8 @@ SHALL NOT delete unrelated workspace items.
 #### Scenario: Managed target is healthy
 
 - **WHEN** deployment and post-deployment checks pass
-- **THEN** the release record identifies the verified target state and
+- **THEN** the release record identifies the verified target state, including
+  applicable semantic-model and external paginated-report bindings, and
   retains the artifact as a rollback candidate
 
 #### Scenario: Drift or partial failure is found

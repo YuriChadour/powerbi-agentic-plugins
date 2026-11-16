@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "repository": {
+    "powerbi_source_folder": "REPLACE_POWERBI_SOURCE_FOLDER",
+    "ci_folder": "REPLACE_CI_FOLDER",
+    "dev_branch": "REPLACE_DEV_BRANCH",
+    "prod_branch": "REPLACE_PROD_BRANCH"
+  },
+  "azure_devops": {
+    "organization": "REPLACE_ORGANIZATION",
+    "project": "REPLACE_PROJECT",
+    "repository": "REPLACE_REPOSITORY"
+  },
+  "dev_workspace": {
+    "workspace_name": "REPLACE_DEV_WORKSPACE",
+    "workspace_id": "REPLACE_DEV_WORKSPACE_ID",
+    "git_connected": true
+  },
+  "targets": {
+    "TEST": {
+      "workspace_name": "REPLACE_TEST_WORKSPACE",
+      "workspace_id": "REPLACE_TEST_WORKSPACE_ID",
+      "capacity_name": "REPLACE_TEST_CAPACITY",
+      "target_owner": "REPLACE_TEST_OWNER",
+      "environment": "REPLACE_TEST_ENVIRONMENT",
+      "pipeline_name": "REPLACE_TEST_PIPELINE",
+      "approval_policy": "REPLACE_TEST_APPROVAL_POLICY",
+      "artifact_route": "immutable",
+      "verification_profile": "REPLACE_TEST_VERIFICATION",
+      "git_connected": false
+    },
+    "PROD": {
+      "workspace_name": "REPLACE_PROD_WORKSPACE",
+      "workspace_id": "REPLACE_PROD_WORKSPACE_ID",
+      "capacity_name": "REPLACE_PROD_CAPACITY",
+      "target_owner": "REPLACE_PROD_OWNER",
+      "environment": "REPLACE_PROD_ENVIRONMENT",
+      "pipeline_name": "REPLACE_PROD_PIPELINE",
+      "approval_policy": "REPLACE_PROD_APPROVAL_POLICY",
+      "artifact_route": "immutable",
+      "verification_profile": "REPLACE_PROD_VERIFICATION",
+      "git_connected": false
+    }
+  },
+  "roles": [],
+  "pipelines": {
+    "TEST": { "yaml_path": "REPLACE_CI_FOLDER/powerbi-test.yml", "source_branch": "REPLACE_DEV_BRANCH" },
+    "PROD": { "yaml_path": "REPLACE_CI_FOLDER/powerbi-prod.yml", "source_branch": "REPLACE_PROD_BRANCH" }
+  },
+  "protected_resources": {
+    "TEST": { "identity_reference": "REPLACE_TEST_IDENTITY_REFERENCE", "write_guard": "ALLOW_POWERBI_TEST_WRITE" },
+    "PROD": { "identity_reference": "REPLACE_PROD_IDENTITY_REFERENCE", "write_guard": "ALLOW_POWERBI_PROD_WRITE" }
+  }
+}
