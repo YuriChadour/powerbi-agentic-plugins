@@ -193,7 +193,10 @@ hashes before a target write, deploy semantic models before dependent reports,
 bind models only to the approved target connections, and deploy paginated
 reports only after their configured bindings are resolvable. No later
 environment stage SHALL rebuild from a branch or check out a different
-revision.
+revision. The artifact SHALL include every deployment script a stage needs;
+before any workspace write the stage SHALL reject a missing required script,
+and a selected revision whose release files differ from the deployment
+branch's.
 
 Environment-specific substitutions (for example TMDL expression values and
 notebook or report Lakehouse and model references) and semantic-model
@@ -225,20 +228,29 @@ identity, and they SHALL perform an authenticated read-only preflight before
 writing. `dev` SHALL be an unprotected integration branch that permits direct
 commits for any workload; a validated push to `dev` SHALL package one artifact
 and deploy DEV. `test` and `main` SHALL accept changes only through pull
-requests with one required reviewer, required validation, and merge-commit
-completion; direct pushes SHALL be rejected by branch policy. TEST SHALL deploy
+requests with one required reviewer and required validation; `test` SHALL
+complete by merge commit and `main` SHALL permit merge commit or squash (branch
+policy cannot vary by source branch); direct pushes SHALL be rejected by branch
+policy. TEST SHALL deploy
 only the artifact recorded for the `dev` revision promoted by its reviewed,
 validated `dev`-to-`test` pull request; PROD SHALL deploy that same artifact
 only after its reviewed, validated `test`-to-`main` pull request merges. TEST
 and PROD SHALL locate that artifact from the promoted commit's revision
-lineage (the merge-base with `dev`, or the second parent for a hotfix branch)
-and SHALL block when no successful build exists for that revision. PR review
+lineage (the merge-base with `dev`) or, for a hotfix, from the completed
+pull-request metadata (second parent as fallback), and SHALL block when no
+successful build exists for that revision. A squashed `test`-to-`main` pull
+request has no resolvable `dev` build and SHALL block. PR review
 and required validation are the manual release approvals; deployment stages
 SHALL NOT require environment approval checks.
 For every configured semantic-model source connection, preflight SHALL verify
 the selected target connection identifier and direct deployment-identity access
 before publication; it SHALL reject a missing, unexpected, or personal-cloud
 connection and SHALL NOT require elevated connection-sharing access.
+When the target workspace already contains a managed semantic model not owned
+by the deployment identity, the deployment SHALL transfer ownership to that
+identity before configuring bindings and SHALL fail the stage before binding or
+a successful audit record if the transfer fails; a new model or one already
+owned by the deployment identity SHALL skip the transfer.
 Each configured UAT or REHEARSAL profile SHALL have an explicit target guard,
 pipeline, promotion-eligibility policy, and verification profile; it SHALL NOT
 use a deployment environment approval check. Concurrent deployments to the
@@ -292,6 +304,24 @@ a `hotfix/*` release.
 - **THEN** it deploys only to its mapped workspace, retains verification
   evidence, and does not authorize a PROD deployment by itself
 
+#### Scenario: Existing model is owned by another principal
+
+- **WHEN** the target workspace contains the managed semantic model and its
+  owner is not the deployment identity
+- **THEN** ownership is transferred before bindings are configured, or the
+  stage fails before a successful audit record is written
+
+#### Scenario: Model ownership is already correct
+
+- **WHEN** the model is new or already owned by the deployment identity
+- **THEN** the takeover is skipped and binding and verification continue
+
+#### Scenario: Required deployment script is missing
+
+- **WHEN** the selected artifact lacks a required deployment script, or its
+  release files differ from the deployment branch
+- **THEN** the stage fails before any workspace write
+
 ### Requirement: Hotfixes use an isolated validation route
 
 A production defect SHALL be released from a `hotfix/<Jira-key>` branch that
@@ -300,7 +330,8 @@ starts from the current protected `main` revision; its fix MAY be authored on
 the hotfix once, validate that artifact in an isolated HOTFIX workspace that
 uses the PROD mapping and never writes PROD, and deploy PROD only after a
 reviewed, validated pull request merges the hotfix into `main`; PROD SHALL
-consume the same artifact, located by the hotfix branch tip. The resolved fix
+consume the same artifact, located from the completed pull-request metadata
+(so a squash merge resolves) and requiring a successful HOTFIX validation. The resolved fix
 SHALL be forward-ported through reviewed pull requests to `test` and `dev`.
 
 #### Scenario: Hotfix is released
@@ -315,6 +346,13 @@ SHALL be forward-ported through reviewed pull requests to `test` and `dev`.
 - **WHEN** a pull request into `main` carries a hotfix commit with no
   successful HOTFIX-verified build
 - **THEN** PROD deployment is blocked before any workspace write
+
+#### Scenario: Squash-merged hotfix is promoted
+
+- **WHEN** a validated `hotfix/<Jira-key>` pull request is squash-merged to
+  `main`
+- **THEN** PROD resolves the HOTFIX release from the completed pull-request
+  metadata and does not fall back to an unrelated `dev` artifact
 
 ### Requirement: Live state is verified, drift-aware, and recoverable
 

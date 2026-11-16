@@ -20,8 +20,9 @@ Fabric data-engineering content.
   items.
 - Configure `dev` as an unprotected integration branch that accepts direct
   commits for any workload, and `test` and `main` as pull-request-only
-  promotion branches (one required reviewer, required validation, merge-commit
-  completion). Configure Git-disconnected DEV/TEST/PROD Power BI targets, an
+  promotion branches (one required reviewer, required validation; `test`
+  completes by merge commit and `main` also permits squash so hotfix PRs can be
+  squash-merged). Configure Git-disconnected DEV/TEST/PROD Power BI targets, an
   isolated HOTFIX validation target, and explicitly configured optional UAT or
   Rehearsal targets. The pipeline deploys only the packaged `pbi/` artifact
   through sequential repository, workspace, identity, governance, and pilot
@@ -41,7 +42,8 @@ Fabric data-engineering content.
   approvals; deployment environments supply only target guards and exclusive
   locks. Support a `hotfix/<Jira-key>` route from `main`: build once, validate
   in the isolated HOTFIX workspace with the PROD mapping, deploy PROD through a
-  reviewed PR to `main`, then forward-port to `test` and `dev`. Include
+  reviewed PR to `main` (located from completed-PR metadata, so squash merges
+  resolve), then forward-port to `test` and `dev`. Include
   post-deployment verification, audit evidence, drift detection, and
   known-good rollback guidance.
 - Route Power BI work through the existing scope-first Jira and branch-guard
@@ -50,6 +52,15 @@ Fabric data-engineering content.
   use the configured DEV exception.
 - Keep the existing Fabric data-engineering bootstrap unchanged: its Fabric
   folder boundary remains exclusive, and a Power BI folder does not enable it.
+- Adopt the pilot-tested Glasslake CI/CD scripts and Azure DevOps YAML as
+  generalized template assets: release build, artifact verification and
+  deploy, deployment-identity and semantic-model connection verifiers, and
+  stage templates are parameterized from the configuration and manifest, and
+  the deployment scripts are packaged inside the immutable artifact. Include
+  the reference's semantic-model ownership takeover (idempotent, before
+  connection binding) and its pre-write promotion integrity checks (required
+  scripts present, release files match the deployment branch, successful
+  HOTFIX validation).
 - Fail closed for unsupported item types, unresolved report/model or RDL
   bindings, incomplete environment contracts, absent protected identities,
   missing or mismatched semantic-model connection bindings, or artifact-digest

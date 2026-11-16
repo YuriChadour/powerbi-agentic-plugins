@@ -100,7 +100,7 @@ flowchart TD
     M --> L2[Locate same artifact and TEST evidence]
     L2 --> PD[Deploy PROD]
     H[hotfix branch: fix or cherry-pick] --> HV[Package once; validate in TEST or HOTFIX workspace]
-    HV -->|reviewed PR; located by branch tip| M
+    HV -->|reviewed PR; located from PR metadata| M
     PD -.->|Power BI hotfix: forward-port PRs| T
     PD -.->|Power BI hotfix: forward-port PRs| D
     PD -.->|Fabric hotfix: fix already on dev| D
@@ -178,7 +178,8 @@ targets follow the same boundary. `dev` is an unprotected integration branch
 that accepts direct commits for any workload, so a shared repository can keep
 Fabric data-engineering direct commits there; a validated push to `dev`
 packages the artifact and deploys DEV. `test` and `main` are pull-request-only
-(one reviewer, required validation, merge-commit completion): a reviewed
+(one reviewer, required validation; `test` completes by merge commit and `main`
+also permits squash for hotfix pull requests): a reviewed
 `dev`-to-`test` pull request deploys the recorded artifact to TEST, and a
 reviewed `test`-to-`main` pull request deploys that same artifact to PROD. For
 a small team, the first reviewed gate is therefore `dev`-to-`test`; branch
@@ -223,6 +224,15 @@ into the evidence. The connection verifier is a port of the Glasslake
 `validate_semantic_model_connections.py`, since the adapter binds but does not
 verify live connections.
 
+An existing semantic model may still be owned by the interactive account that
+first published it. Before bindings are configured, the deploy wrapper checks
+the target workspace for the model and performs an idempotent ownership
+takeover to the deployment identity when it is not already the owner. New
+models and models already owned by the deployment identity skip it. A failed
+takeover stops the stage before binding and before any successful audit
+record, so connection verification cannot pass against personal-cloud
+bindings.
+
 This follows the Glasslake design while avoiding generic REST wrappers and
 file-copy "deployment." The exact implementation client is intentionally not
 committed until its support and least-privilege behavior are verified against
@@ -257,9 +267,17 @@ different checkout for a deployment target.
 TEST and PROD find the artifact by revision lineage, as the Glasslake
 reference does: the source revision is the merge-base of the promoted commit
 with `dev`, and the artifact is the one downloaded from the successful `dev`
-build for that revision. A hotfix is found by the second parent of the merge
-commit, restricted to builds from `hotfix/*`. Pull requests into `test` and
-`main` therefore require merge-commit completion; a missing build blocks. The
+build for that revision. A hotfix may be squash-merged, so it is resolved from
+the completed pull-request metadata (merge commit to hotfix source commit for
+`hotfix/*` sources), with the merge commit's second parent as fallback, and
+the selected build must have a successful `ValidateHotfix` stage; it never
+falls back to an unrelated `dev` artifact. `test` completes by merge commit.
+Branch policy cannot be limited per source branch, so `main` also permits
+squash; a squashed `test`-to-`main` pull request has no resolvable `dev`
+merge-base build and blocks. Before any workspace write the stage requires the
+selected revision to match the deployment branch's release files and the
+artifact to contain every required deployment script; a missing build, failed
+HOTFIX validation, missing script, or drift blocks. The
 stored `source_digest` is the existing PROD gate against promoting a different
 artifact; no additional digest recomputation or hash manifest is added for a
 trusted team and platform-held artifacts.
@@ -302,6 +320,26 @@ This makes partial failure observable and preserves unrelated content. Direct
 manual rollback or destructive workspace synchronization was rejected because
 it bypasses evidence and risks unmanaged items.
 
+### 9. Adopt the tested reference scripts as generalized template assets
+
+The Glasslake `cicd/powerbi/` scripts and stage YAML have run a live
+DEV/TEST/PROD pilot, so they are the base for packaging, verification, and
+deployment rather than a parallel implementation: `build_release.py`,
+`deploy_artifact.py`, `deploy_fabric.py`, `validate_deployment_identity.py`,
+`validate_semantic_model_connections.py`, `validate_parameters.py`,
+`write_deployment_metadata.py`, `validate.yml`, `deploy-stage.yml`, and
+`azure-pipelines.yml`, plus the PowerShell workspace and repository bootstrap
+helpers. They become templates under `assets/templates/` with every
+Glasslake-specific value (workspace names, `GLASSLAKE_*` variables, write
+guards, model name, artifact name, `pbi/` root) read from the configuration and
+manifest. The artifact layout follows the reference (content-hash manifest,
+release metadata, managed manifest, deployment scripts included), and the
+reference's promotion integrity checks are retained. `powerbi_cicd.py` keeps
+discovery, configuration and manifest validation, and plan/render, which the
+reference lacks. Rewriting the deploy layer independently was rejected because
+it would discard live-verified behavior. Reference fixes are re-synced by
+comparing against the source checkout recorded in the inventory.
+
 ## Risks / Trade-offs
 
 - [Power BI API support varies by item type and tenant] → maintain a
@@ -320,7 +358,8 @@ it bypasses evidence and risks unmanaged items.
   `dev` and require it on the `dev`-to-`test` pull request; DEV uses its own
   scoped identity, and the first review gate is accepted as `dev`-to-`test`.
 - [Promotion by merge depends on ancestry] → require merge-commit completion on
-  `test` and `main`; squash or rebase completion blocks as a missing build.
+  `test`; hotfix PRs resolve from PR metadata, and a squashed or rebased
+  `test`-to-`main` PR blocks as a missing build.
 
 ## Migration Plan
 
