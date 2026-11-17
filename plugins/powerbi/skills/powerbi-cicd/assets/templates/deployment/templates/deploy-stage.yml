@@ -1,0 +1,62 @@
+parameters:
+  - name: stageName
+    type: string
+  - name: target
+    type: string
+  - name: workspaceId
+    type: string
+  - name: artifactName
+    type: string
+  - name: writeGuard
+    type: string
+  - name: artifactSource
+    type: string
+    values: [current, promotion]
+  - name: sourceBranch
+    type: string
+  - name: testDigest
+    type: string
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Deploy immutable Power BI artifact to ${{ parameters.target }}
+    lockBehavior: sequential
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), or(eq(variables['Build.SourceBranch'], 'refs/heads/${{ parameters.sourceBranch }}'), and(eq('${{ parameters.sourceBranch }}', 'hotfix/*'), startsWith(variables['Build.SourceBranch'], 'refs/heads/hotfix/'))))
+    jobs:
+      - deployment: Deploy
+        environment: ${{ parameters.target }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - ${{ if eq(parameters.artifactSource, 'current') }}:
+                  - download: current
+                    artifact: ${{ parameters.artifactName }}
+                - ${{ if eq(parameters.artifactSource, 'promotion') }}:
+                  - checkout: self
+                    fetchDepth: 0
+                  - bash: |
+                      set -euo pipefail
+                      git fetch --no-tags origin '+refs/heads/dev:refs/remotes/origin/dev'
+                      echo "##vso[task.setvariable variable=promotionRevision]$(git merge-base HEAD refs/remotes/origin/dev)"
+                    displayName: Resolve DEV revision lineage
+                  - task: DownloadPipelineArtifact@2
+                    inputs:
+                      buildType: specific
+                      project: $(System.TeamProject)
+                      pipeline: $(System.DefinitionId)
+                      runVersion: latestFromBranch
+                      runBranch: refs/heads/dev
+                      artifact: ${{ parameters.artifactName }}
+                      path: $(Pipeline.Workspace)/promotion
+                - bash: |
+                    set -euo pipefail
+                    test "$(ALLOW_TARGET_WRITE)" = "true"
+                    test -n '${{ parameters.workspaceId }}'
+                    artifact="$(find '$(Pipeline.Workspace)' -type f -name '${{ parameters.artifactName }}.zip' -print -quit)"
+                    test -n "$artifact"
+                    if [ '${{ parameters.target }}' = PROD ]; then test -n '${{ parameters.testDigest }}'; fi
+                    python deployment/scripts/deploy_artifact.py --artifact "$artifact" --target '${{ parameters.target }}' --revision "${promotionRevision:-$(Build.SourceVersion)}" --test-digest '${{ parameters.testDigest }}'
+                  displayName: Enforce configured target guard
+                  env:
+                    ALLOW_TARGET_WRITE: $(${{ parameters.writeGuard }})

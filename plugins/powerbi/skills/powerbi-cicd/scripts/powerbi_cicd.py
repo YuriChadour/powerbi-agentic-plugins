@@ -24,6 +24,22 @@ ITEM_TYPES = {"SemanticModel", "Report", "PaginatedReport"}
 SECRET_WORDS = ("password", "secret", "token", "connectionstring", "client_secret", "access_key", "apikey")
 PLACEHOLDER = re.compile(r"REPLACE_|\{\{|^<")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}$")
+REQUIRED_DEPLOYMENT_SCRIPTS = (
+    "deployment/scripts/powerbi_cicd.py",
+    "deployment/scripts/deploy_adapter.py",
+    "deployment/scripts/build_release.py",
+    "deployment/scripts/deploy_artifact.py",
+    "deployment/scripts/deploy_fabric.py",
+    "deployment/scripts/validate_deployment_identity.py",
+    "deployment/scripts/validate_semantic_model_connections.py",
+    "deployment/scripts/validate_parameters.py",
+    "deployment/scripts/write_deployment_metadata.py",
+    "deployment/scripts/bootstrap-azure-devops-repository.ps1",
+    "deployment/scripts/provision-fabric-workspaces.ps1",
+    "deployment/templates/validate.yml",
+    "deployment/templates/deploy-stage.yml",
+    "deployment/azure-pipelines.yml",
+)
 
 
 def load_object(path: Path, label: str) -> dict[str, Any]:
@@ -132,19 +148,24 @@ def validate_config(config: object) -> list[str]:
             if role["principal_type"] not in {"User", "Group", "ServicePrincipal", "ServicePrincipalProfile"} or role["role"] not in {"Admin", "Member", "Contributor", "Viewer"}:
                 raise ValueError(f"roles[{index}] has an unsupported principal type or workspace role")
         pipelines = config["pipelines"]
-        if not isinstance(pipelines, dict) or set(pipelines) != set(targets):
-            raise ValueError("pipelines must map every and only configured target")
+        required_profiles = {"DEV", "TEST", "PROD", "HOTFIX"}
+        optional_profiles = set(targets) - {"TEST", "PROD"}
+        if not isinstance(pipelines, dict) or set(pipelines) != required_profiles | optional_profiles:
+            raise ValueError("pipelines must configure DEV, TEST, PROD, HOTFIX, and every configured optional target")
         protected = config["protected_resources"]
         if not isinstance(protected, dict) or set(protected) != set(targets):
             raise ValueError("protected_resources must map every and only configured target")
-        for target in targets:
+        expected_branches = {"DEV": repository["dev_branch"], "TEST": "test", "PROD": repository["prod_branch"], "HOTFIX": "hotfix/*"}
+        for target in pipelines:
             pipeline = pipelines[target]
-            if not isinstance(pipeline, dict) or set(pipeline) != {"yaml_path", "source_branch"}:
-                raise ValueError(f"pipelines.{target} must declare yaml_path and source_branch")
+            if not isinstance(pipeline, dict) or set(pipeline) != {"name", "yaml_path", "source_branch"}:
+                raise ValueError(f"pipelines.{target} must declare name, yaml_path and source_branch")
+            required_string(pipeline["name"], f"pipelines.{target}.name")
             relative_path(pipeline["yaml_path"], f"pipelines.{target}.yaml_path")
-            expected_branch = repository["dev_branch"] if target == "TEST" else repository["prod_branch"]
+            expected_branch = expected_branches.get(target, repository["prod_branch"])
             if required_string(pipeline["source_branch"], f"pipelines.{target}.source_branch") != expected_branch:
                 raise ValueError(f"pipelines.{target}.source_branch does not match the approved release branch")
+        for target in targets:
             resource = protected[target]
             if not isinstance(resource, dict) or set(resource) != {"identity_reference", "write_guard"}:
                 raise ValueError(f"protected_resources.{target} must declare identity_reference and write_guard")
@@ -158,7 +179,7 @@ def validate_config(config: object) -> list[str]:
 def validate_manifest(manifest: object, source_root: str | None = None) -> list[str]:
     errors = no_secrets(manifest)
     try:
-        if not isinstance(manifest, dict) or set(manifest) != {"version", "source_root", "items", "excluded"}:
+        if not isinstance(manifest, dict) or set(manifest) != {"version", "source_root", "items", "semantic_model_bindings", "excluded"}:
             raise ValueError("manifest has missing or unsupported fields")
         if manifest["version"] != 1:
             raise ValueError("manifest version must be 1")
@@ -186,6 +207,20 @@ def validate_manifest(manifest: object, source_root: str | None = None) -> list[
                 raise ValueError(f"items[{index}].dependencies must be a list of logical IDs")
             if not isinstance(item["substitutions"], dict):
                 raise ValueError(f"items[{index}].substitutions must be an object")
+            rules = item["substitutions"].get("rules", [])
+            if not isinstance(rules, list):
+                raise ValueError(f"items[{index}].substitutions.rules must be a list")
+            for rule_index, rule in enumerate(rules):
+                if not isinstance(rule, dict) or set(rule) != {"type", "path", "find", "values"} or rule.get("type") != "find_replace":
+                    raise ValueError(f"items[{index}].substitutions.rules[{rule_index}] must be a supported find_replace rule")
+                relative_path(rule["path"], f"items[{index}].substitutions.rules[{rule_index}].path")
+                required_string(rule["find"], f"items[{index}].substitutions.rules[{rule_index}].find")
+                if not isinstance(rule["values"], dict) or not rule["values"]:
+                    raise ValueError(f"items[{index}].substitutions.rules[{rule_index}].values must be a target-value map")
+                for environment, replacement in rule["values"].items():
+                    if environment not in {"DEV", *TARGETS}:
+                        raise ValueError(f"items[{index}].substitutions.rules[{rule_index}] has an unsupported target value")
+                    required_string(replacement, f"items[{index}].substitutions.rules[{rule_index}].values.{environment}")
             if item["type"] == "PaginatedReport":
                 binding = item.get("binding")
                 if not isinstance(binding, dict) or set(binding) != {"kind", "target"} or binding.get("kind") not in {"semantic_model", "data_source"}:
@@ -201,6 +236,25 @@ def validate_manifest(manifest: object, source_root: str | None = None) -> list[
                 raise ValueError(f"report {identity} must explicitly depend on a semantic model")
             if item["type"] == "PaginatedReport" and item["binding"]["kind"] == "semantic_model" and item["binding"]["target"] not in item_by_id:
                 raise ValueError(f"paginated report {identity} binding is unresolved")
+        bindings = manifest["semantic_model_bindings"]
+        if not isinstance(bindings, dict):
+            raise ValueError("semantic_model_bindings must be an object keyed by semantic-model ID")
+        model_ids = {identity for identity, item in item_by_id.items() if item["type"] == "SemanticModel"}
+        if set(bindings) != model_ids:
+            raise ValueError("semantic_model_bindings must map every and only semantic-model ID")
+        for identity, environment_map in bindings.items():
+            if not isinstance(environment_map, dict) or not environment_map:
+                raise ValueError(f"semantic_model_bindings.{identity} must declare environment mappings")
+            if not {"DEV", "TEST", "PROD"}.issubset(environment_map):
+                raise ValueError(f"semantic_model_bindings.{identity} must include DEV, TEST, and PROD mappings")
+            for environment, connection_ids in environment_map.items():
+                if environment not in {"DEV", *TARGETS}:
+                    raise ValueError(f"semantic_model_bindings.{identity}.{environment} is not a supported environment")
+                if not isinstance(connection_ids, list) or not connection_ids:
+                    raise ValueError(f"semantic_model_bindings.{identity}.{environment} must be a nonempty connection-ID list")
+                normalized = [guid(connection_id, f"semantic_model_bindings.{identity}.{environment}") for connection_id in connection_ids]
+                if len(set(normalized)) != len(normalized):
+                    raise ValueError(f"semantic_model_bindings.{identity}.{environment} contains duplicate connection IDs")
         excluded = manifest["excluded"]
         if not isinstance(excluded, list):
             raise ValueError("excluded must be a list")
@@ -313,7 +367,7 @@ def hash_files(files: list[Path], root: Path) -> tuple[str, dict[str, str]]:
 
 
 def dependency_lock(manifest: dict[str, Any]) -> dict[str, Any]:
-    return {"version": 1, "items": [{"id": item["id"], "type": item["type"], "dependencies": item["dependencies"], **({"binding": item["binding"]} if "binding" in item else {})} for item in ordered_items(manifest)]}
+    return {"version": 1, "items": [{"id": item["id"], "type": item["type"], "dependencies": item["dependencies"], **({"binding": item["binding"]} if "binding" in item else {})} for item in ordered_items(manifest)], "semantic_model_bindings": manifest["semantic_model_bindings"]}
 
 
 def package(root: Path, config: dict[str, Any], manifest: dict[str, Any], target: str, output: Path, revision: str) -> dict[str, Any]:
@@ -337,11 +391,23 @@ def package(root: Path, config: dict[str, Any], manifest: dict[str, Any], target
         archive.writestr("manifest.json", json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n")
         archive.writestr("dependency-lock.json", json.dumps(lock, sort_keys=True, separators=(",", ":")) + "\n")
         archive.writestr("release.json", json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n")
+        deployment_templates = Path(__file__).resolve().parents[1] / "assets" / "templates" / "deployment"
+        for script in (sorted(deployment_templates.rglob("*")) if deployment_templates.exists() else []):
+            if script.is_file():
+                archive.write(script, "deployment/" + script.relative_to(deployment_templates).as_posix())
+        # Runtime wrappers deliberately import the reviewed lifecycle helpers.
+        # Put those helpers in every release so a protected stage never relies
+        # on a different checkout or agent-installed copy.
+        for helper in ("powerbi_cicd.py", "deploy_adapter.py"):
+            archive.write(Path(__file__).with_name(helper), f"deployment/scripts/{helper}")
     return {"status": "packaged", "artifact": str(output), **metadata}
 
 
 def check_artifact(path: Path, target: str, expected_revision: str | None, expected_digest: str | None, test_digest: str | None) -> dict[str, Any]:
     with zipfile.ZipFile(path) as archive:
+        missing_scripts = [script for script in REQUIRED_DEPLOYMENT_SCRIPTS if script not in archive.namelist()]
+        if missing_scripts:
+            return {"status": "blocked", "reason": "required deployment scripts are missing", "missing_scripts": missing_scripts, "external_writes": False}
         metadata = json.loads(archive.read("release.json"))
         hashes = metadata.get("content_hashes")
         if not isinstance(hashes, dict):
@@ -372,7 +438,15 @@ def redact(value: object, key: str = "") -> object:
 
 
 def write_evidence(output: Path, config: dict[str, Any], manifest: dict[str, Any], target: str | None, revision: str | None, digest: str | None, result: str = "planned") -> dict[str, Any]:
-    payload = redact({"source_revision": revision, "source_digest": digest, "environment": target, "target": target, "managed_scope": [item["id"] for item in manifest.get("items", [])], "approval": "pending", "identity_reference": config.get("protected_resources", {}).get(target or "", {}).get("identity_reference"), "result": result})
+    environment = "PROD" if target == "HOTFIX" else target
+    resolved_bindings = {model: values.get(environment, []) for model, values in manifest.get("semantic_model_bindings", {}).items()} if environment else {}
+    resolved_substitutions = [
+        {"item": item["id"], "path": rule["path"], "value": rule["values"].get(environment)}
+        for item in manifest.get("items", [])
+        for rule in item.get("substitutions", {}).get("rules", [])
+        if environment
+    ]
+    payload = redact({"source_revision": revision, "source_digest": digest, "environment": target, "target": target, "managed_scope": [item["id"] for item in manifest.get("items", [])], "approval": "pending", "identity_reference": config.get("protected_resources", {}).get(target or "", {}).get("identity_reference"), "resolved_semantic_model_bindings": resolved_bindings, "resolved_substitutions": resolved_substitutions, "result": result})
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return {"status": "recorded", "evidence": str(output), "external_writes": False}
@@ -388,7 +462,32 @@ def discover(root: Path) -> dict[str, Any]:
     return {"schema_version": 1, "scope_candidates": "power-bi" if candidates else "unconfigured", "scope_approved": False, "candidate_powerbi_roots": sorted(set(candidates)), "existing_cicd_assets": cicd_files, "mapping_gaps": ["explicit approved config", "explicit manifest", "TEST and PROD targets"], "external_writes": False, "workspace_calls": False}
 
 
-def render(output: Path, overwrite: bool) -> dict[str, Any]:
+def review_contract(config: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
+    """Create the redacted, developer-reviewable setup contract."""
+    errors = validate_config(config) + validate_manifest(manifest, config["repository"]["powerbi_source_folder"])
+    if errors:
+        raise ValueError("cannot render an invalid review contract: " + "; ".join(errors))
+    revision = hashlib.sha256(json.dumps({"config": config, "manifest": manifest}, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    targets = {
+        name: {
+            "workspace_name": value["workspace_name"], "workspace_id": value["workspace_id"],
+            "environment": value["environment"], "pipeline": config["pipelines"][name]["yaml_path"],
+            "identity_reference": config["protected_resources"][name]["identity_reference"],
+            "target_inputs": value["verification_profile"],
+        }
+        for name, value in config["targets"].items()
+    }
+    return {
+        "contract_revision": revision, "source_scope": [item["id"] for item in ordered_items(manifest)],
+        "targets": targets, "approval": "pending",
+        "branches": {"dev": config["repository"]["dev_branch"], "promotion": config["repository"]["prod_branch"]},
+        "azure_devops": config["azure_devops"], "role_mappings": config["roles"],
+        "prerequisites": ["developer-authenticated fab", "developer-authenticated az", "reviewed contract approval"],
+        "recovery": "redeploy a retained known-good artifact through the same protected target path",
+    }
+
+
+def render(output: Path, overwrite: bool, config: dict[str, Any] | None = None, manifest: dict[str, Any] | None = None) -> dict[str, Any]:
     templates = Path(__file__).resolve().parents[1] / "assets" / "templates"
     files = {"powerbi-validation.yml": "powerbi-validation.yml", "Initialize-PowerBiCicd.ps1": "Initialize-PowerBiCicd.ps1", "powerbi_cicd.py": "scripts/powerbi_cicd.py", "scripts/deploy_adapter.py": "scripts/deploy_adapter.py"}
     for destination, source in files.items():
@@ -403,6 +502,20 @@ def render(output: Path, overwrite: bool) -> dict[str, Any]:
         else:
             source_path = templates / source
         shutil.copyfile(source_path, target)
+    deployment_templates = templates / "deployment"
+    if deployment_templates.exists():
+        for source_path in deployment_templates.rglob("*"):
+            if source_path.is_file():
+                target = output / "powerbi" / source_path.relative_to(deployment_templates)
+                if target.exists() and not overwrite:
+                    raise ValueError(f"refusing to overwrite {target}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source_path, target)
+    if config is not None and manifest is not None:
+        setup = review_contract(config, manifest)
+        (output / "CICD-SETUP.json").write_text(json.dumps(redact(setup), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (output / "CICD-SETUP.md").write_text("# CI/CD setup review\n\n```json\n" + json.dumps(redact(setup), indent=2, sort_keys=True) + "\n```\n", encoding="utf-8")
+        (output / "CICD-VERIFICATION.md").write_text("# CI/CD verification\n\nVerify configured workspace IDs, artifact digest, target guard, model bindings, substitutions, runtime identity, and deployment evidence before promotion.\n", encoding="utf-8")
     return {"status": "rendered", "output": str(output), "external_writes": False}
 
 
@@ -429,7 +542,8 @@ def main() -> int:
         elif args.command == "render":
             if not args.output:
                 raise ValueError("render requires --output")
-            result = render(args.output, args.allow_overwrite)
+            config, manifest = load_object(args.config, "configuration"), load_object(args.manifest, "manifest")
+            result = render(args.output, args.allow_overwrite, config, manifest)
         else:
             if not args.config or not args.manifest:
                 raise ValueError(f"{args.command} requires --config and --manifest")

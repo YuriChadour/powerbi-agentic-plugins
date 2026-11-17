@@ -1,0 +1,13 @@
+parameters:
+  - name: sourceRoot
+    type: string
+  - name: configPath
+    type: string
+  - name: manifestPath
+    type: string
+
+steps:
+  - bash: |
+      set -euo pipefail
+      python deployment/scripts/validate_parameters.py --config '${{ parameters.configPath }}' --manifest '${{ parameters.manifestPath }}'
+    displayName: Validate non-secret Power BI release contract

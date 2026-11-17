@@ -1,5 +1,14 @@
 # Power BI CI/CD ownership inventory
 
+## Source checkout
+
+The deployment-template source is the local `Glasslake CICD` checkout at
+`C:\Development\Glasslake CICD`, revision `22f3fd6e`
+(`feature/FIN-1882-setup-ci-cd-for-glasslake`).  Its scripts are generalized
+only through this skill's non-secret configuration and manifest contracts;
+workspace names, model names, artifact names, runtime variable names, and
+source roots are not reusable defaults.
+
 | Retained dependency | Owner | Reused boundary |
 | --- | --- | --- |
 | Glasslake environment-bootstrap pattern | `powerbi-cicd` | Five ordered non-secret readiness gates and immutable promotion concepts only; no resource names, identities, or client code are copied. |

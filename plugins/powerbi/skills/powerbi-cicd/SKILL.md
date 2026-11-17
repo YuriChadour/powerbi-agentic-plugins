@@ -41,3 +41,14 @@ py -3 -B -m unittest discover <skill-path>/tests -v
 
 These tests use synthetic sources only. They do not prove live tenant support,
 Azure DevOps registration, protected identity access, or workspace deployment.
+
+## HOTFIX route
+
+Create `hotfix/<Jira-key>` from `main`. Its validated source is packaged once
+and deployed only to the isolated HOTFIX workspace using the PROD mapping; it
+never writes PROD directly. A reviewed pull request to `main` resolves the
+same artifact from completed-PR metadata (with merge second-parent fallback),
+and requires its `ValidateHotfix` stage to have succeeded before it may deploy
+PROD. After production deployment, open forward-port pull requests to `test`
+and `dev`. A missing validated hotfix build, or a non-`hotfix/*` source, blocks
+promotion.

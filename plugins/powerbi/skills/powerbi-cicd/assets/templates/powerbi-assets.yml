@@ -25,6 +25,13 @@
       "substitutions": {}
     }
   ],
+  "semantic_model_bindings": {
+    "SalesModel": {
+      "DEV": ["REPLACE_DEV_MODEL_CONNECTION_ID"],
+      "TEST": ["REPLACE_TEST_MODEL_CONNECTION_ID"],
+      "PROD": ["REPLACE_PROD_MODEL_CONNECTION_ID"]
+    }
+  },
   "excluded": [
     { "path": "**/*.pbix", "reason": "Binary PBIX is not an approved source artifact." }
   ]

@@ -15,6 +15,7 @@ Activated when a user needs to design, build, or maintain Power BI solutions. Co
 | Solution architecture | "Design a semantic model spec for my inventory data" |
 | Measure testing | "Certify a test for my Total Sales measure and run it" |
 | Deployment | "Deploy the semantic model to the Production workspace" |
+| Power BI CI/CD | "Set up immutable CI/CD for this PBIP project" |
 | **Report Copilot optimization** | **"Optimize my report so Copilot answers questions using existing visuals"** |
 
 ## Agents
@@ -76,6 +77,16 @@ Activated for new report/dashboard discovery — guides requirements, model cont
 ### `powerbi-report-management`
 
 Activated for Fabric REST CRUD on report workspace items — create, get/download, update, list, and delete report definitions via `az rest` against the Fabric REST API.
+
+### `powerbi-cicd`
+
+Activated for explicitly mapped Power BI CI/CD setup, source validation,
+immutable artifacts, protected DEV/TEST/PROD promotion, HOTFIX validation,
+release evidence, drift, and recovery. It accepts only non-secret bootstrap and
+manifest inputs for PBIP/PBIR, TMDL semantic models, and RDL reports. Render
+and plan, review and explicitly approve `CICD-SETUP.md`, then use
+developer-authenticated `fab` and `az` for scoped setup. Runtime identities are
+deployment-only; `fabric-cicd` does not deploy Power BI assets.
 
 ### `check-updates`
 

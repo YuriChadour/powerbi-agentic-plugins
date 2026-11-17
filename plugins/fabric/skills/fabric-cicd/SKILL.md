@@ -8,7 +8,8 @@ description: Plan and develop a reusable Fabric CI/CD lifecycle, including repos
 This skill provides a focused Fabric data-engineering bootstrap. It renders and
 sets up only the configured Fabric source and CI folders; it does not set up
 Power BI CI/CD, copy data, schedules, credentials, or a general-purpose REST
-automation layer. Power BI remains a separately approved future bootstrap.
+automation layer. Power BI CI/CD is owned by the separate `powerbi-cicd`
+skill; this skill retains its Power BI deployment exclusion.
 
 Use `assets/templates/bootstrap-config.json` and
 `assets/templates/managed-items.yml` as non-secret adopter inputs. The
