@@ -1,0 +1,23 @@
+## 1. Port the deployment scripts
+
+- [ ] 1.1 Copy the Analytics Reporting deployment and validation scripts listed in design Decision 4 into the skill, moving every project name and ID into `setup.yml` lookups and moving the inline YAML archive verification into `deploy_artifact.py`; verify no Analytics Reporting or Servicing Oversight name, ID or connection remains and the copied scripts' existing tests pass.
+- [ ] 1.2 Add Copy Job support (managed type, deploy before invoking pipelines) and the `connection-bindings.yml` format from Servicing Oversight; verify a pipeline invoking an unmanaged Copy Job fails validation.
+- [ ] 1.3 Replace the DEV/TEST/PROD YAML templates with the single topology in Decision 5 (hosted Linux, no checkout in deploy jobs, pinned install, identity check, write guard, `record_release` always runs, PROD consumes the TEST artifact after `compare_release`); verify rendered YAML triggers each pipeline only from its own branch.
+- [ ] 1.4 Add the `fabric-hotfix.yml` template and the PROD pipeline's source-branch artifact selection per design Decision 5; verify a `hotfix/*` merge uses the HOTFIX artifact, a non-hotfix cherry-pick merge blocks, a hotfix merge without a successful HOTFIX deployment blocks, and the hotfix pipeline cannot target TEST or PROD.
+
+## 2. Plan, approve, apply
+
+- [ ] 2.1 Implement `plan.py`: from the repository, the DEV, TEST, PROD and HOTFIX workspace names or IDs, the service principal application ID and the variable group (shared or per environment), resolve IDs, capacity, service principal object ID, managed items, connections, variable-group variable names and Azure DevOps references using the lookups in design Decision 9, ask for anything not found per Decision 10 (terminal prompts, or `--no-prompt` printed questions answered with `--answer key=value`), generate binding rules (Decision 6), and write `setup.yml` and `SETUP.md` with defaults, user-supplied values and remaining open questions; verify fixtures from both reference repos reproduce their committed `parameter.yml` rules (including the reversed-GUID Lakehouse form and `$sqlendpointid`), an unknown GUID becomes a question, and a failed lookup produces its fixed question rather than a guess.
+- [ ] 2.2 Implement `approve.py` and the hash check in `apply.py`; verify approval is refused with gaps and apply stops when `setup.yml` changed after approval.
+- [ ] 2.3 Implement `apply.py` step 1 (generate `config.yml`, `parameter.yml`, `connection-bindings.yml`, pipeline YAML from `setup.yml`); verify two runs produce identical files.
+- [ ] 2.4 Implement `apply.py` step 2 by generalizing the `uat_bootstrap.py` workspace, capacity, role and schema-enabled Lakehouse functions for DEV, TEST, PROD and HOTFIX with the developer session; verify idempotent re-runs and that no workload runs.
+- [ ] 2.5 Implement `apply.py` step 3: grant the service principal `Contributor` on each workspace and `User` on each listed connection, grant the pipeline-invocation connection owner `Contributor` on TEST/PROD, and confirm the developer's `User` role on each connection, all matched by object ID; verify idempotent re-runs and that each missing grant permission stops with a message naming the item and fix.
+- [ ] 2.6 Implement `apply.py` step 4: confirm each variable group exists with `FABRIC_TENANT_ID`, `FABRIC_APP_ID` (matching the service principal) and secret-flagged `FABRIC_APP_SECRET` without reading the secret, create missing deployment environments, confirm pipelines are committed and registered, and authorize each pipeline only for its own group and environment; verify a missing group, missing secret variable, mismatched application ID and unregistered pipeline each stop with a message naming the fix.
+
+## 3. Skill, tests and evidence
+
+- [ ] 3.1 Rewrite `SKILL.md` as the numbered command list in Decision 7, retire `Initialize-FabricCicd.ps1`, `bootstrap-config.json` and the old templates, and update `SETUP.md`/README references; verify skill paths resolve and the installer still packages the skill.
+- [ ] 3.2 Add one offline test per FIN-2101 failure listed in the spec; verify each fails against the old templates and passes against the new ones.
+- [ ] 3.3 Run plan against Analytics Reporting and Servicing Oversight with their real workspaces and compare generated files with the committed ones; record differences as live-adoption evidence (carried over from archived task 4.3).
+- [ ] 3.4 Run the skill once end to end with Haiku on a synthetic repository and once in Copilot and Codex from the installed copies (carried over from archived task 4.2); record results.
+- [ ] 3.5 Run `openspec validate fin-2060-fabric-cicd-scripted-setup --strict` and the skill's test suite; verify both pass.
