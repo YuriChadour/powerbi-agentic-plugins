@@ -1,82 +1,52 @@
 ---
 name: fabric-cicd
-description: Plan and develop a reusable Fabric CI/CD lifecycle, including repository discovery, target-specific bootstrap, immutable releases, protected deployments and recovery. Use for setting up or operating Fabric data engineering CI/CD; coordinate endpoint-specific Fabric operations with the appropriate specialist skills.
+description: Set up Fabric data-engineering CI/CD for a repository with fixed scripts - plan, approve, apply - producing DEV/TEST/PROD/HOTFIX workspaces, protected release pipelines, generated fabric-cicd parameter rules, connection bindings and a TEST-verified promotion to PROD. Use for creating or re-running Fabric CI/CD setup, hotfix flow, or the FIN-2101-style rollout. Power BI CI/CD belongs to powerbi-cicd.
 ---
 
-# Fabric data-engineering CI/CD bootstrap
+# Fabric data-engineering CI/CD setup
 
-This skill provides a focused Fabric data-engineering bootstrap. It renders and
-sets up only the configured Fabric source and CI folders; it does not set up
-Power BI CI/CD, copy data, schedules, credentials, or a general-purpose REST
-automation layer. Power BI CI/CD is owned by the separate `powerbi-cicd`
-skill; this skill retains its Power BI deployment exclusion.
+Run the commands below in order. Do not edit generated files, write YAML or invent
+values; if a script prints a question, ask the user and pass the answer back.
+`<skill>` is this skill's folder. Run everything from the adopter repository root,
+signed in to `fab` and `az` (with the `azure-devops` extension) as the developer.
 
-Use `assets/templates/bootstrap-config.json` and
-`assets/templates/managed-items.yml` as non-secret adopter inputs. The
-reference-derived manifest selects only managed Fabric definitions and records
-dependencies and exclusions.
+1. Run the branch guard (`git-branch-guard`); stop if it blocks.
+2. Ask the user for: the DEV, TEST, PROD and HOTFIX workspace names or IDs; the
+   service principal application ID; the Azure DevOps variable group (one shared
+   group is the default).
+3. Run
+   `py <skill>/scripts/plan.py --no-prompt --dev-workspace "<DEV>" --test-workspace "<TEST>" --prod-workspace "<PROD>" --hotfix-workspace "<HOTFIX>" --app-id <appId> --variable-group "<group>"`.
+   Exit code 2 means questions were printed: ask the user each one and re-run step 3
+   adding `--answer <key>=<value>` for every answer. A GUID that matches nothing is
+   reported as a gap; ask whether to exclude it (`--exclude-guid <guid>`), map it to a
+   target reference such as the workspace (`--map-guid "<guid>=$workspace.$id"`) when it
+   comes from another discovery workspace, or fix the source.
+4. Show `cicd/fabric/SETUP.md` to the user. If they want a change, they edit
+   `cicd/fabric/setup.yml` and you re-run step 3.
+5. On the user's explicit confirmation run `py <skill>/scripts/approve.py`. It refuses
+   while a question or gap remains.
+6. Run `py <skill>/scripts/apply.py`. It creates or reuses the workspaces and
+   schema-enabled Lakehouses, generates the files under `cicd/`, grants the service
+   principal and connection roles, and wires variable groups, environments and pipelines.
+   It never runs a workload.
+7. Commit the generated files with the Jira-key prefix, push the feature branch and open
+   the DEV pull request. If apply stopped at "pipeline is not registered", run the
+   printed `az pipelines create` command after the files are on the remote, then re-run step 6.
+8. If any script fails, show its message to the user and stop. Re-run it after the
+   user fixes the cause; finished steps are no-ops.
 
-## Bootstrap a repository
+Run the offline checks with `py -3 -B -m unittest discover <skill>/tests`.
 
-The single setup entry point is
-`assets/templates/Initialize-FabricCicd.ps1`. Copy the input templates into
-the adopter repository's configured CI folder, replace all `REPLACE_*` values,
-then render and review generated files before committing them.
+## What the setup produces
 
-```powershell
-$bootstrap = '<skill-path>/assets/templates/Initialize-FabricCicd.ps1'
-& $bootstrap -Mode Render -ConfigPath ./cicd/bootstrap-config.json -ManifestPath ./cicd/managed-items.yml -RepoRoot .
-& $bootstrap -Mode Plan -ConfigPath ./cicd/bootstrap-config.json -ManifestPath ./cicd/managed-items.yml -RepoRoot .
-& $bootstrap -Mode Apply -ConfigPath ./cicd/bootstrap-config.json -ManifestPath ./cicd/managed-items.yml -RepoRoot .
-```
+- DEV branch deploys DEV; TEST branch builds and deploys TEST; PROD branch deploys the
+  TEST-built artifact after a digest comparison; `hotfix/*` deploys to HOTFIX and, after
+  its pull request merges to PROD, PROD deploys that HOTFIX artifact. Any other source
+  into PROD is blocked.
+- Deploy jobs run on a hosted Linux agent with no checkout, after every artifact hash is
+  verified, using the pinned toolchain and a per-environment write guard.
+- The user creates the service principal and its secret and enables service-principal
+  access in the Fabric tenant; setup never reads or writes secrets.
 
-`Plan` is offline and reports no external writes. `Apply` uses the invoking
-developer's existing `fab` and `az` sessions: it checks `fab auth status`,
-`az account show`, and the Azure DevOps extension before any affected write.
-It creates or reuses only configured workspaces, reconciles only explicit
-direct role mappings, and registers only missing named Fabric YAML pipelines.
-It rejects conflicting workspace IDs, roles, repository bindings, branches,
-or YAML paths. It accepts no setup token, secret, or service-principal
-credential.
-
-`Status` reads the redacted setup state. `Resume` requires that state and
-re-runs the approved reconciliation. The rendered TEST and PROD deployment
-stages use protected pipeline identities; they require target guards and do
-not execute workloads by default. PROD consumes the matching TEST-built
-artifact rather than rebuilding it.
-
-Run the focused offline checks before handoff:
-
-```powershell
-py -3 -B -m unittest discover <skill-path>/tests -v
-```
-
-These tests validate generated contracts and synthetic adoption only. They do
-not prove live Fabric access, Azure DevOps registration, deployment, or
-workload execution.
-
-## Discover a repository
-
-```powershell
-py -3 <skill-path>/scripts/discover.py --repo <repository-path>
-```
-
-The JSON report identifies candidate source roots, existing CI/CD files, local
-branch names and remote names. Folder presence is not approval to deploy.
-Fabric Git connection, synchronization evidence and target mappings are
-reported as unknown until established through authorized discovery. The command
-never changes repository or external state and does not print remote URLs.
-
-For an implementation request, consult the lifecycle OpenSpec change and its
-task state before continuing. Resolve explicit work area and work type, Jira
-traceability and the mandatory branch guard through the DevOps workflow.
-Fabric work is authored in DEV; protected release targets and identities are
-configured explicitly. Do not deploy to DEV, infer production mappings, include
-secrets in generated files, or weaken remote branch protections.
-
-`assets/reference-inventory.md` records the reference asset dispositions; it is
-provenance, not a runtime dependency or authorization to deploy. The planned
-bundle must work without the reference repository and must not contain its
-project-specific defaults.
-
-See `assets/pbi-mapping.md` for the separate optional mapping contract and `assets/dev-authoring.md` for DEV authoring guidance.
+`assets/dev-authoring.md` covers authoring in DEV before the first release;
+`assets/pbi-mapping.md` covers the Power BI boundary.

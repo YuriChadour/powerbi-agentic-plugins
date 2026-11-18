@@ -26,6 +26,5 @@ lifecycle does not infer those values from a reference project.
    verified digest, subject to their separate protections. Release pipelines
    must never write to DEV.
 
-This guidance does not provide a working bootstrap or deployment command. Those
-capabilities must pass the lifecycle change's implementation and verification
-tasks before they are offered as operational.
+This guidance covers authoring only. Set up and run the release pipelines with
+the plan, approve and apply scripts described in `SKILL.md`.
