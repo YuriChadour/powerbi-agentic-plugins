@@ -35,16 +35,26 @@ class Fin2101Regressions(unittest.TestCase):
     def setUp(self) -> None:
         self.files = render.render_all(SETUP)
 
-    def test_deployment_job_runs_scripts_from_the_verified_artifact(self) -> None:
-        for name in ("fabric-dev.yml", "fabric-test.yml", "fabric-hotfix.yml"):
+    def test_deployment_job_runs_scripts_from_the_verified_extracted_artifact(self) -> None:
+        for name in ("fabric-dev.yml", "fabric-test.yml", "fabric-hotfix.yml", "fabric-prod.yml"):
             text = self.files[name]
             self.assertIn("checkout: none", text)
-            self.assertIn("extracted/cicd/fabric/deploy_artifact.py", text)
-            self.assertLess(text.index("--extract-to"), text.index("--extracted-root"))
+            self.assertIn("content-hashes.json", text)
+            self.assertRegex(text, r"(?:extracted|\$\(promotedRoot\))/cicd/fabric/deploy_artifact\.py")
+            self.assertIn("--extracted-root", text)
+            self.assertNotIn("/verifier/deploy_artifact.py", text)
+            self.assertNotIn("$(Build.SourcesDirectory)", text)
+            self.assertLess(text.index("Verify every hash and extract"), text.index("--extracted-root"))
 
-    def test_no_windows_only_launcher_ships(self) -> None:
+    def test_no_windows_only_launcher_ships_and_protected_jobs_use_private_pool(self) -> None:
         self.assertEqual([], [p.name for p in SKILL.rglob("*.ps1")])
-        self.assertTrue(all("pool:\n  vmImage: ubuntu-latest" in text for n, text in self.files.items() if n.startswith("fabric-")))
+        for name, text in self.files.items():
+            if not name.startswith("fabric-"):
+                continue
+            self.assertIn("pool:\n  vmImage: ubuntu-latest", text)
+            self.assertIn("name: 'BAM-IaC-CloudEng'", text)
+            self.assertIn("task: AzureKeyVault@2", text)
+            self.assertIn("pwsh: true", text)
 
     def test_deploy_fails_without_a_schema_enabled_lakehouse(self) -> None:
         cfg = SKILL / "tests" / "_cfg"

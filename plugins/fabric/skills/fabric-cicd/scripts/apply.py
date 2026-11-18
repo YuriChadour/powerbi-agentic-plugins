@@ -9,6 +9,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import yaml
 
@@ -20,7 +21,7 @@ from render_pipelines import render_all  # noqa: E402
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 ENVIRONMENTS = ("DEV", "TEST", "PROD", "HOTFIX")
 RANK = {"Viewer": 0, "Contributor": 1, "Member": 2, "Admin": 3}
-REQUIRED_VARIABLES = ("FABRIC_TENANT_ID", "FABRIC_APP_ID", "FABRIC_APP_SECRET")
+REQUIRED_VARIABLES = ("FABRIC_TENANT_ID", "FABRIC_APP_ID")
 
 
 def load_setup(path: Path) -> dict:
@@ -83,7 +84,16 @@ def generate(setup: dict, ids: dict[str, str]) -> dict[str, str]:
     render_input = {
         "branches": {env: envs[env]["branch"] for env in ENVIRONMENTS},
         "environments": {
-            env: {"workspace_id": ids[env], "variable_group": envs[env]["variable_group"]["name"], "ado_environment": envs[env]["ado_environment"], "pipeline_name": envs[env]["pipeline_name"]}
+            env: {
+                "workspace_id": ids[env],
+                "variable_group": envs[env]["variable_group"]["name"],
+                "ado_environment": envs[env]["ado_environment"],
+                "pipeline_name": envs[env]["pipeline_name"],
+                "private_pool": envs[env]["private_pool"]["name"],
+                "key_vault_service_connection": envs[env]["key_vault"]["service_connection"],
+                "key_vault_name": envs[env]["key_vault"]["name"],
+                "key_vault_secret": envs[env]["key_vault"]["secret"],
+            }
             for env in ENVIRONMENTS
         },
     }
@@ -192,21 +202,45 @@ def azure_devops(setup: dict, ops: Ops, repo: Path) -> None:
             continue
         found = ops.az_json("pipelines", "variable-group", "list", "--group-name", name, "--org", org, "--project", project)
         if not found:
-            raise StepError(f"variable group '{name}' does not exist; create it in Library with {', '.join(REQUIRED_VARIABLES)} (secret-flag the client secret)")
+            raise StepError(f"variable group '{name}' does not exist; create it in Library with {', '.join(REQUIRED_VARIABLES)}")
         variables = found[0].get("variables", {})
         missing = [v for v in REQUIRED_VARIABLES if v not in variables]
         if missing:
             raise StepError(f"variable group '{name}' is missing {', '.join(missing)}; add them in Library")
-        if not variables["FABRIC_APP_SECRET"].get("isSecret"):
-            raise StepError(f"variable group '{name}': FABRIC_APP_SECRET must be a secret variable")
         if str(variables["FABRIC_APP_ID"].get("value", "")).lower() != setup["service_principal"]["app_id"]:
             raise StepError(f"variable group '{name}': FABRIC_APP_ID does not match service principal {setup['service_principal']['app_id']}")
         groups[name], group_ids[name] = found[0], found[0]["id"]
+    pools = ops.az_json("pipelines", "pool", "list", "--org", org) or []
+    service_connections = ops.az_json("devops", "service-endpoint", "list", "--org", org, "--project", project) or []
+    pool_names = {pool.get("name") for pool in pools}
+    endpoint_by_name = {endpoint.get("name"): endpoint for endpoint in service_connections}
+    queues = {}
+    endpoints = {}
+    for env in ENVIRONMENTS:
+        config = setup["environments"][env]
+        pool_name = config["private_pool"]["name"]
+        if pool_name not in pool_names:
+            raise StepError(f"{env}: private pool '{pool_name}' does not exist or is not visible; ask the Azure DevOps administrator to authorize it")
+        queue = (ops.ado_rest("get", f"{base}/distributedtask/queues?queueName={quote(pool_name)}&api-version=7.1") or {}).get("value", [])
+        if not queue:
+            raise StepError(f"{env}: private pool '{pool_name}' has no authorized Azure DevOps queue; ask the project administrator to enable it")
+        queues[env] = queue[0]["id"]
+        key_vault = config["key_vault"]
+        if not key_vault.get("name") or not key_vault.get("secret"):
+            raise StepError(f"{env}: Key Vault name and secret reference are required in setup.yml")
+        endpoint = endpoint_by_name.get(key_vault["service_connection"])
+        if not endpoint:
+            raise StepError(f"{env}: Key Vault service connection '{key_vault['service_connection']}' does not exist; create or authorize the WIF connection")
+        if key_vault.get("service_connection_id") not in (None, endpoint["id"]):
+            raise StepError(f"{env}: Key Vault service connection ID changed; re-run plan")
+        endpoints[env] = endpoint["id"]
     environments = {e["name"]: e["id"] for e in (ops.ado_rest("get", f"{base}/distributedtask/environments?api-version=7.1") or {}).get("value", [])}
     for env in ENVIRONMENTS:
         config = setup["environments"][env]
         if config["ado_environment"] not in environments:
             created = ops.ado_rest("post", f"{base}/distributedtask/environments?api-version=7.1", {"name": config["ado_environment"]})
+            if not created or not created.get("id"):
+                raise StepError(f"could not create deployment environment '{config['ado_environment']}'; ask the Azure DevOps project administrator to create or authorize it")
             environments[config["ado_environment"]] = created["id"]
             print(f"created deployment environment '{config['ado_environment']}'")
     for env in ENVIRONMENTS:
@@ -220,7 +254,12 @@ def azure_devops(setup: dict, ops: Ops, repo: Path) -> None:
         if detail.get("process", {}).get("yamlFilename") != config["pipeline_yaml"]:
             raise StepError(f"pipeline '{config['pipeline_name']}' points at {detail.get('process', {}).get('yamlFilename')}, expected {config['pipeline_yaml']}")
         pipeline_id = found[0]["id"]
-        for kind, resource in (("variablegroup", group_ids[config["variable_group"]["name"]]), ("environment", environments[config["ado_environment"]])):
+        for kind, resource in (
+            ("variablegroup", group_ids[config["variable_group"]["name"]]),
+            ("environment", environments[config["ado_environment"]]),
+            ("endpoint", endpoints[env]),
+            ("queue", queues[env]),
+        ):
             url = f"{base}/pipelines/pipelinePermissions/{kind}/{resource}?api-version=7.1-preview.1"
             current = ops.ado_rest("get", url) or {}
             if current.get("allPipelines", {}).get("authorized") or any(p.get("id") == pipeline_id and p.get("authorized") for p in current.get("pipelines", [])):

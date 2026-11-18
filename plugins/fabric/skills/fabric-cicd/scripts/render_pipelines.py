@@ -28,7 +28,9 @@ def render_all(setup: dict) -> dict[str, str]:
         values = {
             "ENV": env, "env": env.lower(), "ENV_TITLE": env.title(), "BRANCH": branches[env],
             "WORKSPACE_ID": envs[env]["workspace_id"], "VARIABLE_GROUP": envs[env]["variable_group"],
-            "ADO_ENVIRONMENT": envs[env]["ado_environment"],
+            "ADO_ENVIRONMENT": envs[env]["ado_environment"], "PRIVATE_POOL": envs[env]["private_pool"],
+            "KEY_VAULT_SERVICE_CONNECTION": envs[env]["key_vault_service_connection"],
+            "KEY_VAULT_NAME": envs[env]["key_vault_name"], "KEY_VAULT_SECRET": envs[env]["key_vault_secret"],
         }
         files[FILES[env]] = substitute(release, values)
     files[FILES["PROD"]] = substitute(
@@ -37,7 +39,9 @@ def render_all(setup: dict) -> dict[str, str]:
             "BRANCH": branches["PROD"], "TEST_BRANCH": branches["TEST"],
             "TEST_PIPELINE": envs["TEST"]["pipeline_name"], "HOTFIX_PIPELINE": envs["HOTFIX"]["pipeline_name"],
             "WORKSPACE_ID": envs["PROD"]["workspace_id"], "VARIABLE_GROUP": envs["PROD"]["variable_group"],
-            "ADO_ENVIRONMENT": envs["PROD"]["ado_environment"],
+            "ADO_ENVIRONMENT": envs["PROD"]["ado_environment"], "PRIVATE_POOL": envs["PROD"]["private_pool"],
+            "KEY_VAULT_SERVICE_CONNECTION": envs["PROD"]["key_vault_service_connection"],
+            "KEY_VAULT_NAME": envs["PROD"]["key_vault_name"], "KEY_VAULT_SECRET": envs["PROD"]["key_vault_secret"],
         },
     )
     return dict(sorted(files.items()))

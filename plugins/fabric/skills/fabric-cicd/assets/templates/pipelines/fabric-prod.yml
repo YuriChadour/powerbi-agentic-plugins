@@ -38,6 +38,8 @@ stages:
   condition: succeeded()
   jobs:
   - deployment: Deploy
+    pool:
+      name: '{{PRIVATE_POOL}}'
     environment: {{ADO_ENVIRONMENT}}
     variables:
     - group: '{{VARIABLE_GROUP}}'
@@ -48,37 +50,80 @@ stages:
           - checkout: none
           - download: current
             artifact: fabric-promoted-release
+          - task: AzureKeyVault@2
+            inputs:
+              azureSubscription: '{{KEY_VAULT_SERVICE_CONNECTION}}'
+              KeyVaultName: '{{KEY_VAULT_NAME}}'
+              SecretsFilter: '{{KEY_VAULT_SECRET}}'
+              RunAsPreJob: false
           - task: UsePythonVersion@0
             inputs:
               versionSpec: '3.11'
-          - script: |
-              set -euo pipefail
-              dir="$(ls -d "$(Pipeline.Workspace)"/fabric-promoted-release/fabric-*-release | head -n 1)"
-              name="$(basename "$dir")"
-              target="$(echo "$name" | cut -d- -f2 | tr a-z A-Z)"
-              zip="$dir/$name.zip"
-              mkdir -p "$(Pipeline.Workspace)/verifier"
-              unzip -j -o "$zip" cicd/fabric/deploy_artifact.py cicd/fabric/release_contract.py -d "$(Pipeline.Workspace)/verifier"
-              python "$(Pipeline.Workspace)/verifier/deploy_artifact.py" --artifact "$zip" --environment PROD --artifact-target "$target" --extract-to "$dir/extracted"
-              echo "##vso[task.setvariable variable=promotedZip]$zip"
-              echo "##vso[task.setvariable variable=promotedRoot]$dir/extracted"
-              echo "##vso[task.setvariable variable=promotedTarget]$target"
+          - task: PowerShell@2
             displayName: Verify every hash and extract the promoted artifact
-          - script: python -m pip install -r "$(promotedRoot)/cicd/fabric/requirements-fabric-cicd.lock"
+            inputs:
+              targetType: inline
+              pwsh: true
+              script: |
+                $ErrorActionPreference = 'Stop'
+                Add-Type -AssemblyName System.IO.Compression.FileSystem
+                $artifact = Get-ChildItem (Join-Path '$(Pipeline.Workspace)' 'fabric-promoted-release') -Directory | Where-Object Name -Match '^fabric-(test|hotfix)-release$' | Select-Object -First 1
+                if (-not $artifact) { throw 'No selected TEST or HOTFIX artifact was downloaded' }
+                $target = ($artifact.Name -split '-')[1].ToUpperInvariant()
+                $zip = Join-Path $artifact.FullName ($artifact.Name + '.zip')
+                $destination = Join-Path $artifact.FullName 'extracted'
+                New-Item -ItemType Directory -Path $destination -Force | Out-Null
+                $root = [IO.Path]::GetFullPath($destination)
+                $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+                try {
+                  $entries = @($archive.Entries | Where-Object { -not [string]::IsNullOrEmpty($_.Name) })
+                  $names = @($entries.FullName)
+                  if (@($names | Group-Object | Where-Object Count -gt 1).Count -gt 0) { throw 'Duplicate archive member detected' }
+                  foreach ($name in $names) {
+                    $parts = @($name -split '/')
+                    if ([string]::IsNullOrWhiteSpace($name) -or $name.Contains('\') -or $name.StartsWith('/') -or $name -match '^[A-Za-z]:' -or $parts -contains '..') { throw "Unsafe archive member: $name" }
+                    $memberPath = [IO.Path]::GetFullPath((Join-Path $root $name))
+                    if (-not $memberPath.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe archive member: $name" }
+                  }
+                  $hashEntry = $entries | Where-Object FullName -eq 'content-hashes.json' | Select-Object -First 1
+                  if (-not $hashEntry) { throw 'Artifact is missing content-hashes.json' }
+                  $reader = [IO.StreamReader]::new($hashEntry.Open())
+                  try { $hashes = $reader.ReadToEnd() | ConvertFrom-Json -AsHashtable } finally { $reader.Dispose() }
+                  $actual = @($names | Where-Object { $_ -ne 'content-hashes.json' } | Sort-Object)
+                  $expected = @($hashes.Keys | Sort-Object)
+                  if (Compare-Object $actual $expected) { throw 'Artifact content-hash manifest does not match packaged files' }
+                  $sha = [Security.Cryptography.SHA256]::Create()
+                  try {
+                    foreach ($entry in $entries | Where-Object FullName -ne 'content-hashes.json') {
+                      $stream = $entry.Open()
+                      try { $actualHash = ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() } finally { $stream.Dispose() }
+                      if ($actualHash -ne $hashes[$entry.FullName]) { throw "Artifact content hash mismatch: $($entry.FullName)" }
+                    }
+                  } finally { $sha.Dispose() }
+                  foreach ($entry in $entries) {
+                    $memberPath = Join-Path $root $entry.FullName
+                    New-Item -ItemType Directory -Path (Split-Path $memberPath -Parent) -Force | Out-Null
+                    [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $memberPath, $true)
+                  }
+                } finally { $archive.Dispose() }
+                Write-Host "##vso[task.setvariable variable=promotedZip]$zip"
+                Write-Host "##vso[task.setvariable variable=promotedRoot]$destination"
+                Write-Host "##vso[task.setvariable variable=promotedTarget]$target"
+          - pwsh: python -m pip install -r "$(promotedRoot)/cicd/fabric/requirements-fabric-cicd.lock"
             displayName: Install pinned deployment toolchain
-          - script: python "$(promotedRoot)/cicd/fabric/auth_check.py" --workspace {{WORKSPACE_ID}}
+          - pwsh: python "$(promotedRoot)/cicd/fabric/auth_check.py" --workspace {{WORKSPACE_ID}}
             displayName: Verify protected PROD service-principal metadata access before write
             env:
               FABRIC_TENANT_ID: $(FABRIC_TENANT_ID)
               FABRIC_APP_ID: $(FABRIC_APP_ID)
-              FABRIC_APP_SECRET: $(FABRIC_APP_SECRET)
-          - script: python "$(promotedRoot)/cicd/fabric/deploy_artifact.py" --artifact "$(promotedZip)" --environment PROD --artifact-target "$(promotedTarget)" --extracted-root "$(promotedRoot)"
+              FABRIC_APP_SECRET: $({{KEY_VAULT_SECRET}})
+          - pwsh: python "$(promotedRoot)/cicd/fabric/deploy_artifact.py" --artifact "$(promotedZip)" --environment PROD --artifact-target "$(promotedTarget)" --extracted-root "$(promotedRoot)"
             displayName: Deploy the verified artifact to PROD
             env:
               FABRIC_TENANT_ID: $(FABRIC_TENANT_ID)
               FABRIC_APP_ID: $(FABRIC_APP_ID)
-              FABRIC_APP_SECRET: $(FABRIC_APP_SECRET)
+              FABRIC_APP_SECRET: $({{KEY_VAULT_SECRET}})
               ALLOW_FABRIC_PROD_WRITE: true
-          - script: python "$(promotedRoot)/cicd/fabric/record_release.py" --artifact "$(promotedZip)" --target PROD
+          - pwsh: python "$(promotedRoot)/cicd/fabric/record_release.py" --artifact "$(promotedZip)" --target PROD
             displayName: Record PROD release audit metadata
             condition: always()

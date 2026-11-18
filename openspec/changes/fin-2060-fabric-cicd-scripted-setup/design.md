@@ -43,7 +43,7 @@ flowchart TD
    | `dev_drift_gate.py` | Analytics Reporting | Optional DEV vs repository check |
    | `uat_bootstrap.py` workspace, capacity, role, Lakehouse and Azure DevOps authorization functions | Analytics Reporting | `apply.py` step 2 and 4, for any environment; UAT lock, defaults, PAT and runtime execution dropped |
    | Copy Job handling, `connection-bindings.yml`, `$sqlendpointid` rule, TEST-branch trigger with PROD consuming the TEST artifact | Servicing Oversight | Templates and generator |
-   | Inline YAML archive verification | Both | Moved into `deploy_artifact.py`, run before any other packaged import |
+   | Inline `pwsh` archive verification and extraction | Servicing Oversight | Remains inline in protected release YAML because the no-checkout job cannot invoke a repository or packaged script before extraction; packaged Python helpers run only after verification succeeds |
 
 5. **One promotion topology.** DEV branch → DEV, TEST branch builds and deploys TEST, PROD branch consumes the TEST artifact after the digest check. This is the FIN-2101 topology proven in builds 17399–17401. Branch names come from `setup.yml` (defaults `DEV`/`TEST`/`PROD`). *Alternative:* also support build-once-from-DEV — rejected to keep one path.
 
@@ -53,7 +53,7 @@ flowchart TD
 
 7. **`SKILL.md` is a numbered command list:** run plan with `--no-prompt`; if it prints questions, ask the user each one and re-run plan with the answers; show `SETUP.md` to the user, approve on their confirmation, run apply, commit the generated files, open the DEV PR. If a script fails, show its message to the user and stop.
 
-8. **Service principal and variable groups are inputs; secrets stay manual.** Plan takes the service principal application ID and variable-group name (one shared value by default, overridable per environment), resolves the object ID with `az ad sp show`, and reads the group's variable names and secret flags only. Apply grants workspace and connection roles, grants the pipeline-invocation connection owner `Contributor` on TEST/PROD (FIN-2101 error 3125), creates missing Azure DevOps environments, and authorizes each pipeline for only its own group and environment. The variable names follow the Analytics Reporting templates (`FABRIC_TENANT_ID`, `FABRIC_APP_ID`, `FABRIC_APP_SECRET`). *Alternative:* create the variable group with the secret, rejected because setup must never handle secret values; a Key Vault-linked group is out of scope and noted in `SETUP.md` as an optional follow-up.
+8. **Protected jobs use a Windows private pool and retrieve the secret at runtime.** Plan takes the service principal application ID, protected variable-group name, Windows pool name and WIF Key Vault service connection (each overridable per environment). The variable group contains only `FABRIC_TENANT_ID` and `FABRIC_APP_ID`; `AzureKeyVault@2` retrieves the client secret through the service connection at deployment time and maps its output only to `FABRIC_APP_SECRET`. Build and PR validation remain on hosted Ubuntu. Apply grants workspace and connection roles, grants the pipeline-invocation connection owner `Contributor` on TEST/PROD (FIN-2101 error 3125), creates missing Azure DevOps environments, and authorizes each pipeline for only its own group, service connection and environment. A legacy variable-group secret may remain temporarily as an operator-managed rollback fallback, but generated deployment jobs SHALL NOT consume it.
 
 9. **Lookups, all read-only.**
 
@@ -68,7 +68,9 @@ flowchart TD
    | Workspace roles | `fab api workspaces/<id>/roleAssignments` | Mark unknown; apply re-checks |
    | Service principal object ID | `az ad sp show --id <appId> --query id` | Ask |
    | Azure DevOps org, project, repo | Parse `git remote get-url origin` | Ask |
-   | Variable group variables | `az pipelines variable-group list --group-name <name>` (names and `isSecret` only) | Mark unknown; apply re-checks |
+   | Variable group variables | `az pipelines variable-group list --group-name <name>` (names and non-secret values only) | Mark unknown; apply re-checks |
+   | Windows private pool | `az pipelines pool list` | Ask for the pool name; do not fall back to a hosted pool |
+   | Key Vault service connection and authorization | Azure DevOps service-endpoint metadata plus pipeline permissions | Mark unknown; apply re-checks without reading secrets |
    | Pipelines, YAML path | `az pipelines list --name <name>` | Mark not registered |
    | Environments, pipeline authorization | `az devops invoke` on `distributedtask/environments` and `pipelines/pipelinePermissions` | Mark unknown; apply re-checks |
    | Fabric tenant allows service principals | Not looked up (admin only) | Manual prerequisite; `auth_check.py` proves it at deploy |
@@ -80,6 +82,7 @@ flowchart TD
 - [`fabric-cicd` parameter syntax changes] → Pin the version; tests load generated rules through the library's real objects.
 - [Logical-ID transform is undocumented] → Derive from observed pairs in both reference repos and cover with fixtures; unmatched IDs are gaps, never guesses.
 - [Analytics Reporting's PROD pipeline rebuilds instead of consuming TEST] → Its re-generation will differ on that point; record as an expected difference and let the team adopt the single topology when convenient.
+- [Private Key Vault access is unavailable from hosted agents] → Generate protected Key Vault and deployment jobs for the configured Windows private pool; keep build and validation on hosted Ubuntu and require an authorized WIF service connection before release.
 
 ## Migration Plan
 

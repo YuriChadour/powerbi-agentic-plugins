@@ -39,15 +39,15 @@ The capability SHALL provide three setup scripts run in order: plan, approve and
 - **THEN** setup SHALL stop before the affected write and identify the required developer authorization without attempting a credential fallback
 
 ### Requirement: Reference-derived protected deployment
-The capability SHALL package the selected revision and approved managed scope from the configured Fabric source folder, excluding data, schedules, secrets and Power BI source, together with the deployment scripts, generated binding rules and a pinned Python toolchain. Protected deployment SHALL run the packaged Python deployment on the hosted Linux agent through the `fabric-cicd` library, without a repository checkout, and only after safely extracting the artifact and verifying every file hash. It SHALL verify the protected identity and target workspace before writing, create only missing notebook shells through the notebook-specific API, and deploy only to the authorized target. Fabric release setup SHALL require a verified DEV Git connection and initial baseline.
+The capability SHALL package the selected revision and approved managed scope from the configured Fabric source folder, excluding data, schedules, secrets and Power BI source, together with the deployment scripts, generated binding rules and a pinned Python toolchain. Build and PR validation MAY run on hosted Ubuntu. Key Vault retrieval and protected deployment SHALL run on the configured Windows private pool because the Key Vault requires private-network access. Protected jobs SHALL use no repository checkout, SHALL verify every archive member path and file hash, SHALL extract the artifact inline with `pwsh`, and SHALL invoke the packaged Python helpers through `fabric-cicd` from the extracted directory. It SHALL verify the protected identity and target workspace before writing, create only missing notebook shells through the notebook-specific API, and deploy only to the authorized target. Fabric release setup SHALL require a verified DEV Git connection and initial baseline.
 
 #### Scenario: Isolated target is prepared
 - **WHEN** an approved UAT or rehearsal setup is applied
 - **THEN** the capability SHALL create or reuse only the selected workspace and managed resources, queue deployment only when requested, and preserve DEV, TEST and PROD mappings
 
-#### Scenario: Deployment runs on a hosted agent
-- **WHEN** a protected deployment job starts on the hosted Linux agent
-- **THEN** it SHALL use only the verified artifact contents and pinned toolchain and SHALL NOT require a repository checkout or a Windows-only launcher
+#### Scenario: Deployment runs without source checkout
+- **WHEN** a protected deployment job starts on the Windows private pool
+- **THEN** it SHALL retrieve secrets through the approved WIF Key Vault service connection, verify and extract the downloaded artifact inline with `pwsh`, and run only the packaged, pinned Python helpers from that extracted directory
 
 #### Scenario: Artifact was altered
 - **WHEN** a packaged file's hash differs from the artifact's hash manifest or a member path is unsafe
@@ -100,17 +100,18 @@ Apply SHALL prepare DEV, TEST, PROD and HOTFIX with the same steps: create or re
 - **WHEN** a release pipeline is not authorized for its variable group or deployment environment
 - **THEN** apply SHALL stop naming the pipeline and the missing authorization
 
-### Requirement: Protected identity and variable groups
-The setup file SHALL record, per environment, the deployment service principal (application ID and resolved object ID), the Azure DevOps variable group and the deployment environment, defaulting to one shared service principal and variable group for all three environments. Apply SHALL, without reading or writing secret values:
+### Requirement: Protected identity, variable groups and Key Vault
+The setup file SHALL record, per environment, the deployment service principal (application ID and resolved object ID), the Azure DevOps variable group, the deployment environment, the Windows private pool and the WIF Key Vault service connection, defaulting to one shared service principal and variable group for all environments. Apply SHALL, without reading or writing secret values:
 - grant the service principal `Contributor` on each target workspace and `User` on each listed connection;
 - grant the owner of the Fabric pipeline-invocation connection `Contributor` on the TEST and PROD workspaces;
-- confirm each variable group exists and defines the tenant ID, application ID and a secret-flagged client secret variable, and that its application ID variable names the recorded service principal;
-- create a missing deployment environment, and authorize each release pipeline for its own variable group and environment only.
-Creating the service principal, setting its secret and enabling service-principal access in the Fabric tenant SHALL remain manual prerequisites listed in `SETUP.md`. A missing variable group or secret variable SHALL stop apply with instructions to create it.
+- confirm each variable group exists and defines the tenant ID and application ID, and that its application ID variable names the recorded service principal;
+- confirm the Key Vault service connection and secret reference are authorized for the pipeline without reading the secret;
+- create a missing deployment environment, and authorize each release pipeline for its own variable group, Key Vault service connection and environment only.
+The protected deployment job SHALL retrieve the client secret at runtime with `AzureKeyVault@2` on the Windows private pool and SHALL map the task output only to `FABRIC_APP_SECRET`. Secret values SHALL never be written to the setup file or rendered into logs. Creating the service principal, setting its Key Vault secret and enabling service-principal access in the Fabric tenant SHALL remain manual prerequisites listed in `SETUP.md`. A missing variable group, Key Vault service connection or secret reference SHALL stop apply with instructions to create or authorize it.
 
-#### Scenario: Variable group lacks the secret variable
-- **WHEN** the configured variable group has no secret-flagged client secret variable
-- **THEN** apply SHALL stop naming the group and the missing variable and SHALL NOT create or read a secret
+#### Scenario: Key Vault service connection is unavailable
+- **WHEN** the configured Key Vault service connection does not exist or is not authorized for the release pipeline
+- **THEN** apply SHALL stop naming the service connection and the missing authorization, and SHALL NOT attempt to read the secret
 
 #### Scenario: Variable group names a different application
 - **WHEN** the variable group's application ID differs from the service principal in the setup file
@@ -146,7 +147,7 @@ The setup file SHALL list every connection referenced by managed items as a non-
 - **THEN** apply SHALL stop naming the connection and the missing role
 
 ### Requirement: FIN-2101 regressions remain covered
-The skill's offline tests SHALL include one case for each failure recorded during the FIN-2101 adoption: Copy Jobs outside the managed scope, missing connection permission, committed but unregistered pipeline, deployment job without its scripts, Windows-only launcher, missing schema-enabled Lakehouse, unparameterized SQL endpoint, incomplete deployment-library test double, and TEST triggering from DEV.
+The skill's offline tests SHALL include one case for each failure recorded during the FIN-2101 adoption: Copy Jobs outside the managed scope, missing connection permission, committed but unregistered pipeline, deployment job without its scripts, Windows-only launcher, Key Vault retrieval on the wrong agent, no-checkout release extraction from the repository path, missing schema-enabled Lakehouse, unparameterized SQL endpoint, incomplete deployment-library test double, and TEST triggering from DEV.
 
 #### Scenario: A recorded failure is reintroduced
 - **WHEN** a change reintroduces one of the recorded FIN-2101 failure conditions
