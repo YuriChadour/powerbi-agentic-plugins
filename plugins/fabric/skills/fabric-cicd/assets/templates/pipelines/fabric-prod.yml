@@ -1,0 +1,84 @@
+trigger:
+  branches:
+    include: ['{{BRANCH}}']
+  paths:
+    include: [fabric/**, cicd/fabric/**, cicd/shared/**]
+    exclude: [pbi/**, cicd/powerbi/**]
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: SelectVerifiedArtifact
+  jobs:
+  - job: Select
+    steps:
+    - checkout: self
+      persistCredentials: false
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.11'
+    - script: |
+        python cicd/fabric/select_artifact.py --org-url "$(System.CollectionUri)" --project "$(System.TeamProject)" --repository "$(Build.Repository.Name)" --prod-branch {{BRANCH}} --test-branch {{TEST_BRANCH}} --test-pipeline "{{TEST_PIPELINE}}" --hotfix-pipeline "{{HOTFIX_PIPELINE}}" --merge-commit "$(Build.SourceVersion)" --download-to "$(Build.ArtifactStagingDirectory)/selected"
+      displayName: Select the TEST or HOTFIX artifact for this merge
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    - script: pip install -r cicd/fabric/requirements-fabric-cicd.lock && python cicd/fabric/validate.py --output "$(Build.ArtifactStagingDirectory)/managed-manifest.json" && python cicd/fabric/build_release.py --validation "$(Build.ArtifactStagingDirectory)/managed-manifest.json" --out "$(Build.ArtifactStagingDirectory)/fabric-prod-release.zip" --target PROD --expected-revision "$(Build.SourceVersion)"
+      displayName: Package the PROD branch content for the digest comparison
+    - script: python cicd/fabric/compare_release.py --test-artifact "$(artifactZip)" --prod-artifact "$(Build.ArtifactStagingDirectory)/fabric-prod-release.zip" --output "$(Build.ArtifactStagingDirectory)/promotion-comparison.json"
+      displayName: Require the PROD branch content to match the verified artifact
+    - publish: $(Build.ArtifactStagingDirectory)/selected
+      artifact: fabric-promoted-release
+    - publish: $(Build.ArtifactStagingDirectory)/promotion-comparison.json
+      artifact: promotion-comparison
+
+- stage: DeployProd
+  dependsOn: SelectVerifiedArtifact
+  condition: succeeded()
+  jobs:
+  - deployment: Deploy
+    environment: {{ADO_ENVIRONMENT}}
+    variables:
+    - group: '{{VARIABLE_GROUP}}'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: none
+          - download: current
+            artifact: fabric-promoted-release
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.11'
+          - script: |
+              set -euo pipefail
+              dir="$(ls -d "$(Pipeline.Workspace)"/fabric-promoted-release/fabric-*-release | head -n 1)"
+              name="$(basename "$dir")"
+              target="$(echo "$name" | cut -d- -f2 | tr a-z A-Z)"
+              zip="$dir/$name.zip"
+              mkdir -p "$(Pipeline.Workspace)/verifier"
+              unzip -j -o "$zip" cicd/fabric/deploy_artifact.py cicd/fabric/release_contract.py -d "$(Pipeline.Workspace)/verifier"
+              python "$(Pipeline.Workspace)/verifier/deploy_artifact.py" --artifact "$zip" --environment PROD --artifact-target "$target" --extract-to "$dir/extracted"
+              echo "##vso[task.setvariable variable=promotedZip]$zip"
+              echo "##vso[task.setvariable variable=promotedRoot]$dir/extracted"
+              echo "##vso[task.setvariable variable=promotedTarget]$target"
+            displayName: Verify every hash and extract the promoted artifact
+          - script: python -m pip install -r "$(promotedRoot)/cicd/fabric/requirements-fabric-cicd.lock"
+            displayName: Install pinned deployment toolchain
+          - script: python "$(promotedRoot)/cicd/fabric/auth_check.py" --workspace {{WORKSPACE_ID}}
+            displayName: Verify protected PROD service-principal metadata access before write
+            env:
+              FABRIC_TENANT_ID: $(FABRIC_TENANT_ID)
+              FABRIC_APP_ID: $(FABRIC_APP_ID)
+              FABRIC_APP_SECRET: $(FABRIC_APP_SECRET)
+          - script: python "$(promotedRoot)/cicd/fabric/deploy_artifact.py" --artifact "$(promotedZip)" --environment PROD --artifact-target "$(promotedTarget)" --extracted-root "$(promotedRoot)"
+            displayName: Deploy the verified artifact to PROD
+            env:
+              FABRIC_TENANT_ID: $(FABRIC_TENANT_ID)
+              FABRIC_APP_ID: $(FABRIC_APP_ID)
+              FABRIC_APP_SECRET: $(FABRIC_APP_SECRET)
+              ALLOW_FABRIC_PROD_WRITE: true
+          - script: python "$(promotedRoot)/cicd/fabric/record_release.py" --artifact "$(promotedZip)" --target PROD
+            displayName: Record PROD release audit metadata
+            condition: always()

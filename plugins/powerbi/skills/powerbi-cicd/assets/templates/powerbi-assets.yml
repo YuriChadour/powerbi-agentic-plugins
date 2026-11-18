@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "source_root": "REPLACE_POWERBI_SOURCE_FOLDER",
+  "items": [
+    {
+      "id": "SalesModel",
+      "type": "SemanticModel",
+      "path": "REPLACE_SEMANTIC_MODEL.SemanticModel",
+      "dependencies": [],
+      "substitutions": {}
+    },
+    {
+      "id": "SalesReport",
+      "type": "Report",
+      "path": "REPLACE_REPORT.Report",
+      "dependencies": ["SalesModel"],
+      "substitutions": {}
+    },
+    {
+      "id": "SalesPaginatedReport",
+      "type": "PaginatedReport",
+      "path": "REPLACE_REPORT.rdl",
+      "dependencies": ["SalesModel"],
+      "binding": { "kind": "semantic_model", "target": "SalesModel" },
+      "substitutions": {}
+    }
+  ],
+  "semantic_model_bindings": {
+    "SalesModel": {
+      "DEV": ["REPLACE_DEV_MODEL_CONNECTION_ID"],
+      "TEST": ["REPLACE_TEST_MODEL_CONNECTION_ID"],
+      "PROD": ["REPLACE_PROD_MODEL_CONNECTION_ID"]
+    }
+  },
+  "excluded": [
+    { "path": "**/*.pbix", "reason": "Binary PBIX is not an approved source artifact." }
+  ]
+}

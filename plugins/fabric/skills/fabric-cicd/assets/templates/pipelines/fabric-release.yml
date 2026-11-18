@@ -1,0 +1,65 @@
+trigger:
+  branches:
+    include: ['{{BRANCH}}']
+  paths:
+    include: [fabric/**, cicd/fabric/**, cicd/shared/**]
+    exclude: [pbi/**, cicd/powerbi/**]
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: Build{{ENV_TITLE}}Artifact
+  jobs:
+  - job: ValidateAndPackage
+    steps:
+    - template: validation-steps.yml
+    - script: python cicd/fabric/build_release.py --validation "$(Build.ArtifactStagingDirectory)/managed-manifest.json" --out "$(Build.ArtifactStagingDirectory)/fabric-{{env}}-release.zip" --target {{ENV}} --expected-revision "$(Build.SourceVersion)"
+      displayName: Package immutable {{ENV}} artifact
+    - publish: $(Build.ArtifactStagingDirectory)/fabric-{{env}}-release.zip
+      artifact: fabric-{{env}}-release
+
+- stage: Deploy{{ENV_TITLE}}
+  dependsOn: Build{{ENV_TITLE}}Artifact
+  condition: succeeded()
+  jobs:
+  - deployment: Deploy
+    environment: {{ADO_ENVIRONMENT}}
+    variables:
+    - group: '{{VARIABLE_GROUP}}'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: none
+          - download: current
+            artifact: fabric-{{env}}-release
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.11'
+          - script: |
+              set -euo pipefail
+              zip="$(Pipeline.Workspace)/fabric-{{env}}-release/fabric-{{env}}-release.zip"
+              mkdir -p "$(Pipeline.Workspace)/verifier"
+              unzip -j -o "$zip" cicd/fabric/deploy_artifact.py cicd/fabric/release_contract.py -d "$(Pipeline.Workspace)/verifier"
+              python "$(Pipeline.Workspace)/verifier/deploy_artifact.py" --artifact "$zip" --environment {{ENV}} --expected-revision "$(Build.SourceVersion)" --extract-to "$(Pipeline.Workspace)/fabric-{{env}}-release/extracted"
+            displayName: Verify every hash and extract the {{ENV}} artifact
+          - script: python -m pip install -r "$(Pipeline.Workspace)/fabric-{{env}}-release/extracted/cicd/fabric/requirements-fabric-cicd.lock"
+            displayName: Install pinned deployment toolchain
+          - script: python "$(Pipeline.Workspace)/fabric-{{env}}-release/extracted/cicd/fabric/auth_check.py" --workspace {{WORKSPACE_ID}}
+            displayName: Verify protected {{ENV}} service-principal metadata access before write
+            env:
+              FABRIC_TENANT_ID: $(FABRIC_TENANT_ID)
+              FABRIC_APP_ID: $(FABRIC_APP_ID)
+              FABRIC_APP_SECRET: $(FABRIC_APP_SECRET)
+          - script: python "$(Pipeline.Workspace)/fabric-{{env}}-release/extracted/cicd/fabric/deploy_artifact.py" --artifact "$(Pipeline.Workspace)/fabric-{{env}}-release/fabric-{{env}}-release.zip" --environment {{ENV}} --expected-revision "$(Build.SourceVersion)" --extracted-root "$(Pipeline.Workspace)/fabric-{{env}}-release/extracted"
+            displayName: Deploy immutable {{ENV}} artifact
+            env:
+              FABRIC_TENANT_ID: $(FABRIC_TENANT_ID)
+              FABRIC_APP_ID: $(FABRIC_APP_ID)
+              FABRIC_APP_SECRET: $(FABRIC_APP_SECRET)
+              ALLOW_FABRIC_{{ENV}}_WRITE: true
+          - script: python "$(Pipeline.Workspace)/fabric-{{env}}-release/extracted/cicd/fabric/record_release.py" --artifact "$(Pipeline.Workspace)/fabric-{{env}}-release/fabric-{{env}}-release.zip" --target {{ENV}}
+            displayName: Record {{ENV}} release audit metadata
+            condition: always()
