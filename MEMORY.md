@@ -28,6 +28,14 @@ before handoff.
   CI/CD proof-of-concept project. Treat both as read-only references when
   developing reusable plugin skills, scripts, and templates; do not modify
   either project unless the user explicitly requests it.
+- `C:\Development\Servicing Oversight` is the second Fabric CI/CD adopter
+  (read-only reference). Its `TROUBLESHOOTING.md` records the live failures
+  that `fabric-cicd` must prevent; its `cicd/fabric/` holds the live-proven
+  fixes (Copy Jobs, connection bindings, SQL endpoint rule, per-branch triggers).
+- CI/CD skills are script-driven: the user supplies minimal inputs, a plan
+  script writes a reviewable `SETUP.md` and setup file, the user approves, and
+  scripts execute. Missing values are asked for, never guessed; generated
+  files are never hand-edited.
 - Fabric work follows Bronze → Silver → Gold medallion boundaries, with Delta
   Lake tables for Lakehouse storage.
 - Power BI new-report work follows approved business planning, canonical
