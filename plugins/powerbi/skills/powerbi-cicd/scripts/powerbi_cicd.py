@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import UUID
 
-TARGETS = {"UAT", "TEST", "PROD", "REHEARSAL"}
+TARGETS = {"UAT", "TEST", "PROD", "HOTFIX", "REHEARSAL"}
 ITEM_TYPES = {"SemanticModel", "Report", "PaginatedReport"}
 SECRET_WORDS = ("password", "secret", "token", "connectionstring", "client_secret", "access_key", "apikey")
 PLACEHOLDER = re.compile(r"REPLACE_|\{\{|^<")
@@ -116,8 +116,8 @@ def validate_config(config: object) -> list[str]:
             raise ValueError("dev_workspace.workspace_name contains unsupported characters")
         guid(dev["workspace_id"], "dev_workspace.workspace_id")
         targets = config["targets"]
-        if not isinstance(targets, dict) or not {"TEST", "PROD"}.issubset(targets) or set(targets) - TARGETS:
-            raise ValueError("targets must include TEST and PROD and may include only UAT or REHEARSAL")
+        if not isinstance(targets, dict) or not {"TEST", "PROD", "HOTFIX"}.issubset(targets) or set(targets) - TARGETS:
+            raise ValueError("targets must include TEST, PROD, and HOTFIX and may include only UAT or REHEARSAL")
         target_fields = {"workspace_name", "workspace_id", "capacity_name", "target_owner", "environment", "pipeline_name", "approval_policy", "artifact_route", "verification_profile", "git_connected"}
         for target, target_config in targets.items():
             if not isinstance(target_config, dict) or set(target_config) != target_fields:
@@ -139,7 +139,7 @@ def validate_config(config: object) -> list[str]:
             if not isinstance(role, dict) or set(role) != {"target", "object_id", "principal_type", "role"}:
                 raise ValueError(f"roles[{index}] must declare target, object_id, principal_type, and role")
             target = required_string(role["target"], f"roles[{index}].target").upper()
-            if target not in targets:
+            if target not in {"DEV", *targets}:
                 raise ValueError(f"roles[{index}].target is not configured")
             key = (target, guid(role["object_id"], f"roles[{index}].object_id"))
             if key in seen_roles:
@@ -153,8 +153,8 @@ def validate_config(config: object) -> list[str]:
         if not isinstance(pipelines, dict) or set(pipelines) != required_profiles | optional_profiles:
             raise ValueError("pipelines must configure DEV, TEST, PROD, HOTFIX, and every configured optional target")
         protected = config["protected_resources"]
-        if not isinstance(protected, dict) or set(protected) != set(targets):
-            raise ValueError("protected_resources must map every and only configured target")
+        if not isinstance(protected, dict) or set(protected) != {"DEV", *targets}:
+            raise ValueError("protected_resources must map DEV and every and only configured release target")
         expected_branches = {"DEV": repository["dev_branch"], "TEST": "test", "PROD": repository["prod_branch"], "HOTFIX": "hotfix/*"}
         for target in pipelines:
             pipeline = pipelines[target]
@@ -165,7 +165,7 @@ def validate_config(config: object) -> list[str]:
             expected_branch = expected_branches.get(target, repository["prod_branch"])
             if required_string(pipeline["source_branch"], f"pipelines.{target}.source_branch") != expected_branch:
                 raise ValueError(f"pipelines.{target}.source_branch does not match the approved release branch")
-        for target in targets:
+        for target in ("DEV", *targets):
             resource = protected[target]
             if not isinstance(resource, dict) or set(resource) != {"identity_reference", "write_guard"}:
                 raise ValueError(f"protected_resources.{target} must declare identity_reference and write_guard")

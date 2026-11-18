@@ -15,6 +15,7 @@ parameters:
   - { name: devWriteGuard, type: string }
   - { name: testWriteGuard, type: string }
   - { name: prodWriteGuard, type: string }
+  - { name: hotfixWriteGuard, type: string }
   - { name: testDigest, type: string, default: '' }
 
 stages:
@@ -43,7 +44,7 @@ stages:
   - template: templates/deploy-stage.yml
     parameters: { stageName: DeployDev, target: DEV, workspaceId: '${{ parameters.devWorkspaceId }}', writeGuard: '${{ parameters.devWriteGuard }}', artifactName: '${{ parameters.artifactName }}', artifactSource: current, sourceBranch: dev, testDigest: '' }
   - template: templates/deploy-stage.yml
-    parameters: { stageName: ValidateHotfix, target: HOTFIX, workspaceId: '${{ parameters.hotfixWorkspaceId }}', writeGuard: '${{ parameters.testWriteGuard }}', artifactName: '${{ parameters.artifactName }}', artifactSource: current, sourceBranch: hotfix/*, testDigest: '' }
+    parameters: { stageName: ValidateHotfix, target: HOTFIX, workspaceId: '${{ parameters.hotfixWorkspaceId }}', writeGuard: '${{ parameters.hotfixWriteGuard }}', artifactName: '${{ parameters.artifactName }}', artifactSource: current, sourceBranch: hotfix/*, testDigest: '' }
   - template: templates/deploy-stage.yml
     parameters: { stageName: DeployTest, target: TEST, workspaceId: '${{ parameters.testWorkspaceId }}', writeGuard: '${{ parameters.testWriteGuard }}', artifactName: '${{ parameters.artifactName }}', artifactSource: promotion, sourceBranch: test, testDigest: '' }
   - template: templates/deploy-stage.yml
