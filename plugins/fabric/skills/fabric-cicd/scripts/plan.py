@@ -32,6 +32,10 @@ QUESTIONS = {
     "ado": ("What is the Azure DevOps organization URL, project and repository?", "org=https://dev.azure.com/contoso project=Data repository=lakehouse"),
     "sp_object_id": ("What is the object ID of the service principal with application ID {app_id}?", "00000000-0000-0000-0000-000000000000"),
     "connection_name": ("What is the display name of Fabric connection {id}?", "Service_1 - Service"),
+    "private_pool": ("What is the Windows private Azure DevOps agent pool used for Key Vault retrieval and deployment?", "BAM-IaC-CloudEng"),
+    "key_vault_service_connection": ("What is the WIF Azure DevOps service connection for the protected Key Vault?", "BAM-PROD Key Vault (WIF)"),
+    "key_vault_name": ("What is the protected Key Vault name?", "BAM-KV-PBI-Prod"),
+    "key_vault_secret": ("What is the Key Vault secret name containing the service-principal client secret?", "powerbi-eot-secret"),
 }
 
 
@@ -185,6 +189,25 @@ def lookup_variable_group(tools: Tools, ado: dict, group: str) -> dict:
     return {"name": group, "exists": True, "variables": variables}
 
 
+def lookup_private_pool(tools: Tools, ado: dict, name: str | None) -> dict:
+    if not name or not ado.get("organization"):
+        return {"name": name, "exists": None}
+    found = tools.az("pipelines", "pool", "list", "--org", ado["organization"])
+    if found is None:
+        return {"name": name, "exists": None}
+    return {"name": name, "exists": any(pool.get("name") == name for pool in found)}
+
+
+def lookup_key_vault_connection(tools: Tools, ado: dict, name: str | None) -> dict:
+    if not name or not ado.get("organization"):
+        return {"name": name, "id": None, "exists": None}
+    found = tools.az("devops", "service-endpoint", "list", "--org", ado["organization"], "--project", ado["project"])
+    if found is None:
+        return {"name": name, "id": None, "exists": None}
+    match = next((endpoint for endpoint in found if endpoint.get("name") == name), None)
+    return {"name": name, "id": (match or {}).get("id"), "exists": match is not None}
+
+
 def build_setup(args, tools: Tools, ask: Asker) -> dict:
     repo = Path(args.repo).resolve()
     tenant = (tools.az("account", "show") or {}).get("tenantId") or ask("tenant_id", "tenant_id", )
@@ -194,6 +217,10 @@ def build_setup(args, tools: Tools, ask: Asker) -> dict:
         ado = dict(part.split("=", 1) for part in (raw or "").split() if "=" in part) or {"organization": None, "project": None, "repository": None}
     capacities = (tools.fab("capacities") or {}).get("value", [])
     environments = {}
+    shared_pool = args.private_pool or ask("private_pool", "private_pool")
+    shared_kv_connection = args.key_vault_service_connection or ask("key_vault_service_connection", "key_vault_service_connection")
+    shared_kv_name = args.key_vault_name or ask("key_vault_name", "key_vault_name")
+    shared_kv_secret = args.key_vault_secret or ask("key_vault_secret", "key_vault_secret")
     for env in ENVIRONMENTS:
         spec = getattr(args, f"{env.lower()}_workspace")
         workspace = lookup_workspace(tools, spec, capacities)
@@ -204,8 +231,21 @@ def build_setup(args, tools: Tools, ask: Asker) -> dict:
             match = next((c for c in capacities if c.get("displayName") == capacity_name), None)
             workspace["capacity"] = {"id": (match or {}).get("id"), "name": capacity_name}
         group = getattr(args, f"variable_group_{env.lower()}") or args.variable_group
+        pool_name = getattr(args, f"private_pool_{env.lower()}") or shared_pool
+        connection_name = getattr(args, f"key_vault_service_connection_{env.lower()}") or shared_kv_connection
+        vault_name = getattr(args, f"key_vault_name_{env.lower()}") or shared_kv_name
+        secret_name = getattr(args, f"key_vault_secret_{env.lower()}") or shared_kv_secret
+        endpoint = lookup_key_vault_connection(tools, ado, connection_name)
         environments[env] = {
             "workspace": workspace, "variable_group": lookup_variable_group(tools, ado, group) if ado.get("organization") else {"name": group, "exists": None, "variables": None},
+            "private_pool": lookup_private_pool(tools, ado, pool_name),
+            "key_vault": {
+                "service_connection": connection_name,
+                "service_connection_id": endpoint["id"],
+                "service_connection_exists": endpoint["exists"],
+                "name": vault_name,
+                "secret": secret_name,
+            },
             "ado_environment": f"fabric-{env.lower()}", "pipeline_name": f"{ado.get('repository') or 'repo'} Fabric {env}",
             "pipeline_yaml": f"cicd/fabric/fabric-{env.lower()}.yml", "branch": DEFAULT_BRANCHES[env],
         }
@@ -259,6 +299,10 @@ def render_markdown(setup: dict) -> str:
         out.append(f"- Lakehouses: create any missing, schema-enabled, with the developer session")
         out.append(f"- Pipeline: `{cfg['pipeline_name']}` from `{cfg['pipeline_yaml']}`, trigger branch `{cfg['branch']}`")
         out.append(f"- Variable group `{vg['name']}` ({'found' if vg['exists'] else 'missing' if vg['exists'] is False else 'not checked'}); environment `{cfg['ado_environment']}`")
+        pool = cfg["private_pool"]
+        vault = cfg["key_vault"]
+        out.append(f"- Protected job pool `{pool['name']}` ({'found' if pool['exists'] else 'missing' if pool['exists'] is False else 'not checked'})")
+        out.append(f"- WIF Key Vault connection `{vault['service_connection']}`, vault `{vault['name']}`, secret reference `{vault['secret']}`")
         out.append("")
     out += ["## Managed items", ""] + [f"- {m['type']}: `{m['folder']}`" for m in setup["managed_items"]] + [""]
     out += ["## Connections (service principal and developer need `User`)", ""] + [f"- `{c['id']}` {c['display_name']}" for c in setup["connections"]] + [""]
@@ -267,9 +311,9 @@ def render_markdown(setup: dict) -> str:
         out += ["## Supplied by user", ""] + [f"- `{k}` = `{v}`" for k, v in setup["answers"].items()] + [""]
     out += [
         "## Manual prerequisites", "",
-        "- Create the service principal and its client secret; store the secret as a secret variable in the variable group.",
-        "- Enable service-principal access in the Fabric tenant settings.",
-        "- Optional follow-up: a Key Vault-linked variable group.", "",
+        "- Create the service principal and store its client secret in the configured Key Vault; do not place it in the variable group.",
+        "- Create and authorize the WIF Key Vault service connection and confirm the Windows private pool can reach the vault.",
+        "- Enable service-principal access in the Fabric tenant settings.", "",
         "## Hotfix runbook", "",
         "1. Create `hotfix/<Jira-key>` from the PROD branch and cherry-pick the fix from DEV.",
         "2. The hotfix pipeline deploys it to the HOTFIX workspace; verify there.",
@@ -287,8 +331,16 @@ def main(argv=None, tools: Tools | None = None) -> int:
     for env in ENVIRONMENTS:
         parser.add_argument(f"--{env.lower()}-workspace", required=True, help=f"{env} workspace name or ID")
         parser.add_argument(f"--variable-group-{env.lower()}")
+        parser.add_argument(f"--private-pool-{env.lower()}")
+        parser.add_argument(f"--key-vault-service-connection-{env.lower()}")
+        parser.add_argument(f"--key-vault-name-{env.lower()}")
+        parser.add_argument(f"--key-vault-secret-{env.lower()}")
     parser.add_argument("--app-id", required=True)
     parser.add_argument("--variable-group", required=True)
+    parser.add_argument("--private-pool")
+    parser.add_argument("--key-vault-service-connection")
+    parser.add_argument("--key-vault-name")
+    parser.add_argument("--key-vault-secret")
     parser.add_argument("--exclude-guid", action="append", default=[])
     parser.add_argument("--map-guid", action="append", default=[], metavar="guid=reference", help="map an identifier from another workspace, e.g. <guid>='$workspace.$id'")
     parser.add_argument("--no-prompt", action="store_true")

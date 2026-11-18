@@ -39,6 +39,8 @@ def make_setup() -> dict:
         envs[env] = {
             "workspace": {"name": f"WS {env}", "id": f"{i}{i}{i}{i}{i}{i}{i}{i}-1111-4111-8111-111111111111" if env != "HOTFIX" else None, "create": env == "HOTFIX", "capacity": {"id": "cap", "name": "Cap"}},
             "variable_group": {"name": "powerbi eot", "exists": True, "variables": None},
+            "private_pool": {"name": "BAM-IaC-CloudEng", "exists": True},
+            "key_vault": {"service_connection": "BAM-PROD Key Vault (WIF)", "service_connection_id": "endpoint-1", "service_connection_exists": True, "name": "BAM-KV-PBI-Prod", "secret": "powerbi-eot-secret"},
             "ado_environment": f"fabric-{env.lower()}", "pipeline_name": f"Repo Fabric {env}",
             "pipeline_yaml": f"cicd/fabric/fabric-{env.lower()}.yml", "branch": "hotfix/*" if env == "HOTFIX" else env,
         }
@@ -67,7 +69,10 @@ class FakeOps:
             self.roles[wid] = []
         self.conn_roles[CONNECTION] = [{"principal": {"id": OWNER, "type": "User"}, "role": "Owner"}]
         self.deny_connection_grant = False
-        self.groups = [{"id": 23, "variables": {"FABRIC_TENANT_ID": {"value": "t"}, "FABRIC_APP_ID": {"value": APP}, "FABRIC_APP_SECRET": {"isSecret": True, "value": None}}}]
+        self.groups = [{"id": 23, "variables": {"FABRIC_TENANT_ID": {"value": "t"}, "FABRIC_APP_ID": {"value": APP}}}]
+        self.pools = [{"id": 7, "name": "BAM-IaC-CloudEng"}]
+        self.queues = [{"id": 70, "name": "BAM-IaC-CloudEng"}]
+        self.service_connections = [{"id": "endpoint-1", "name": "BAM-PROD Key Vault (WIF)", "type": "azurerm"}]
         self.environments, self.pipelines, self.authorized = [], {f"Repo Fabric {e}": {"id": 100 + i, "yaml": f"cicd/fabric/fabric-{e.lower()}.yml"} for i, e in enumerate(ENVS)}, set()
 
     def fab_get(self, path):
@@ -114,8 +119,14 @@ class FakeOps:
             pid = int(args[args.index("--id") + 1])
             yaml_path = next(p["yaml"] for p in self.pipelines.values() if p["id"] == pid)
             return {"process": {"yamlFilename": yaml_path}}
+        if args[:3] == ("pipelines", "pool", "list"):
+            return self.pools
+        if args[:3] == ("devops", "service-endpoint", "list"):
+            return self.service_connections
 
     def ado_rest(self, method, url, body=None):
+        if "/queues?" in url:
+            return {"value": self.queues}
         if "/environments" in url:
             if method == "post":
                 self.environments.append({"name": body["name"], "id": 40 + len(self.environments)})
@@ -213,17 +224,18 @@ class StepTests(unittest.TestCase):
     def test_azure_devops_creates_environments_authorizes_pipelines_and_is_idempotent(self):
         self.azure()
         self.assertEqual(4, len(self.ops.environments))
-        self.assertEqual(8, len(self.ops.authorized))
+        self.assertEqual(16, len(self.ops.authorized))
         before = len(self.ops.environments)
         self.azure()
         self.assertEqual(before, len(self.ops.environments))
-        self.assertEqual(8, len(self.ops.authorized))
+        self.assertEqual(16, len(self.ops.authorized))
 
-    def test_missing_group_secret_wrong_app_and_unregistered_pipeline_stop(self):
+    def test_missing_group_pool_service_connection_wrong_app_and_unregistered_pipeline_stop(self):
         cases = {
             "does not exist": lambda o: setattr(o, "groups", []),
-            "FABRIC_APP_SECRET": lambda o: o.groups[0]["variables"].pop("FABRIC_APP_SECRET"),
-            "must be a secret": lambda o: o.groups[0]["variables"]["FABRIC_APP_SECRET"].update(isSecret=False),
+            "private pool": lambda o: setattr(o, "pools", []),
+            "Key Vault service connection": lambda o: setattr(o, "service_connections", []),
+            "FABRIC_APP_ID": lambda o: o.groups[0]["variables"].pop("FABRIC_APP_ID"),
             "does not match service principal": lambda o: o.groups[0]["variables"]["FABRIC_APP_ID"].update(value="other"),
             "is not registered": lambda o: o.pipelines.pop("Repo Fabric PROD"),
         }

@@ -26,7 +26,16 @@ select = load(SKILL / "assets" / "cicd" / "fabric" / "select_artifact.py", "sele
 SETUP = {
     "branches": {"DEV": "DEV", "TEST": "TEST", "PROD": "PROD", "HOTFIX": "hotfix/*"},
     "environments": {
-        env: {"workspace_id": f"{i}{i}{i}{i}{i}{i}{i}{i}-1111-4111-8111-111111111111", "variable_group": "grp", "ado_environment": f"fabric-{env.lower()}", "pipeline_name": f"Fabric {env}"}
+        env: {
+            "workspace_id": f"{i}{i}{i}{i}{i}{i}{i}{i}-1111-4111-8111-111111111111",
+            "variable_group": "grp",
+            "ado_environment": f"fabric-{env.lower()}",
+            "pipeline_name": f"Fabric {env}",
+            "private_pool": "BAM-IaC-CloudEng",
+            "key_vault_service_connection": "BAM-PROD Key Vault (WIF)",
+            "key_vault_name": "BAM-KV-PBI-Prod",
+            "key_vault_secret": "powerbi-eot-secret",
+        }
         for i, env in enumerate(("DEV", "TEST", "PROD", "HOTFIX"), 1)
     },
 }
@@ -45,16 +54,24 @@ class RenderedTopologyTests(unittest.TestCase):
     def test_rendering_is_deterministic(self) -> None:
         self.assertEqual(self.files, render.render_all(SETUP))
 
-    def test_deploy_jobs_use_no_checkout_pinned_install_guard_and_audit(self) -> None:
+    def test_deploy_jobs_use_private_pool_key_vault_verified_artifact_and_audit(self) -> None:
         for name in ("fabric-dev.yml", "fabric-test.yml", "fabric-hotfix.yml", "fabric-prod.yml"):
             text = self.files[name]
+            self.assertIn("vmImage: ubuntu-latest", text)
+            self.assertIn("name: 'BAM-IaC-CloudEng'", text)
+            self.assertIn("task: AzureKeyVault@2", text)
+            self.assertIn("azureSubscription: 'BAM-PROD Key Vault (WIF)'", text)
+            self.assertIn("KeyVaultName: 'BAM-KV-PBI-Prod'", text)
+            self.assertIn("SecretsFilter: 'powerbi-eot-secret'", text)
             self.assertIn("checkout: none", text)
             self.assertIn("requirements-fabric-cicd.lock", text)
             self.assertIn("auth_check.py", text)
             self.assertRegex(text, r"ALLOW_FABRIC_[A-Z]+_WRITE: true")
             self.assertIn("condition: always()", text)
-            self.assertNotIn("powershell", text.lower())
-            self.assertNotIn("windows", text.lower())
+            self.assertIn("PowerShell@2", text)
+            self.assertIn("pwsh: true", text)
+            self.assertNotIn("unzip -j", text)
+            self.assertNotIn("/verifier/deploy_artifact.py", text)
 
     def test_hotfix_pipeline_cannot_target_test_or_prod(self) -> None:
         text = self.files["fabric-hotfix.yml"]

@@ -1,7 +1,8 @@
-"""Verify, safely extract and deploy a downloaded release artifact.
+"""Re-verify and deploy a release artifact from its protected extracted root.
 
-Standard library only: the pipeline runs this file before any other packaged
-code, so nothing from the artifact is imported until every hash has matched.
+Standard library only. The release YAML verifies archive paths and hashes with
+inline PowerShell before extraction; this module repeats the trust checks from
+within the extracted package before any target write.
 """
 from __future__ import annotations
 

@@ -66,6 +66,8 @@ class PlanTests(unittest.TestCase):
 
     def run_plan(self, *extra: str, tools=None) -> int:
         argv = ["--repo", str(self.repo), "--no-prompt", "--app-id", "app", "--variable-group", "grp",
+                "--private-pool", "BAM-IaC-CloudEng", "--key-vault-service-connection", "BAM-PROD Key Vault (WIF)",
+                "--key-vault-name", "BAM-KV-PBI-Prod", "--key-vault-secret", "powerbi-eot-secret",
                 "--dev-workspace", "WS DEV", "--test-workspace", "WS TEST", "--prod-workspace", "New PROD", "--hotfix-workspace", "New HOTFIX", *extra]
         return plan.main(argv, tools or FakeTools())
 
