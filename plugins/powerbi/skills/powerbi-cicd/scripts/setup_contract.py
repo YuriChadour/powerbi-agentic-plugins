@@ -176,6 +176,10 @@ def validate_setup(setup: object) -> list[str]:
                 _guid(role["object_id"], f"environments.{target}.direct_roles[{index}].object_id")
                 if role["principal_type"] not in {"User", "Group", "ServicePrincipal", "ServicePrincipalProfile"} or role["role"] not in {"Admin", "Member", "Contributor", "Viewer"}:
                     raise ValueError(f"environments.{target}.direct_roles[{index}] has an unsupported role")
+        hotfix_workspace = environments["HOTFIX"]["workspace"]["id"]
+        for content_target in ("TEST", "PROD"):
+            if hotfix_workspace and hotfix_workspace == environments[content_target]["workspace"]["id"]:
+                raise ValueError(f"environments.HOTFIX.workspace cannot target the {content_target} workspace")
         items = setup["managed_items"]
         if not isinstance(items, list) or not items:
             raise ValueError("managed_items must be a nonempty list")

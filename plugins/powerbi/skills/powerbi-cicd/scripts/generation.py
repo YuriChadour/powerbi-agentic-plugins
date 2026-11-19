@@ -111,16 +111,59 @@ def bindings_document(setup: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def pipeline_text(setup: dict[str, Any]) -> str:
+def _deployment_stages(setup: dict[str, Any]) -> str:
     ci_folder = setup["repository"]["ci_folder"].rstrip("/")
-    template = (TEMPLATES / "deployment" / "azure-pipelines.yml").read_text(encoding="utf-8")
-    template = template.replace("cicd/powerbi/bootstrap-config.json", f"{ci_folder}/bootstrap-config.json")
-    template = template.replace("cicd/powerbi/powerbi-assets.yml", f"{ci_folder}/powerbi-assets.yml")
-    template = template.replace("deployment/scripts/", f"{ci_folder}/deployment/scripts/")
-    template = template.replace("templates/deploy-stage.yml", f"{ci_folder}/deployment/templates/deploy-stage.yml")
+    blocks = []
+    for target in RELEASE_TARGETS + ("DEV",):
+        if target not in setup["environments"]:
+            continue
+        environment = setup["environments"][target]
+        artifact_source = "current" if target in {"DEV", "HOTFIX"} else "promotion"
+        stage_name = f"Deploy{target.title()}"
+        test_digest = "${{ parameters.testDigest }}" if target == "PROD" else "''"
+        blocks.append(
+            "  - template: " + json.dumps(f"{ci_folder}/deployment/templates/deploy-stage.yml") + "\n"
+            "    parameters:\n"
+            f"      stageName: {stage_name}\n"
+            f"      target: {target}\n"
+            f"      workspaceId: {json.dumps(environment['workspace']['id'])}\n"
+            f"      environmentName: {json.dumps(environment['ado_environment'])}\n"
+            f"      variableGroup: {json.dumps(environment['variable_group'])}\n"
+            f"      privatePool: {json.dumps(environment['private_pool'])}\n"
+            f"      keyVaultServiceConnection: {json.dumps(environment['key_vault']['service_connection'])}\n"
+            f"      keyVaultName: {json.dumps(environment['key_vault']['name'])}\n"
+            f"      keyVaultSecret: {json.dumps(environment['key_vault']['secret_reference'])}\n"
+            f"      identityReference: {json.dumps(environment['runtime_identity']['reference'])}\n"
+            "      artifactName: ${{ parameters.artifactName }}\n"
+            f"      writeGuard: ALLOW_POWERBI_{target}_WRITE\n"
+            f"      artifactSource: {artifact_source}\n"
+            f"      sourceBranch: {json.dumps(environment['branch'])}\n"
+            f"      promotionBranch: {json.dumps(setup['repository']['branches']['DEV'])}\n"
+            f"      testDigest: {test_digest}\n"
+            "      liveInventoryPath: ${{ parameters.liveInventoryPath }}\n"
+        )
+    return "\n".join(blocks)
+
+
+def pipeline_text(setup: dict[str, Any]) -> str:
+    repository = setup["repository"]
+    ci_folder = repository["ci_folder"].rstrip("/")
     configured = set(setup["environments"])
     if "HOTFIX" not in configured:
         raise ValueError("HOTFIX environment is required")
+    branches = [repository["branches"][target] for target in ("DEV", "TEST", "PROD", "HOTFIX") if target in configured]
+    template = (TEMPLATES / "deployment" / "azure-pipelines.yml").read_text(encoding="utf-8")
+    replacements = {
+        "{{POWERBI_BRANCHES}}": ", ".join(json.dumps(branch) for branch in branches),
+        "{{POWERBI_PR_BRANCHES}}": ", ".join(json.dumps(branch) for branch in (repository["branches"]["TEST"], repository["branches"]["PROD"])),
+        "{{POWERBI_SOURCE_ROOT}}": repository["source_root"],
+        "{{POWERBI_CI_FOLDER}}": ci_folder,
+        "{{POWERBI_DEV_BRANCH}}": repository["branches"]["DEV"],
+        "{{POWERBI_DEPLOY_STAGES}}": _deployment_stages(setup).rstrip(),
+    }
+    for placeholder, value in replacements.items():
+        template = template.replace(placeholder, value)
+    template = template.replace("deployment/scripts/", f"{ci_folder}/deployment/scripts/")
     return template.replace("\r\n", "\n")
 
 

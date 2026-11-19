@@ -102,8 +102,19 @@ class SetupContractTests(unittest.TestCase):
         setup["semantic_model_bindings"]["SalesModel"]["HOTFIX"] = setup["semantic_model_bindings"]["SalesModel"]["PROD"]
         self.assertTrue(any("omit HOTFIX" in error for error in validate_setup(setup)))
         setup = valid_setup()
+        setup["environments"]["HOTFIX"]["workspace"]["id"] = setup["environments"]["PROD"]["workspace"]["id"]
+        self.assertTrue(any("cannot target the PROD workspace" in error for error in validate_setup(setup)))
+        setup = valid_setup()
         setup["environments"]["TEST"]["branch"] = "main"
         self.assertTrue(any("differs" in error for error in validate_setup(setup)))
+
+    def test_unresolved_distinct_creation_targets_are_not_workspace_aliases(self) -> None:
+        setup = valid_setup()
+        for target in ("TEST", "PROD", "HOTFIX"):
+            setup["environments"][target]["workspace"] = {
+                "name": f"Create Finance {target}", "id": None, "create": True,
+            }
+        self.assertEqual([], validate_setup(setup))
 
     def test_rejects_unsupported_fields_and_incomplete_setup(self) -> None:
         setup = valid_setup()

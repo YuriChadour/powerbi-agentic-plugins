@@ -13,6 +13,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from discovery_adapters import ReadOnlyDiscovery  # noqa: E402
+from legacy_migration import import_legacy  # noqa: E402
 from setup_contract import dump_setup, load_setup, validate_setup  # noqa: E402
 from source_discovery import discover_source  # noqa: E402
 
@@ -363,6 +364,8 @@ def main(argv=None, discovery: ReadOnlyDiscovery | Any = None) -> int:
     parser.add_argument("--key-vault-name")
     parser.add_argument("--key-vault-secret-reference")
     parser.add_argument("--target-owner")
+    parser.add_argument("--legacy-config", type=Path)
+    parser.add_argument("--legacy-manifest", type=Path)
     parser.add_argument("--no-prompt", action="store_true")
     parser.add_argument("--answer", action="append", default=[], metavar="key=value")
     args = parser.parse_args(argv)
@@ -380,11 +383,14 @@ def main(argv=None, discovery: ReadOnlyDiscovery | Any = None) -> int:
         answers[key] = value
     ask = Asker(answers, prompt=not args.no_prompt and sys.stdin.isatty())
     setup = plan_setup(args, discovery or ReadOnlyDiscovery(), ask)
-    serialized = dump_setup(setup)
+    legacy_config = (repo / args.legacy_config).resolve() if args.legacy_config and not args.legacy_config.is_absolute() else args.legacy_config
+    legacy_manifest = (repo / args.legacy_manifest).resolve() if args.legacy_manifest and not args.legacy_manifest.is_absolute() else args.legacy_manifest
+    setup = import_legacy(setup, legacy_config, legacy_manifest)
     schema_errors = validate_setup(setup)
     if setup["open_questions"] or setup["gaps"] or schema_errors:
         if schema_errors and not setup["gaps"]:
             setup["gaps"].extend({"path": "setup", "reason": error} for error in schema_errors)
+    serialized = dump_setup(setup)
     out.mkdir(parents=True, exist_ok=True)
     (out / "setup.yml").write_text(serialized, encoding="utf-8", newline="\n")
     (out / "SETUP.md").write_text(render_markdown(setup), encoding="utf-8", newline="\n")

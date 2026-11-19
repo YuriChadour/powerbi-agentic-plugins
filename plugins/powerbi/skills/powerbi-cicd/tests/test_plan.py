@@ -10,9 +10,12 @@ from pathlib import Path
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+TESTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(TESTS))
+sys.path.insert(0, str(TESTS.parent / "scripts"))
 import plan
 from discovery_adapters import Lookup
+from generation import compatibility_config, compatibility_manifest
 
 
 class FakeDiscovery:
@@ -91,13 +94,16 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(3, len(setup["open_questions"]))
         self.assertNotIn("c", discovery.calls)
 
-    def test_fully_answered_plan_is_ready_without_external_writes(self) -> None:
-        discovery = FakeDiscovery()
-        args = self.args + [
+    def answered_args(self) -> list[str]:
+        return self.args + [
             "--answer", "binding.SalesModel.DEV=30000000-1111-4111-8111-111111111111",
             "--answer", "binding.SalesModel.TEST=30000000-2222-4222-8222-222222222222",
             "--answer", "binding.SalesModel.PROD=30000000-3333-4333-8333-333333333333",
         ]
+
+    def test_fully_answered_plan_is_ready_without_external_writes(self) -> None:
+        discovery = FakeDiscovery()
+        args = self.answered_args()
         with redirect_stdout(io.StringIO()):
             status = plan.main(args, discovery)
         self.assertEqual(0, status)
@@ -118,6 +124,67 @@ class PlanTests(unittest.TestCase):
         setup["answers"]["client_secret_candidate"] = "NEVER-RENDER-THIS-VALUE"
         redacted_review = plan.render_setup_markdown(setup)
         self.assertNotIn("NEVER-RENDER-THIS-VALUE", redacted_review)
+
+    def test_legacy_migration_preserves_exact_rules_and_release_files(self) -> None:
+        discovery = FakeDiscovery()
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(0, plan.main(self.answered_args(), discovery))
+        setup_path = self.root / "cicd/powerbi/setup.yml"
+        setup = yaml.safe_load(setup_path.read_text(encoding="utf-8"))
+        rule = {
+            "type": "find_replace", "path": "Sales.SemanticModel/*.tmdl",
+            "find": "  exact\nvalue  ",
+            "values": {"DEV": "001", "TEST": "true", "PROD": "\"quoted\" # value"},
+        }
+        setup["managed_items"][0]["substitutions"]["rules"] = [rule, {**rule, "find": "second", "values": {"DEV": "00.1", "TEST": "false", "PROD": "@$%"}}]
+        legacy_config = self.root / "legacy-bootstrap.json"
+        legacy_manifest = self.root / "legacy-assets.yml"
+        legacy_config.write_text(json.dumps(compatibility_config(setup), indent=2) + "\n", encoding="utf-8")
+        legacy_manifest.write_text(json.dumps(compatibility_manifest(setup), indent=2) + "\n", encoding="utf-8")
+        generated_config = self.root / "cicd/powerbi/bootstrap-config.json"
+        generated_manifest = self.root / "cicd/powerbi/powerbi-assets.yml"
+        generated_config.write_text("retained generated config\n", encoding="utf-8")
+        generated_manifest.write_text("retained generated manifest\n", encoding="utf-8")
+        originals = {path: path.read_bytes() for path in (legacy_config, legacy_manifest, generated_config, generated_manifest)}
+
+        args = self.answered_args() + ["--legacy-config", str(legacy_config), "--legacy-manifest", str(legacy_manifest)]
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(0, plan.main(args, discovery))
+        migrated = yaml.safe_load(setup_path.read_text(encoding="utf-8"))
+        self.assertEqual([rule, {**rule, "find": "second", "values": {"DEV": "00.1", "TEST": "false", "PROD": "@$%"}}], migrated["managed_items"][0]["substitutions"]["rules"])
+        self.assertEqual([], migrated["gaps"])
+        self.assertEqual([], migrated["open_questions"])
+        for path, content in originals.items():
+            self.assertEqual(content, path.read_bytes())
+
+    def test_legacy_migration_blocks_conflicts_and_secrets_without_leaking(self) -> None:
+        discovery = FakeDiscovery()
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(0, plan.main(self.answered_args(), discovery))
+        setup = yaml.safe_load((self.root / "cicd/powerbi/setup.yml").read_text(encoding="utf-8"))
+        config = compatibility_config(setup)
+        manifest = compatibility_manifest(setup)
+        config["targets"]["PROD"]["workspace_id"] = "77777777-7777-4777-8777-777777777777"
+        config["client_secret"] = "DO-NOT-COPY-THIS-SECRET"
+        legacy_config = self.root / "legacy-bootstrap.json"
+        legacy_manifest = self.root / "legacy-assets.yml"
+        legacy_config.write_text(json.dumps(config), encoding="utf-8")
+        legacy_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+
+        args = self.answered_args() + ["--legacy-config", str(legacy_config), "--legacy-manifest", str(legacy_manifest)]
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(2, plan.main(args, discovery))
+        migrated = yaml.safe_load((self.root / "cicd/powerbi/setup.yml").read_text(encoding="utf-8"))
+        self.assertTrue(any("secret-bearing" in gap["reason"] for gap in migrated["gaps"]))
+        self.assertNotIn("DO-NOT-COPY-THIS-SECRET", (self.root / "cicd/powerbi/setup.yml").read_text(encoding="utf-8"))
+        self.assertNotIn("DO-NOT-COPY-THIS-SECRET", (self.root / "cicd/powerbi/SETUP.md").read_text(encoding="utf-8"))
+
+        config.pop("client_secret")
+        legacy_config.write_text(json.dumps(config), encoding="utf-8")
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(2, plan.main(args, discovery))
+        conflict = yaml.safe_load((self.root / "cicd/powerbi/setup.yml").read_text(encoding="utf-8"))
+        self.assertTrue(any("conflicts" in gap["reason"] for gap in conflict["gaps"]))
 
 
 if __name__ == "__main__":

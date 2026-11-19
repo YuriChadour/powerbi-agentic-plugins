@@ -9,9 +9,13 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+TESTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(TESTS))
+sys.path.insert(0, str(TESTS.parent / "scripts"))
 import powerbi_cicd as cicd
 import deploy_adapter as adapter
+from generation import compatibility_config, compatibility_manifest
+from test_setup_contract import valid_setup
 
 
 class PowerBiCicdTests(unittest.TestCase):
@@ -20,12 +24,13 @@ class PowerBiCicdTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.source = self.root / "pbi"
         (self.source / "Sales.SemanticModel").mkdir(parents=True)
-        (self.source / "Sales.SemanticModel" / "model.tmdl").write_text("model Sales", encoding="utf-8")
+        (self.source / "Sales.SemanticModel" / "model.tmdl").write_text("model Sales\nvalue TRUE", encoding="utf-8")
         (self.source / "Sales.Report").mkdir()
         (self.source / "Sales.Report" / "report.json").write_text("{}", encoding="utf-8")
         (self.source / "Sales.rdl").write_text("<Report />", encoding="utf-8")
-        self.config = {"version": 1, "repository": {"powerbi_source_folder": "pbi", "ci_folder": "cicd", "dev_branch": "dev", "prod_branch": "main"}, "azure_devops": {"organization": "contoso", "project": "Finance", "repository": "analytics"}, "dev_workspace": {"workspace_name": "Finance Dev", "workspace_id": "11111111-1111-4111-8111-111111111111", "git_connected": True}, "targets": {"TEST": self.target("Test", "22222222-2222-4222-8222-222222222222"), "PROD": self.target("Prod", "33333333-3333-4333-8333-333333333333"), "HOTFIX": self.target("Hotfix", "44444444-4444-4444-8444-444444444444")}, "roles": [], "pipelines": {"DEV": {"name": "Power BI Dev", "yaml_path": "cicd/azure-pipelines.yml", "source_branch": "dev"}, "TEST": {"name": "Power BI Test", "yaml_path": "cicd/azure-pipelines.yml", "source_branch": "test"}, "PROD": {"name": "Power BI Prod", "yaml_path": "cicd/azure-pipelines.yml", "source_branch": "main"}, "HOTFIX": {"name": "Power BI Hotfix", "yaml_path": "cicd/azure-pipelines.yml", "source_branch": "hotfix/*"}}, "protected_resources": {"DEV": {"identity_reference": "kv:powerbi-dev", "write_guard": "ALLOW_POWERBI_DEV_WRITE"}, "TEST": {"identity_reference": "kv:powerbi-test", "write_guard": "ALLOW_POWERBI_TEST_WRITE"}, "PROD": {"identity_reference": "kv:powerbi-prod", "write_guard": "ALLOW_POWERBI_PROD_WRITE"}, "HOTFIX": {"identity_reference": "kv:powerbi-hotfix", "write_guard": "ALLOW_POWERBI_HOTFIX_WRITE"}}}
-        self.manifest = {"version": 1, "source_root": "pbi", "items": [{"id": "SalesModel", "type": "SemanticModel", "path": "Sales.SemanticModel", "dependencies": [], "substitutions": {}}, {"id": "SalesReport", "type": "Report", "path": "Sales.Report", "dependencies": ["SalesModel"], "substitutions": {}}, {"id": "SalesRdl", "type": "PaginatedReport", "path": "Sales.rdl", "dependencies": ["SalesModel"], "binding": {"kind": "semantic_model", "target": "SalesModel"}, "substitutions": {}}], "semantic_model_bindings": {"SalesModel": {"DEV": ["11111111-1111-4111-8111-111111111111"], "TEST": ["22222222-2222-4222-8222-222222222222"], "PROD": ["33333333-3333-4333-8333-333333333333"]}}, "excluded": []}
+        setup = valid_setup()
+        self.config = compatibility_config(setup)
+        self.manifest = compatibility_manifest(setup)
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -44,6 +49,8 @@ class PowerBiCicdTests(unittest.TestCase):
         self.config["targets"]["TEST"]["arbitrary"] = "no"
         self.assertTrue(any("unsupported" in error for error in cicd.validate_config(self.config)))
         self.config["targets"]["TEST"].pop("arbitrary")
+        self.config["targets"]["HOTFIX"]["workspace_id"] = self.config["targets"]["TEST"]["workspace_id"]
+        self.assertTrue(any("cannot target the TEST workspace" in error for error in cicd.validate_config(self.config)))
         self.config["azure_devops"]["access_token"] = "unsafe"
         errors = cicd.validate_config(self.config)
         self.assertTrue(any("secret-bearing" in error for error in errors))
@@ -53,7 +60,7 @@ class PowerBiCicdTests(unittest.TestCase):
         self.assertTrue(any("include TEST, PROD, and HOTFIX" in error for error in cicd.validate_config(self.config)))
         self.config["targets"]["PROD"] = self.target("Prod", "33333333-3333-4333-8333-333333333333")
         self.config["targets"]["UAT"] = self.target("Uat", "44444444-4444-4444-8444-444444444444")
-        self.config["pipelines"]["UAT"] = {"name": "Power BI Uat", "yaml_path": "cicd/azure-pipelines.yml", "source_branch": "main"}
+        self.config["pipelines"]["UAT"] = {"name": "Power BI Uat", "yaml_path": "cicd/azure-pipelines.yml", "source_branch": "uat"}
         self.config["protected_resources"]["UAT"] = {"identity_reference": "kv:powerbi-uat", "write_guard": "ALLOW_POWERBI_UAT_WRITE"}
         self.assertEqual([], cicd.validate_config(self.config))
         self.config["targets"]["UAT"].pop("approval_policy")
@@ -142,7 +149,7 @@ class PowerBiCicdTests(unittest.TestCase):
         record = cicd.write_evidence(evidence, self.config, self.manifest, "TEST", "abc123", "digest")
         self.assertEqual("recorded", record["status"])
         self.assertNotIn("never-log", evidence.read_text(encoding="utf-8"))
-        self.assertIn("22222222-2222-4222-8222-222222222222", evidence.read_text(encoding="utf-8"))
+        self.assertIn("30000000-0000-4000-8000-000000000002", evidence.read_text(encoding="utf-8"))
 
     def test_supported_matrix_is_fabric_cicd_only_and_fail_closed(self) -> None:
         matrix = (Path(__file__).resolve().parents[1] / "assets" / "supported-item-matrix.md").read_text(encoding="utf-8")
@@ -152,6 +159,16 @@ class PowerBiCicdTests(unittest.TestCase):
         invalid = json.loads(json.dumps(self.manifest))
         invalid["items"][0]["type"] = "Dashboard"
         self.assertTrue(cicd.validate_manifest(invalid, "pbi"))
+
+    def test_dev_target_uses_explicit_dev_workspace_without_release_target_alias(self) -> None:
+        artifact = self.root / "release.zip"
+        package = cicd.package(self.root, self.config, self.manifest, "TEST", artifact, "abc123")
+        ready = adapter.preflight(self.root, self.config, self.manifest, "DEV", artifact, package["source_digest"])
+        self.assertEqual("ready", ready["status"])
+        native, override = adapter.native_config(self.config, self.manifest, "DEV", self.root / "pbi")
+        self.assertEqual(self.config["dev_workspace"]["workspace_id"], native["core"]["workspace_id"]["DEV"])
+        self.assertEqual(self.config["dev_workspace"]["workspace_id"], override["core"]["workspace_id"]["DEV"])
+        self.assertEqual("verified", cicd.check_artifact(artifact, "DEV", "abc123", package["source_digest"], None)["status"])
 
     def test_adapter_preflight_blocks_before_write_and_verifies_read_only_inventory(self) -> None:
         artifact = self.root / "release.zip"
@@ -163,7 +180,7 @@ class PowerBiCicdTests(unittest.TestCase):
         blocked = adapter.preflight(self.root, self.config, self.manifest, "TEST")
         self.assertEqual("blocked", blocked["status"])
         self.assertEqual([["SemanticModel"], ["Report"], ["PaginatedReport"]], adapter.deployment_groups(self.manifest))
-        inventory = {"target": "TEST", "items": [{"id": "SalesModel", "type": "SemanticModel", "ready": True, "connections": [{"id": "22222222-2222-4222-8222-222222222222", "direct_identity_access": True, "personal_cloud": False}]}, {"id": "SalesReport", "type": "Report"}, {"id": "SalesRdl", "type": "PaginatedReport", "binding": {"kind": "semantic_model", "target": "SalesModel"}}, {"id": "Unmanaged", "type": "Report"}]}
+        inventory = {"target": "TEST", "items": [{"id": "SalesModel", "type": "SemanticModel", "ready": True, "connections": [{"id": "30000000-0000-4000-8000-000000000002", "direct_identity_access": True, "personal_cloud": False}], "substitutions": self.manifest["items"][0]["substitutions"]}, {"id": "SalesReport", "type": "Report"}, {"id": "SalesRdl", "type": "PaginatedReport", "binding": {"kind": "semantic_model", "target": "SalesModel"}}, {"id": "Unmanaged", "type": "Report", "substitutions": {"rules": []}}]}
         self.assertEqual("verified", adapter.verify(self.manifest, "TEST", inventory)["status"])
         self.assertEqual("none", adapter.drift(self.manifest, "TEST", inventory)["unmanaged_action"])
         inventory["items"][0]["connections"][0]["direct_identity_access"] = False
@@ -193,23 +210,74 @@ class PowerBiCicdTests(unittest.TestCase):
         self.assertFalse(blocked["workspace_write"])
 
     def test_substitutions_are_target_complete_and_only_apply_to_staged_payload(self) -> None:
-        (self.source / "Sales.SemanticModel" / "model.tmdl").write_text("server=DEV_PLACEHOLDER", encoding="utf-8")
-        self.manifest["items"][0]["substitutions"] = {"rules": [{"type": "find_replace", "path": "Sales.SemanticModel/model.tmdl", "find": "DEV_PLACEHOLDER", "values": {"DEV": "dev-id", "TEST": "test-id", "PROD": "prod-id"}}]}
+        source = self.source / "Sales.SemanticModel" / "model.tmdl"
+        source.write_text("server=ALPHA SECOND", encoding="utf-8")
+        source_bytes = source.read_bytes()
+        rules = [
+            {"type": "find_replace", "path": "Sales.SemanticModel/model.tmdl", "find": "ALPHA", "values": {"DEV": "dev-a", "TEST": "BETA", "PROD": "prod-a"}},
+            {"type": "find_replace", "path": "Sales.SemanticModel/model.tmdl", "find": "SECOND", "values": {"DEV": "dev-b", "TEST": "FINAL", "PROD": "prod-b"}},
+        ]
+        self.manifest["items"][0]["substitutions"] = {"rules": rules}
         artifact = self.root / "release.zip"
-        cicd.package(self.root, self.config, self.manifest, "TEST", artifact, "abc123")
+        package = cicd.package(self.root, self.config, self.manifest, "TEST", artifact, "abc123")
+        archive_bytes = artifact.read_bytes()
         coverage = adapter.validate_substitution_coverage(artifact, self.manifest, "TEST")
         self.assertEqual("ready", coverage["status"])
-        self.assertEqual("test-id", coverage["resolved"][0]["value"])
-        self.manifest["items"][0]["substitutions"]["rules"][0]["values"].pop("TEST")
-        self.assertEqual("blocked", adapter.validate_substitution_coverage(artifact, self.manifest, "TEST")["status"])
+        with tempfile.TemporaryDirectory() as staged:
+            release_root = Path(staged)
+            with zipfile.ZipFile(artifact) as archive:
+                archive.extractall(release_root)
+            resolved = adapter.apply_substitutions(release_root, self.manifest, "TEST")
+            staged_source = release_root / "payload" / "pbi" / "Sales.SemanticModel" / "model.tmdl"
+            self.assertEqual("server=BETA FINAL", staged_source.read_text(encoding="utf-8"))
+        self.assertEqual([rule["values"]["TEST"] for rule in rules], [item["value"] for item in resolved])
+        self.assertEqual(source_bytes, source.read_bytes())
+        self.assertEqual(archive_bytes, artifact.read_bytes())
+        self.assertEqual(package["source_digest"], cicd.check_artifact(artifact, "TEST", "abc123", None, None)["source_digest"])
+
+    def test_substitution_preflight_blocks_missing_match_and_value_before_write(self) -> None:
+        source = self.source / "Sales.SemanticModel" / "model.tmdl"
+        cases = (
+            ("missing-value", "Sales.SemanticModel/model.tmdl", "TRUE", {"DEV": "dev", "PROD": "prod"}),
+            ("unmatched-path", "Sales.SemanticModel/*.missing", "TRUE", {"DEV": "dev", "TEST": "test", "PROD": "prod"}),
+            ("absent-find", "Sales.SemanticModel/model.tmdl", "NOT_PRESENT", {"DEV": "dev", "TEST": "test", "PROD": "prod"}),
+        )
+        inventory = {"target": "TEST", "items": []}
+        for index, (_, path, find, values) in enumerate(cases):
+            manifest = json.loads(json.dumps(self.manifest))
+            manifest["items"][0]["substitutions"] = {"rules": [{"type": "find_replace", "path": path, "find": find, "values": values}]}
+            artifact = self.root / f"blocked-{index}.zip"
+            cicd.package(self.root, self.config, manifest, "TEST", artifact, f"revision-{index}")
+            result = adapter.deploy(self.root, self.config, manifest, "TEST", artifact, True, None, None, inventory)
+            self.assertEqual("blocked", result["status"])
+            self.assertEqual("substitution preflight failed", result["reason"])
+            self.assertFalse(result["workspace_write"])
+        self.assertIn("TRUE", source.read_text(encoding="utf-8"))
+
+    def test_rdl_data_source_binding_round_trips_generated_manifest(self) -> None:
+        rdl = self.manifest["items"][2]
+        rdl["binding"] = {"kind": "data_source", "target": "30000000-0000-4000-8000-000000000002"}
+        self.assertEqual([], cicd.validate_manifest(self.manifest, "pbi"))
+        inventory = {"target": "TEST", "items": [
+            {"id": "SalesModel", "type": "SemanticModel", "ready": True, "connections": [{"id": "30000000-0000-4000-8000-000000000002", "direct_identity_access": True, "personal_cloud": False}], "substitutions": self.manifest["items"][0]["substitutions"]},
+            {"id": "SalesReport", "type": "Report"},
+            {"id": "SalesRdl", "type": "PaginatedReport", "binding": rdl["binding"]},
+        ]}
+        self.assertEqual("verified", adapter.verify(self.manifest, "TEST", inventory)["status"])
 
     def test_hotfix_resolution_requires_successful_hotfix_validation(self) -> None:
         build = {"id": 42, "source_revision": "hotfix-revision", "source_branch": "hotfix/FIN-2060", "status": "succeeded", "validate_hotfix": "succeeded"}
         resolved = adapter.resolve_hotfix_release([{"merge_revision": "main-revision", "source_revision": "hotfix-revision", "source_branch": "hotfix/FIN-2060"}], "main-revision", None, [build])
         self.assertEqual("42", resolved["build_id"])
+        artifact = self.root / "hotfix.zip"
+        package = cicd.package(self.root, self.config, self.manifest, "HOTFIX", artifact, "hotfix-revision")
+        promotion = cicd.check_artifact(artifact, "PROD", "hotfix-revision", package["source_digest"], package["source_digest"])
+        self.assertEqual("verified", promotion["status"])
         build["validate_hotfix"] = "failed"
-        with self.assertRaisesRegex(ValueError, "HOTFIX"):
-            adapter.resolve_hotfix_release([], "main-revision", "hotfix-revision", [build])
+        with patch.object(adapter, "deploy") as workspace_write:
+            with self.assertRaisesRegex(ValueError, "HOTFIX"):
+                adapter.resolve_hotfix_release([], "main-revision", "hotfix-revision", [build])
+            workspace_write.assert_not_called()
 
     def test_release_file_drift_blocks_before_a_write(self) -> None:
         artifact = self.root / "release.zip"
@@ -229,15 +297,11 @@ class PowerBiCicdTests(unittest.TestCase):
         self.assertFalse(report["external_writes"])
         self.assertNotIn("remote", json.dumps(report).casefold())
 
-    def test_render_creates_non_secret_review_records(self) -> None:
-        output = self.root / "rendered"
-        cicd.render(output, False, self.config, self.manifest)
-        self.assertTrue((output / "CICD-SETUP.md").is_file())
-        self.assertTrue((output / "CICD-VERIFICATION.md").is_file())
-        self.assertTrue((output / "CICD-SETUP.json").is_file())
-        self.assertIn('"approval": "pending"', (output / "CICD-SETUP.md").read_text(encoding="utf-8"))
-        review = json.loads((output / "CICD-SETUP.json").read_text(encoding="utf-8"))
-        self.assertEqual("Finance Test", review["targets"]["TEST"]["workspace_name"])
+    def test_retired_hand_written_approval_surface_is_not_exposed(self) -> None:
+        self.assertFalse(hasattr(cicd, "render"))
+        with self.assertRaises(SystemExit):
+            with patch.object(sys, "argv", ["powerbi_cicd.py", "render"]):
+                cicd.main()
 
 
 if __name__ == "__main__":

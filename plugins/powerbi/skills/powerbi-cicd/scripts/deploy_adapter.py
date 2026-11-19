@@ -72,6 +72,12 @@ def binding_environment(target: str) -> str:
     return "PROD" if target == "HOTFIX" else target
 
 
+def configured_target(config: dict[str, Any], target: str) -> dict[str, Any]:
+    if target == "DEV":
+        return config["dev_workspace"]
+    return config["targets"][target]
+
+
 def expected_semantic_model_connections(manifest: dict[str, Any], target: str) -> dict[str, list[str]]:
     environment = binding_environment(target)
     result: dict[str, list[str]] = {}
@@ -171,7 +177,8 @@ def preflight(root: Path, config: dict[str, Any], manifest: dict[str, Any], targ
         artifact_config, artifact_manifest = artifact_contract(artifact)
         if artifact_config != config or artifact_manifest != manifest:
             return {"status": "blocked", "reason": "artifact configuration or manifest differs from the approved target mapping", "workspace_write": False}
-    if target not in config.get("targets", {}) or target not in TARGETS:
+    configured = target == "DEV" and "dev_workspace" in config or target in config.get("targets", {})
+    if not configured or target not in {"DEV", *TARGETS}:
         return {"status": "blocked", "reason": "target is not explicitly configured", "workspace_write": False}
     errors = validate_config(config) + validate_manifest(manifest, config.get("repository", {}).get("powerbi_source_folder"))
     if errors:
@@ -211,16 +218,16 @@ def preflight(root: Path, config: dict[str, Any], manifest: dict[str, Any], targ
 
 
 def native_config(config: dict[str, Any], manifest: dict[str, Any], target: str, repository_directory: Path, item_types: list[str] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-    target_config = config["targets"][target]
+    selected_target = configured_target(config, target)
     native = {
         "core": {
-            "workspace": {target: target_config["workspace_name"]},
-            "workspace_id": {target: target_config["workspace_id"]},
+            "workspace": {target: selected_target["workspace_name"]},
+            "workspace_id": {target: selected_target["workspace_id"]},
             "repository_directory": str(repository_directory),
             "item_types_in_scope": item_types or sorted({item["type"] for item in manifest["items"]}),
         }
     }
-    override = {"core": {"workspace_id": {target: target_config["workspace_id"]}}}
+    override = {"core": {"workspace_id": {target: selected_target["workspace_id"]}}}
     return native, override
 
 
@@ -306,7 +313,7 @@ def deploy(root: Path, config: dict[str, Any], manifest: dict[str, Any], target:
                 for item in artifact_manifest["items"]:
                     if item["type"] == "SemanticModel":
                         ownership[item["id"]] = take_over_semantic_model_if_present(
-                            artifact_config["targets"][target]["workspace_id"], item["id"], client_id, credential
+                            configured_target(artifact_config, target)["workspace_id"], item["id"], client_id, credential
                         )
             native, override = native_config(artifact_config, artifact_manifest, target, release_root / "payload" / artifact_manifest["source_root"], item_types)
             native_path = release_root / ("fabric-cicd-" + item_types[0] + ".json")
@@ -324,7 +331,12 @@ def verify(manifest: dict[str, Any], target: str, live_inventory: dict[str, Any]
     missing = sorted(set(expected) - set(observed))
     mismatched = sorted(identity for identity, item in expected.items() if identity in observed and observed[identity].get("type") != item["type"])
     bindings = sorted(item["id"] for item in manifest["items"] if item["type"] == "PaginatedReport" and observed.get(item["id"], {}).get("binding") != item["binding"])
-    substitutions = sorted(item["id"] for item in manifest["items"] if item.get("substitutions") and observed.get(item["id"], {}).get("substitutions") != item["substitutions"])
+    substitutions = sorted(
+        item["id"]
+        for item in manifest["items"]
+        if item.get("substitutions", {}).get("rules")
+        and observed.get(item["id"], {}).get("substitutions") != item["substitutions"]
+    )
     not_ready = sorted(item["id"] for item in manifest["items"] if item["type"] == "SemanticModel" and observed.get(item["id"], {}).get("ready") is not True)
     connection_check = validate_connection_preflight(manifest, target, live_inventory)
     if missing or mismatched or bindings or substitutions or not_ready or connection_check["status"] != "ready":
