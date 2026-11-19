@@ -26,7 +26,7 @@ Each profile SHALL trigger only from its configured source branch, and a branch 
 ## ADDED Requirements
 
 ### Requirement: Environments are configured profiles
-The capability SHALL read an ordered list of uniquely keyed environment profiles from `setup.yml` and use it as the only source of environments for setup, generation, validation, deployment and evidence. A profile key SHALL match `^[A-Za-z][A-Za-z0-9_-]{0,31}$` and be unique case-insensitively. Each profile SHALL declare source branch, workspace and capacity, Azure DevOps pipeline name and YAML path, protected environment, variable group, Key Vault credential reference, deploy enablement, optional manual-verification boundary and `promotion.accepts_from`. Generation SHALL not branch on a profile name. A deploy-enabled profile with a non-empty `accepts_from` is the only kind that may consume another profile's artifact, and a deploy-enabled PROD-like profile with an empty list SHALL fail validation. Duplicate or conflicting keys, branch routes, pipeline paths, protected environments or workspace ownership SHALL fail before any write.
+The capability SHALL read an ordered list of uniquely keyed environment profiles from `setup.yml` and use it as the only source of environments for setup, generation, validation, deployment and evidence. A profile key SHALL match `^[A-Za-z][A-Za-z0-9_-]{0,31}$` and be unique case-insensitively. Each profile SHALL declare source branch, workspace and capacity, Azure DevOps pipeline name and YAML path, protected environment, variable group, private agent pool, Key Vault credential reference, deploy enablement, optional manual-verification boundary and `promotion.accepts_from`. Every generated deployment pipeline SHALL use its profile's private agent pool. Generation SHALL not branch on a profile name. A deploy-enabled profile with a non-empty `accepts_from` is the only kind that may consume another profile's artifact, and a deploy-enabled PROD-like profile with an empty list SHALL fail validation. Duplicate or conflicting keys, branch routes, pipeline paths, protected environments or workspace ownership SHALL fail before any write.
 
 #### Scenario: Additional environment is added by configuration
 - **WHEN** a developer adds a complete UAT, GO-LIVE or TEST2 profile to an existing DEV/TEST/PROD setup and approves the plan
@@ -38,7 +38,14 @@ The capability SHALL read an ordered list of uniquely keyed environment profiles
 
 #### Scenario: Legacy four-environment setup
 - **WHEN** plan reads a v1 setup with DEV, TEST, PROD and HOTFIX
-- **THEN** it SHALL translate to explicit profiles with PROD `accepts_from: [TEST, HOTFIX]`, preserving branches, workspaces, pipeline names and paths, environments and credential references
+- **THEN** it SHALL translate to explicit profiles with PROD `accepts_from: [TEST, HOTFIX]`, preserving branches, workspaces, pipeline names and paths, environments, private agent pools and credential references
+
+### Requirement: Pipeline invocation connection owners have workspace access
+The capability SHALL grant each pipeline invocation connection owner the Contributor role in every configured profile workspace when the owner does not already have that role or higher. This rule SHALL apply to all profiles without checking their names.
+
+#### Scenario: New profile workspace needs pipeline invocation access
+- **WHEN** a configured UAT or other profile workspace lacks Contributor access for a pipeline invocation connection owner
+- **THEN** setup SHALL grant that owner Contributor access to the workspace
 
 ### Requirement: Existing custom environments are imported as profiles by the agent
 When a repository already contains a custom environment such as UAT, the agent SHALL read the existing pipeline definition, YAML, target workspace, protected environment and verification practice and write an equivalent profile entry into `setup.yml` so the environment fits the standard template. Creating a new target workspace SHALL use existing Fabric skills rather than generator code. The plan SHALL list every existing `cicd/fabric` file that regeneration would overwrite and SHALL block on files the generator did not create until the user acknowledges them. The generated release builder SHALL reject `--uat-contract` and any runtime target override. Regeneration SHALL not run before the profile is approved.
