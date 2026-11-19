@@ -1,54 +1,82 @@
 ---
 name: powerbi-cicd
-description: Plan, validate, package, promote, and recover explicitly mapped Power BI CI/CD releases for PBIP, PBIR, TMDL semantic models, and paginated RDL reports. Use for Power BI CI/CD setup, offline PR validation, release artifacts, protected promotion, deployment evidence, drift, or rollback; do not use for Fabric data-engineering CI/CD.
+description: Run the reviewed Power BI CI/CD setup and release lifecycle for PBIP, PBIR, TMDL semantic models, and paginated RDL reports. Use for scripted plan/review/approve/apply setup, offline validation, immutable release promotion, deployment evidence, drift, HOTFIX, or rollback; never use for Fabric data-engineering CI/CD.
 ---
 
-# Power BI CI/CD lifecycle
+# Power BI CI/CD Workflow
 
-This skill owns Power BI-only CI/CD. It coordinates the existing
-`semantic-model-authoring`, `powerbi-report-authoring`,
-`paginated-report-authoring`, and DevOps skills; it does not replace their
-authoring boundaries. `fabric-cicd` remains Fabric data-engineering-only.
+Run this skill only for Power BI scope after Jira intake and the normal
+Jira-keyed feature or bugfix branch guard. Keep every command in this order.
+If any command exits nonzero or prints a blocking question, gap, drift, or
+validation error, stop. Correct the named cause and rerun the same command;
+do not continue to the next step.
 
-Start with explicit Jira/work-area/work-type intake and the normal Jira-keyed
-feature or bugfix branch guard. Power BI, mixed, other, and unknown scope never
-qualify for the Fabric-data-engineering DEV-branch exception.
-
-Use `assets/templates/bootstrap-config.json` and
-`assets/templates/powerbi-assets.yml` as non-secret adopter inputs. The
-configuration requires DEV, TEST, and PROD and accepts only UAT and REHEARSAL
-as optional targets. A discovered folder or workspace is never approval.
+1. Run read-only planning from the adopter repository. Supply the reviewed
+   DEV, TEST, PROD, and HOTFIX workspace names plus the service-principal
+   application ID. Add UAT/REHEARSAL selectors only when configured.
 
 ```powershell
-$bootstrap = '<skill-path>/assets/templates/Initialize-PowerBiCicd.ps1'
-& $bootstrap -Mode Plan -ConfigPath ./cicd/powerbi-bootstrap.json -ManifestPath ./cicd/powerbi-assets.yml -RepoRoot .
-& $bootstrap -Mode Render -ConfigPath ./cicd/powerbi-bootstrap.json -ManifestPath ./cicd/powerbi-assets.yml -RepoRoot .
+py -3 -B "<skill-path>/scripts/plan.py" --repo . --no-prompt `
+  --app-id <APP_ID> --dev-workspace <DEV_NAME> --test-workspace <TEST_NAME> `
+  --prod-workspace <PROD_NAME> --hotfix-workspace <HOTFIX_NAME>
 ```
 
-`Plan` and PR validation are offline and do not write locally or authenticate
-to Fabric, Power BI, Azure DevOps, or a workspace. They emit redacted JSON.
-`Apply`, `Resume`, and `Deploy` use the supported `fabric-cicd` adapter only
-after target preflight and its protected write guard succeed. The supported
-item matrix records the versioned Glasslake reference dry run; an unavailable
-identity or unverified target remains fail-closed. The lifecycle never falls
-back to developer credentials or a generic REST client.
+For a one-time legacy migration, append `--legacy-config <PATH>` and/or
+`--legacy-manifest <PATH>`. Planning never edits those files. Resolve every
+printed `--answer key=value` question and rerun; never guess a value.
 
-Run focused checks before handoff:
+2. Review `cicd/powerbi/setup.yml` and `cicd/powerbi/SETUP.md`. Require every
+   managed item, dependency, target, identity reference, connection binding,
+   substitution, protected resource, generated file, and rollback path to be
+   explicit. Do not approve while a question or blocking gap remains.
+
+3. After explicit human review, bind approval to the exact setup bytes.
 
 ```powershell
-py -3 -B -m unittest discover <skill-path>/tests -v
+py -3 -B "<skill-path>/scripts/approve.py" --setup cicd/powerbi/setup.yml
 ```
 
-These tests use synthetic sources only. They do not prove live tenant support,
-Azure DevOps registration, protected identity access, or workspace deployment.
+Changing `setup.yml` invalidates `setup.approved`; repeat review and approval.
+For the one-time legacy-input migration and rollback procedure, read
+`assets/migration-guide.md`.
 
-## HOTFIX route
+4. Apply the approved fixed idempotent sequence. This step generates files,
+   reconciles reviewed workspaces and direct access, and checks protected
+   resources. It never deploys an item or runs a workload.
 
-Create `hotfix/<Jira-key>` from `main`. Its validated source is packaged once
-and deployed only to the isolated HOTFIX workspace using the PROD mapping; it
-never writes PROD directly. A reviewed pull request to `main` resolves the
-same artifact from completed-PR metadata (with merge second-parent fallback),
-and requires its `ValidateHotfix` stage to have succeeded before it may deploy
-PROD. After production deployment, open forward-port pull requests to `test`
-and `dev`. A missing validated hotfix build, or a non-`hotfix/*` source, blocks
-promotion.
+```powershell
+py -3 -B "<skill-path>/scripts/apply.py" --repo . --setup cicd/powerbi/setup.yml
+```
+
+Stop on failure and use `cicd/powerbi/apply-readiness.json` plus the command's
+actionable diagnostic. A corrected rerun resumes from current external state.
+
+5. Run the synthetic lifecycle checks and strict OpenSpec validation before
+   committing. These tests do not prove live tenant support or authorization.
+
+```powershell
+py -3 -B -m unittest discover "<skill-path>/tests" -v
+openspec validate fin-2060-powerbi-cicd-scripted-setup --strict
+```
+
+6. Commit only the reviewed FIN-2060 files with a Jira-prefixed message.
+   Preserve unrelated worktree changes. Then open the normal Power BI pull
+   request through the repository's DevOps workflow.
+
+```powershell
+git add cicd/powerbi plugins/powerbi/skills/powerbi-cicd openspec/changes/fin-2060-powerbi-cicd-scripted-setup
+git commit -m "FIN-2060: <summary>"
+```
+
+Do not commit the approval marker if the repository policy excludes local
+approval evidence. Never bypass a rejected branch policy or CI check.
+
+## HOTFIX Route
+
+Create `hotfix/<Jira-key>` from the configured PROD branch. The validated
+source is packaged once and deployed only to the isolated HOTFIX workspace
+through PROD semantic-model bindings and substitutions. A merged PROD build
+must resolve the uniquely successful HOTFIX validation before promotion;
+otherwise stop before workspace write. Forward-port the merged fix to TEST and
+DEV afterward. Rollback means redeploying a retained known-good artifact
+through the same protected adapter path.

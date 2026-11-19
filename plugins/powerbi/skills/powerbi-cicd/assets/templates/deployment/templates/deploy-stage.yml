@@ -5,6 +5,20 @@ parameters:
     type: string
   - name: workspaceId
     type: string
+  - name: environmentName
+    type: string
+  - name: variableGroup
+    type: string
+  - name: privatePool
+    type: string
+  - name: keyVaultServiceConnection
+    type: string
+  - name: keyVaultName
+    type: string
+  - name: keyVaultSecret
+    type: string
+  - name: identityReference
+    type: string
   - name: artifactName
     type: string
   - name: writeGuard
@@ -14,49 +28,138 @@ parameters:
     values: [current, promotion]
   - name: sourceBranch
     type: string
+  - name: promotionBranch
+    type: string
   - name: testDigest
+    type: string
+  - name: liveInventoryPath
     type: string
 
 stages:
   - stage: ${{ parameters.stageName }}
     displayName: Deploy immutable Power BI artifact to ${{ parameters.target }}
+    ${{ if eq(parameters.artifactSource, 'current') }}:
+      dependsOn: BuildRelease
     lockBehavior: sequential
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), or(eq(variables['Build.SourceBranch'], 'refs/heads/${{ parameters.sourceBranch }}'), and(eq('${{ parameters.sourceBranch }}', 'hotfix/*'), startsWith(variables['Build.SourceBranch'], 'refs/heads/hotfix/'))))
     jobs:
       - deployment: Deploy
-        environment: ${{ parameters.target }}
+        pool:
+          name: '${{ parameters.privatePool }}'
+        environment: ${{ parameters.environmentName }}
+        variables:
+          - group: '${{ parameters.variableGroup }}'
         strategy:
           runOnce:
             deploy:
               steps:
+                - checkout: none
                 - ${{ if eq(parameters.artifactSource, 'current') }}:
                   - download: current
                     artifact: ${{ parameters.artifactName }}
                 - ${{ if eq(parameters.artifactSource, 'promotion') }}:
-                  - checkout: self
-                    fetchDepth: 0
-                  - bash: |
-                      set -euo pipefail
-                      git fetch --no-tags origin '+refs/heads/dev:refs/remotes/origin/dev'
-                      echo "##vso[task.setvariable variable=promotionRevision]$(git merge-base HEAD refs/remotes/origin/dev)"
-                    displayName: Resolve DEV revision lineage
                   - task: DownloadPipelineArtifact@2
                     inputs:
                       buildType: specific
                       project: $(System.TeamProject)
                       pipeline: $(System.DefinitionId)
                       runVersion: latestFromBranch
-                      runBranch: refs/heads/dev
+                      runBranch: refs/heads/${{ parameters.promotionBranch }}
                       artifact: ${{ parameters.artifactName }}
                       path: $(Pipeline.Workspace)/promotion
-                - bash: |
-                    set -euo pipefail
-                    test "$(ALLOW_TARGET_WRITE)" = "true"
-                    test -n '${{ parameters.workspaceId }}'
-                    artifact="$(find '$(Pipeline.Workspace)' -type f -name '${{ parameters.artifactName }}.zip' -print -quit)"
-                    test -n "$artifact"
-                    if [ '${{ parameters.target }}' = PROD ]; then test -n '${{ parameters.testDigest }}'; fi
-                    python deployment/scripts/deploy_artifact.py --artifact "$artifact" --target '${{ parameters.target }}' --revision "${promotionRevision:-$(Build.SourceVersion)}" --test-digest '${{ parameters.testDigest }}'
-                  displayName: Enforce configured target guard
+                - task: AzureKeyVault@2
+                  inputs:
+                    azureSubscription: '${{ parameters.keyVaultServiceConnection }}'
+                    KeyVaultName: '${{ parameters.keyVaultName }}'
+                    SecretsFilter: '${{ parameters.keyVaultSecret }}'
+                    RunAsPreJob: false
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.11'
+                - task: PowerShell@2
+                  displayName: Verify archive members and payload hashes before extraction
+                  inputs:
+                    targetType: inline
+                    pwsh: true
+                    script: |
+                      $ErrorActionPreference = 'Stop'
+                      Add-Type -AssemblyName System.IO.Compression.FileSystem
+                      $artifact = Get-ChildItem '$(Pipeline.Workspace)' -Recurse -File -Filter '${{ parameters.artifactName }}.zip' | Select-Object -First 1
+                      if (-not $artifact) { throw 'Immutable Power BI artifact was not found' }
+                      $destination = Join-Path '$(Pipeline.Workspace)' 'powerbi-${{ parameters.target }}/extracted'
+                      New-Item -ItemType Directory -Path $destination -Force | Out-Null
+                      $root = [IO.Path]::GetFullPath($destination)
+                      $archive = [IO.Compression.ZipFile]::OpenRead($artifact.FullName)
+                      try {
+                        $entries = @($archive.Entries | Where-Object { -not [string]::IsNullOrEmpty($_.Name) })
+                        $names = @($entries.FullName)
+                        if (@($names | Group-Object | Where-Object Count -gt 1).Count -gt 0) { throw 'Duplicate archive member detected' }
+                        foreach ($name in $names) {
+                          $parts = @($name -split '/')
+                          if ([string]::IsNullOrWhiteSpace($name) -or $name.Contains('\') -or $name.StartsWith('/') -or $name -match '^[A-Za-z]:' -or $parts -contains '..') { throw "Unsafe archive member: $name" }
+                          $member = [IO.Path]::GetFullPath((Join-Path $root $name))
+                          if (-not $member.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe archive member: $name" }
+                        }
+                        $releaseEntry = $entries | Where-Object FullName -eq 'release.json' | Select-Object -First 1
+                        if (-not $releaseEntry) { throw 'Artifact is missing release.json' }
+                        $reader = [IO.StreamReader]::new($releaseEntry.Open())
+                        try { $release = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+                        foreach ($relative in $release.content_hashes.PSObject.Properties.Name) {
+                          $memberName = 'payload/' + $relative
+                          $entry = $entries | Where-Object FullName -eq $memberName | Select-Object -First 1
+                          if (-not $entry) { throw "Artifact member is missing: $memberName" }
+                          $stream = $entry.Open()
+                          try { $actual = ([BitConverter]::ToString([Security.Cryptography.SHA256]::HashData($stream))).Replace('-', '').ToLowerInvariant() } finally { $stream.Dispose() }
+                          if ($actual -ne $release.content_hashes.$relative) { throw "Artifact content hash mismatch: $memberName" }
+                        }
+                        foreach ($entry in $entries) {
+                          $target = Join-Path $root $entry.FullName
+                          New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
+                          [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $true)
+                        }
+                      } finally { $archive.Dispose() }
+                      Write-Host "##vso[task.setvariable variable=verifiedArtifact]$($artifact.FullName)"
+                      Write-Host "##vso[task.setvariable variable=verifiedDigest]$($release.source_digest)"
+                      Write-Host "##vso[task.setvariable variable=extractedRoot]$root"
+                - pwsh: python -m pip install -r "$(extractedRoot)/deployment/requirements-powerbi-cicd.lock"
+                  displayName: Install pinned packaged Power BI deployment toolchain
+                - pwsh: python "$(extractedRoot)/deployment/scripts/validate_deployment_identity.py" --target '${{ parameters.target }}' --identity-reference '${{ parameters.identityReference }}'
+                  displayName: Verify protected runtime identity before write
                   env:
-                    ALLOW_TARGET_WRITE: $(${{ parameters.writeGuard }})
+                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+                    AZURE_CLIENT_ID: $(AZURE_CLIENT_ID)
+                    AZURE_CLIENT_SECRET: $(${{ parameters.keyVaultSecret }})
+                - pwsh: |
+                    if (-not '${{ parameters.liveInventoryPath }}') { throw 'Authenticated read-only Power BI live inventory is required before deployment' }
+                    python "$(extractedRoot)/deployment/scripts/deploy_artifact.py" --artifact "$(verifiedArtifact)" --target '${{ parameters.target }}' --revision '$(Build.SourceVersion)' --digest '$(verifiedDigest)' --test-digest '${{ parameters.testDigest }}'
+                    python "$(extractedRoot)/deployment/scripts/deploy_fabric.py" --config "$(extractedRoot)/config.json" --manifest "$(extractedRoot)/manifest.json" --repo "$(extractedRoot)" --artifact "$(verifiedArtifact)" --target '${{ parameters.target }}' --digest '$(verifiedDigest)' --test-digest '${{ parameters.testDigest }}' --live-inventory '${{ parameters.liveInventoryPath }}'
+                  displayName: Verify then deploy the packaged Power BI adapter
+                  env:
+                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+                    AZURE_CLIENT_ID: $(AZURE_CLIENT_ID)
+                    AZURE_CLIENT_SECRET: $(${{ parameters.keyVaultSecret }})
+                    ${{ parameters.writeGuard }}: true
+                - pwsh: |
+                    $status = if ($env:AGENT_JOBSTATUS -eq 'Succeeded') { 'succeeded' } else { 'failed' }
+                    $output = "$(Pipeline.Workspace)/powerbi-${{ parameters.target }}-evidence.json"
+                    $helper = Join-Path $env:EXTRACTED_ROOT 'deployment/scripts/write_deployment_metadata.py'
+                    if (Test-Path $helper) {
+                      python $helper --environment '${{ parameters.target }}' --revision '$(Build.SourceVersion)' --digest $env:VERIFIED_DIGEST --status $status --output $output
+                    } else {
+                      @{ environment = '${{ parameters.target }}'; source_revision = '$(Build.SourceVersion)'; source_digest = $env:VERIFIED_DIGEST; result = $status } | ConvertTo-Json | Set-Content -Path $output -Encoding utf8
+                    }
+                  displayName: Always record non-secret Power BI deployment evidence
+                  condition: always()
+                  continueOnError: true
+                  env:
+                    EXTRACTED_ROOT: $(extractedRoot)
+                    VERIFIED_DIGEST: $(verifiedDigest)
+                - pwsh: |
+                    python "$(extractedRoot)/deployment/scripts/deploy_fabric.py" --config "$(extractedRoot)/config.json" --manifest "$(extractedRoot)/manifest.json" --repo "$(extractedRoot)" --artifact "$(verifiedArtifact)" --target '${{ parameters.target }}' --test-digest '${{ parameters.testDigest }}' --live-inventory '${{ parameters.liveInventoryPath }}'
+                  displayName: Redeploy the retained known-good artifact after an approved rollback
+                  condition: and(always(), eq(variables['RunPowerBiRollback'], 'true'))
+                  env:
+                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+                    AZURE_CLIENT_ID: $(AZURE_CLIENT_ID)
+                    AZURE_CLIENT_SECRET: $(${{ parameters.keyVaultSecret }})
+                    ${{ parameters.writeGuard }}: true

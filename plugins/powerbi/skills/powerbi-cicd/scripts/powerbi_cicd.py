@@ -12,14 +12,14 @@ import fnmatch
 import hashlib
 import json
 import re
-import shutil
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import UUID
 
-TARGETS = {"UAT", "TEST", "PROD", "REHEARSAL"}
+TARGETS = {"UAT", "TEST", "PROD", "HOTFIX", "REHEARSAL"}
+DEPLOYMENT_TARGETS = {"DEV", *TARGETS}
 ITEM_TYPES = {"SemanticModel", "Report", "PaginatedReport"}
 SECRET_WORDS = ("password", "secret", "token", "connectionstring", "client_secret", "access_key", "apikey")
 PLACEHOLDER = re.compile(r"REPLACE_|\{\{|^<")
@@ -39,6 +39,7 @@ REQUIRED_DEPLOYMENT_SCRIPTS = (
     "deployment/templates/validate.yml",
     "deployment/templates/deploy-stage.yml",
     "deployment/azure-pipelines.yml",
+    "deployment/requirements-powerbi-cicd.lock",
 )
 
 
@@ -116,8 +117,8 @@ def validate_config(config: object) -> list[str]:
             raise ValueError("dev_workspace.workspace_name contains unsupported characters")
         guid(dev["workspace_id"], "dev_workspace.workspace_id")
         targets = config["targets"]
-        if not isinstance(targets, dict) or not {"TEST", "PROD"}.issubset(targets) or set(targets) - TARGETS:
-            raise ValueError("targets must include TEST and PROD and may include only UAT or REHEARSAL")
+        if not isinstance(targets, dict) or not {"TEST", "PROD", "HOTFIX"}.issubset(targets) or set(targets) - TARGETS:
+            raise ValueError("targets must include TEST, PROD, and HOTFIX and may include only UAT or REHEARSAL")
         target_fields = {"workspace_name", "workspace_id", "capacity_name", "target_owner", "environment", "pipeline_name", "approval_policy", "artifact_route", "verification_profile", "git_connected"}
         for target, target_config in targets.items():
             if not isinstance(target_config, dict) or set(target_config) != target_fields:
@@ -131,6 +132,9 @@ def validate_config(config: object) -> list[str]:
             if not NAME.fullmatch(required_string(target_config["workspace_name"], f"targets.{target}.workspace_name")):
                 raise ValueError(f"targets.{target}.workspace_name contains unsupported characters")
             guid(target_config["workspace_id"], f"targets.{target}.workspace_id")
+        for content_target in ("TEST", "PROD"):
+            if targets["HOTFIX"]["workspace_id"] == targets[content_target]["workspace_id"]:
+                raise ValueError(f"targets.HOTFIX cannot target the {content_target} workspace")
         roles = config["roles"]
         if not isinstance(roles, list):
             raise ValueError("roles must be a list")
@@ -139,7 +143,7 @@ def validate_config(config: object) -> list[str]:
             if not isinstance(role, dict) or set(role) != {"target", "object_id", "principal_type", "role"}:
                 raise ValueError(f"roles[{index}] must declare target, object_id, principal_type, and role")
             target = required_string(role["target"], f"roles[{index}].target").upper()
-            if target not in targets:
+            if target not in {"DEV", *targets}:
                 raise ValueError(f"roles[{index}].target is not configured")
             key = (target, guid(role["object_id"], f"roles[{index}].object_id"))
             if key in seen_roles:
@@ -153,9 +157,12 @@ def validate_config(config: object) -> list[str]:
         if not isinstance(pipelines, dict) or set(pipelines) != required_profiles | optional_profiles:
             raise ValueError("pipelines must configure DEV, TEST, PROD, HOTFIX, and every configured optional target")
         protected = config["protected_resources"]
-        if not isinstance(protected, dict) or set(protected) != set(targets):
-            raise ValueError("protected_resources must map every and only configured target")
-        expected_branches = {"DEV": repository["dev_branch"], "TEST": "test", "PROD": repository["prod_branch"], "HOTFIX": "hotfix/*"}
+        if not isinstance(protected, dict) or set(protected) != {"DEV", *targets}:
+            raise ValueError("protected_resources must map DEV and every and only configured release target")
+        expected_branches = {
+            "DEV": repository["dev_branch"], "TEST": "test", "PROD": repository["prod_branch"],
+            "HOTFIX": "hotfix/*", "UAT": "uat", "REHEARSAL": "rehearsal",
+        }
         for target in pipelines:
             pipeline = pipelines[target]
             if not isinstance(pipeline, dict) or set(pipeline) != {"name", "yaml_path", "source_branch"}:
@@ -165,7 +172,7 @@ def validate_config(config: object) -> list[str]:
             expected_branch = expected_branches.get(target, repository["prod_branch"])
             if required_string(pipeline["source_branch"], f"pipelines.{target}.source_branch") != expected_branch:
                 raise ValueError(f"pipelines.{target}.source_branch does not match the approved release branch")
-        for target in targets:
+        for target in ("DEV", *targets):
             resource = protected[target]
             if not isinstance(resource, dict) or set(resource) != {"identity_reference", "write_guard"}:
                 raise ValueError(f"protected_resources.{target} must declare identity_reference and write_guard")
@@ -416,7 +423,7 @@ def check_artifact(path: Path, target: str, expected_revision: str | None, expec
             actual = hashlib.sha256(archive.read("payload/" + relative)).hexdigest()
             if actual != expected_hash:
                 return {"status": "blocked", "reason": f"changed digest for {relative}", "external_writes": False}
-    if target not in TARGETS:
+    if target not in DEPLOYMENT_TARGETS:
         return {"status": "blocked", "reason": "unsupported target", "external_writes": False}
     if expected_revision and metadata.get("source_revision") != expected_revision:
         return {"status": "blocked", "reason": "revision mismatch", "external_writes": False}
@@ -462,66 +469,9 @@ def discover(root: Path) -> dict[str, Any]:
     return {"schema_version": 1, "scope_candidates": "power-bi" if candidates else "unconfigured", "scope_approved": False, "candidate_powerbi_roots": sorted(set(candidates)), "existing_cicd_assets": cicd_files, "mapping_gaps": ["explicit approved config", "explicit manifest", "TEST and PROD targets"], "external_writes": False, "workspace_calls": False}
 
 
-def review_contract(config: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
-    """Create the redacted, developer-reviewable setup contract."""
-    errors = validate_config(config) + validate_manifest(manifest, config["repository"]["powerbi_source_folder"])
-    if errors:
-        raise ValueError("cannot render an invalid review contract: " + "; ".join(errors))
-    revision = hashlib.sha256(json.dumps({"config": config, "manifest": manifest}, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
-    targets = {
-        name: {
-            "workspace_name": value["workspace_name"], "workspace_id": value["workspace_id"],
-            "environment": value["environment"], "pipeline": config["pipelines"][name]["yaml_path"],
-            "identity_reference": config["protected_resources"][name]["identity_reference"],
-            "target_inputs": value["verification_profile"],
-        }
-        for name, value in config["targets"].items()
-    }
-    return {
-        "contract_revision": revision, "source_scope": [item["id"] for item in ordered_items(manifest)],
-        "targets": targets, "approval": "pending",
-        "branches": {"dev": config["repository"]["dev_branch"], "promotion": config["repository"]["prod_branch"]},
-        "azure_devops": config["azure_devops"], "role_mappings": config["roles"],
-        "prerequisites": ["developer-authenticated fab", "developer-authenticated az", "reviewed contract approval"],
-        "recovery": "redeploy a retained known-good artifact through the same protected target path",
-    }
-
-
-def render(output: Path, overwrite: bool, config: dict[str, Any] | None = None, manifest: dict[str, Any] | None = None) -> dict[str, Any]:
-    templates = Path(__file__).resolve().parents[1] / "assets" / "templates"
-    files = {"powerbi-validation.yml": "powerbi-validation.yml", "Initialize-PowerBiCicd.ps1": "Initialize-PowerBiCicd.ps1", "powerbi_cicd.py": "scripts/powerbi_cicd.py", "scripts/deploy_adapter.py": "scripts/deploy_adapter.py"}
-    for destination, source in files.items():
-        target = output / destination
-        if target.exists() and not overwrite:
-            raise ValueError(f"refusing to overwrite {target}")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if source == "scripts/powerbi_cicd.py":
-            source_path = Path(__file__)
-        elif source == "scripts/deploy_adapter.py":
-            source_path = Path(__file__).with_name("deploy_adapter.py")
-        else:
-            source_path = templates / source
-        shutil.copyfile(source_path, target)
-    deployment_templates = templates / "deployment"
-    if deployment_templates.exists():
-        for source_path in deployment_templates.rglob("*"):
-            if source_path.is_file():
-                target = output / "powerbi" / source_path.relative_to(deployment_templates)
-                if target.exists() and not overwrite:
-                    raise ValueError(f"refusing to overwrite {target}")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source_path, target)
-    if config is not None and manifest is not None:
-        setup = review_contract(config, manifest)
-        (output / "CICD-SETUP.json").write_text(json.dumps(redact(setup), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        (output / "CICD-SETUP.md").write_text("# CI/CD setup review\n\n```json\n" + json.dumps(redact(setup), indent=2, sort_keys=True) + "\n```\n", encoding="utf-8")
-        (output / "CICD-VERIFICATION.md").write_text("# CI/CD verification\n\nVerify configured workspace IDs, artifact digest, target guard, model bindings, substitutions, runtime identity, and deployment evidence before promotion.\n", encoding="utf-8")
-    return {"status": "rendered", "output": str(output), "external_writes": False}
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Offline Power BI CI/CD lifecycle helper")
-    parser.add_argument("command", choices=("validate", "plan", "discover", "package", "artifact-check", "evidence", "render", "status"))
+    parser.add_argument("command", choices=("validate", "plan", "discover", "package", "artifact-check", "evidence", "status"))
     parser.add_argument("--config", type=Path, required=False)
     parser.add_argument("--manifest", type=Path, required=False)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
@@ -532,18 +482,11 @@ def main() -> int:
     parser.add_argument("--expected-revision")
     parser.add_argument("--expected-digest")
     parser.add_argument("--test-digest")
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--allow-overwrite", action="store_true")
     args = parser.parse_args()
     try:
         root = args.repo.resolve()
         if args.command == "discover":
             result = discover(root)
-        elif args.command == "render":
-            if not args.output:
-                raise ValueError("render requires --output")
-            config, manifest = load_object(args.config, "configuration"), load_object(args.manifest, "manifest")
-            result = render(args.output, args.allow_overwrite, config, manifest)
         else:
             if not args.config or not args.manifest:
                 raise ValueError(f"{args.command} requires --config and --manifest")
@@ -569,7 +512,7 @@ def main() -> int:
             else:
                 result = {"status": "not-deployed", "deployment_adapter": "blocked pending tenant-approved supported-item matrix", "external_writes": False}
         print(json.dumps(redact(result), indent=2, sort_keys=True))
-        return 0 if result.get("status") in {"valid", "planned", "packaged", "verified", "rendered", "recorded", "not-deployed"} else 2
+        return 0 if result.get("status") in {"valid", "planned", "packaged", "verified", "recorded", "not-deployed"} else 2
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, zipfile.BadZipFile) as error:
         print(json.dumps({"status": "blocked", "error": str(error)}))
         return 2
