@@ -47,6 +47,7 @@ profiles:
       pipeline_yaml: cicd/fabric/fabric-uat.yml
       protected_environment: fabric-uat
       variable_group: powerbi eot
+      private_pool: <private-agent-pool>
     credentials:
       key_vault: {service_connection: <wif>, name: <vault>, secret: <ref>}
     deploy: {enabled: true}
@@ -57,11 +58,11 @@ profiles:
     promotion: {accepts_from: [TEST, HOTFIX]}
 ```
 
-Validation rejects missing required fields, metacharacters in keys/values, and duplicate or conflicting keys, branch routes, pipeline paths, protected environments or workspace ownership. Only a profile with a non-empty `accepts_from` may consume another profile's artifact; a deploy-enabled PROD-like profile with an empty list fails validation. Ad hoc versus persistent is not a schema concept: a profile is a profile.
+Validation rejects missing required fields, including the private agent pool, metacharacters in keys/values, and duplicate or conflicting keys, branch routes, pipeline paths, protected environments or workspace ownership. Only a profile with a non-empty `accepts_from` may consume another profile's artifact; a deploy-enabled PROD-like profile with an empty list fails validation. Ad hoc versus persistent is not a schema concept: a profile is a profile.
 
 ### 2. Generic rendering and runtime
 
-One renderer emits per-profile pipeline YAML, `config.yml` workspace entries and binding replacement keys from the profile list. Runtime helpers (`release_contract`, `build_release`, `deploy_runner`, `deploy_artifact`, `validate*`, `select_artifact`, binding generation) read the approved generated config through a shared profile loader instead of an allow-list. `build_release.py --target <key>` accepts any configured profile. A runtime target contract or workspace override, including `--uat-contract`, is rejected with a clear error.
+One renderer emits per-profile pipeline YAML using that profile's private agent pool, `config.yml` workspace entries and binding replacement keys from the profile list. During apply, grant each pipeline invocation connection owner Contributor access in every configured workspace unless the owner already has Contributor or higher; iterate profiles without special-casing TEST or PROD. Runtime helpers (`release_contract`, `build_release`, `deploy_runner`, `deploy_artifact`, `validate*`, `select_artifact`, binding generation) read the approved generated config through a shared profile loader instead of an allow-list. `build_release.py --target <key>` accepts any configured profile. A runtime target contract or workspace override, including `--uat-contract`, is rejected with a clear error.
 
 ### 3. Explicit promotion and routing
 
@@ -81,7 +82,7 @@ Protected jobs use the profile's Key Vault reference only; validation and build 
 
 ## Risks / Trade-offs
 
-- [Schema breaks existing setups] -> deterministic v1 translation preserving branches, workspaces, pipelines, credentials and filenames, verified by an equivalence test.
+- [Schema breaks existing setups] -> deterministic v1 translation preserving branches, workspaces, pipelines, private agent pools, credentials and filenames, verified by an equivalence test.
 - [Profile values reach YAML or PowerShell] -> strict key pattern and metacharacter rejection with tests.
 - [Regeneration overwrites a custom environment's files] -> plan overwrite listing and block on unrecognized files.
 - [Agent imports a custom environment incorrectly] -> the profile is reviewed in SETUP.md and approved before any write.

@@ -24,9 +24,9 @@ FABRIC_API_ROOT = "https://api.fabric.microsoft.com"
 
 def protected_identity(approved_app_id: str) -> ClientSecretCredential:
     """Return only the approved service-principal credential, never a fallback."""
-    tenant = os.getenv("FABRIC_TENANT_ID") or os.getenv("AZURE_TENANT_ID")
-    client = os.getenv("FABRIC_APP_ID") or os.getenv("AZURE_CLIENT_ID")
-    secret = os.getenv("FABRIC_APP_SECRET") or os.getenv("AZURE_CLIENT_SECRET")
+    tenant = os.getenv("FABRIC_TENANT_ID")
+    client = os.getenv("FABRIC_APP_ID")
+    secret = os.getenv("FABRIC_APP_SECRET")
     if not all((tenant, client, secret)):
         raise SystemExit("approved Fabric service-principal inputs are not available")
     if client.lower() != approved_app_id.lower():
@@ -121,10 +121,13 @@ def precreate_notebooks(config_path: Path, environment: str, credential: ClientS
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--environment", required=True, choices=["DEV", "TEST", "PROD", "HOTFIX"])
+    parser.add_argument("--environment", required=True)
     parser.add_argument("--approved-app-id", required=True)
     parser.add_argument("--expected-workspace", required=True)
     args = parser.parse_args()
+    configured = (yaml.safe_load(args.config.read_text(encoding="utf-8")) or {}).get("core", {}).get("workspace_id", {})
+    if args.environment not in configured:
+        raise SystemExit(f"environment '{args.environment}' is not a configured profile")
     credential = protected_identity(args.approved_app_id)
     validate_lakehouses(args.config, args.environment, credential, args.expected_workspace)
     precreate_notebooks(args.config, args.environment, credential, args.expected_workspace)

@@ -81,6 +81,13 @@ class PortedScriptTests(unittest.TestCase):
         result = run(str(CICD / "shared" / "secret_scan.py"), "--root", str(SKILL / "assets"), cwd=SKILL)
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_protected_helpers_have_no_alternate_credential_fallback(self) -> None:
+        for name in ("auth_check.py", "deploy_runner.py"):
+            text = (FABRIC / name).read_text(encoding="utf-8")
+            self.assertNotIn("AZURE_TENANT_ID", text, name)
+            self.assertNotIn("AZURE_CLIENT_ID", text, name)
+            self.assertNotIn("AZURE_CLIENT_SECRET", text, name)
+
     def test_validate_accepts_copy_jobs_and_four_environments(self) -> None:
         manifest = json.loads(self.build().parent.joinpath("managed-manifest.json").read_text())
         self.assertEqual(["DEV", "TEST", "PROD", "HOTFIX"], manifest["environments"])

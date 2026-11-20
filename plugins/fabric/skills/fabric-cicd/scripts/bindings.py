@@ -8,7 +8,7 @@ from pathlib import Path
 GUID = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])")
 ZERO_GUID = "00000000-0000-0000-0000-000000000000"
 ITEM_TYPES = ("Lakehouse", "Notebook", "DataPipeline", "CopyJob")
-ENVIRONMENTS = ("DEV", "TEST", "PROD", "HOTFIX")
+ENVIRONMENTS = ("DEV", "TEST", "PROD", "HOTFIX")  # v1 compatibility default
 TEXT_SUFFIXES = {".py", ".json", ".sql", ".yml", ".yaml", ".txt", ".md"}
 
 
@@ -58,6 +58,7 @@ def generate_rules(
     dev_items: list[dict],
     excluded_guids: set[str] | frozenset = frozenset(),
     mapped_guids: dict[str, str] | None = None,
+    profile_keys: tuple[str, ...] | list[str] | None = None,
 ) -> dict:
     """Return rules, connection IDs, item dependencies and blocking gaps for the managed items.
 
@@ -104,9 +105,10 @@ def generate_rules(
                         dependencies[item["folder"]].add(target)
                 else:
                     gaps.append({"guid": guid, "file": str(path.relative_to(source)).replace("\\", "/")})
+    targets = tuple(profile_keys or ENVIRONMENTS)
     return {
         "rules": [
-            {"find_value": guid, "item_type": item_type, "replace_value": {env: expression for env in ENVIRONMENTS}}
+            {"find_value": guid, "item_type": item_type, "replace_value": {env: expression for env in targets}}
             for (guid, item_type), expression in sorted(rules.items(), key=lambda pair: (pair[0][1], pair[0][0]))
         ],
         "connection_ids": sorted(all_connections),

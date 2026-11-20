@@ -11,6 +11,7 @@ import yaml
 def blocking_problems(setup: dict) -> list[str]:
     problems = [f"open question: {q['key']}" for q in setup.get("open_questions", [])]
     problems += [f"gap: {g.get('file') or g.get('item')} {g.get('guid', '')}".strip() for g in setup.get("gaps", [])]
+    problems += [f"unacknowledged overwrite: {path}" for path in setup.get("unacknowledged_overwrites", [])]
     if not setup.get("tenant_id"):
         problems.append("tenant_id is missing")
     if not setup.get("service_principal", {}).get("object_id"):

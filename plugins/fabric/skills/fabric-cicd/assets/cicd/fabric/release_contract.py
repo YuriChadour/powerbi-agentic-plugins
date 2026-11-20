@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from zipfile import ZipFile
 
-ENVIRONMENTS = ("DEV", "TEST", "PROD", "HOTFIX")
 GENERATED_ARTIFACT_FILES = {"managed-manifest.json", "content-hashes.json", "release-metadata.json"}
 
 
@@ -53,8 +52,13 @@ def read_artifact_metadata(path: Path) -> dict:
 
 
 def workspace_contract(manifest: dict, environment: str) -> dict:
-    if environment not in ENVIRONMENTS:
-        raise ValueError(f"unsupported environment: {environment}")
+    profiles = manifest.get("profiles")
+    if isinstance(profiles, dict):
+        profile = profiles.get(environment)
+        workspace = profile.get("workspace") if isinstance(profile, dict) else None
+        if not isinstance(workspace, dict) or not workspace.get("id") or not workspace.get("name"):
+            raise ValueError(f"missing {environment} workspace contract")
+        return workspace
     workspace = manifest.get(f"{environment.lower()}_workspace")
     if not isinstance(workspace, dict) or not workspace.get("id") or not workspace.get("name"):
         raise ValueError(f"missing {environment} workspace contract")

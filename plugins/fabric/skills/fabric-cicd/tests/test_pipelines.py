@@ -111,6 +111,28 @@ class ArtifactSelectionTests(unittest.TestCase):
         finally:
             select.api = original
 
+    def test_profile_routing_is_explicit_and_fail_closed(self) -> None:
+        profiles = {
+            "UAT": {"source_branch": "uat", "azure_devops": {"pipeline_name": "Fabric UAT"}, "promotion": {"accepts_from": []}},
+            "GO-LIVE": {"source_branch": "release/*", "azure_devops": {"pipeline_name": "Fabric GO"}, "promotion": {"accepts_from": ["UAT"]}},
+        }
+        self.assertEqual(("UAT", "Fabric UAT", "uat"), select.choose_profile("uat", profiles, "GO-LIVE"))
+        with self.assertRaises(SystemExit):
+            select.choose_profile("TEST", profiles, "GO-LIVE")
+        profiles["UAT2"] = {"source_branch": "uat", "azure_devops": {"pipeline_name": "Fabric UAT2"}, "promotion": {"accepts_from": []}}
+        profiles["GO-LIVE"]["promotion"]["accepts_from"].append("UAT2")
+        with self.assertRaises(SystemExit):
+            select.choose_profile("uat", profiles, "GO-LIVE")
+
+    def test_unlisted_successful_profile_cannot_be_promoted(self) -> None:
+        profiles = {
+            "TEST": {"source_branch": "TEST", "azure_devops": {"pipeline_name": "Fabric TEST"}, "promotion": {"accepts_from": []}},
+            "UAT": {"source_branch": "uat", "azure_devops": {"pipeline_name": "Fabric UAT"}, "promotion": {"accepts_from": []}},
+            "PROD": {"source_branch": "PROD", "azure_devops": {"pipeline_name": "Fabric PROD"}, "promotion": {"accepts_from": ["TEST"]}},
+        }
+        with self.assertRaisesRegex(SystemExit, "not routed"):
+            select.choose_profile("uat", profiles, "PROD")
+
 
 if __name__ == "__main__":
     unittest.main()
