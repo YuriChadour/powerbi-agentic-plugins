@@ -58,6 +58,7 @@
     Requires GitHub Copilot CLI or VS Code with GitHub Copilot Chat extension
 #>
 
+[CmdletBinding()]
 param(
     [string]$RepositoryPath,
     [ValidateSet("powerbi", "fabric", "devops", "skill-creator", "spec-lifecycle")]
@@ -69,13 +70,12 @@ param(
     [switch]$Force,
     [switch]$AllowGitMetadataWrites,
     [scriptblock]$McpLauncher,
-    [scriptblock]$McpProvisioner,
-    [switch]$Verbose
+    [scriptblock]$McpProvisioner
 )
 
 # Enable strict error handling
 $ErrorActionPreference = "Stop"
-$VerbosePreference = if ($Verbose) { "Continue" } else { "SilentlyContinue" }
+if ($VerbosePreference -ne "Continue") { $VerbosePreference = "SilentlyContinue" }
 
 # Run with a process-scoped bypass so the setup works without admin rights.
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force

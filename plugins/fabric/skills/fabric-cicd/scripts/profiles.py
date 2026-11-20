@@ -16,7 +16,9 @@ KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 GUID = re.compile(r"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 # Values end up in YAML or command arguments.  Spaces, slash, dot, star and
 # brackets are legitimate names/branches; shell/YAML control characters are not.
-UNSAFE = re.compile(r"[\r\n`$;&|<>!{}\[\]#'\"\\\\]")
+# Brackets are valid in established Fabric workspace display names and are
+# safely quoted by the YAML serializer; reject only shell/YAML controls.
+UNSAFE = re.compile(r"[\r\n`$;&|<>!{}#'\"\\\\]")
 
 
 class ProfileError(ValueError):
@@ -62,6 +64,7 @@ def translate_v1(setup: dict) -> dict:
             },
             "credentials": {"key_vault": value.get("key_vault")},
             "deploy": {"enabled": True},
+            "deployment_mode": "standard",
             "verification": {"manual_boundary": False},
             "promotion": {"accepts_from": ["TEST", "HOTFIX"] if key == "PROD" else []},
         }
@@ -91,15 +94,19 @@ def _normalize(key: str, value: dict) -> dict:
     for field in ("service_connection", "name", "secret"):
         _text(key, "credentials.key_vault." + field, credential.get(field))
     deploy = value.get("deploy")
+    mode = value.get("deployment_mode", "standard")
     verification = value.get("verification")
     promotion = value.get("promotion")
     if not isinstance(deploy, dict) or not isinstance(deploy.get("enabled"), bool): _fail(key, "deploy.enabled", "must be boolean")
+    if mode not in ("standard", "contract"):
+        _fail(key, "deployment_mode", "must be 'standard' or 'contract'")
     if not isinstance(verification, dict) or not isinstance(verification.get("manual_boundary"), bool): _fail(key, "verification.manual_boundary", "must be boolean")
     accepts = promotion.get("accepts_from") if isinstance(promotion, dict) else None
     if not isinstance(accepts, list) or not all(isinstance(source, str) and KEY.fullmatch(source) for source in accepts):
         _fail(key, "promotion.accepts_from", "must be a list of profile keys")
     result = copy.deepcopy(value)
     result["source_branch"] = _text(key, "source_branch", value.get("source_branch"))
+    result["deployment_mode"] = mode
     result["promotion"]["accepts_from"] = list(accepts)
     return result
 
@@ -117,12 +124,14 @@ def normalize_setup(setup: dict) -> dict:
         if lowered in seen: raise ProfileError(f"duplicate profile key: {key}")
         seen.add(lowered)
         profile = _normalize(key, raw[key])
-        for label, store, candidate in (
-            ("source_branch", routes, profile["source_branch"]),
+        checks = [
             ("azure_devops.pipeline_yaml", paths, profile["azure_devops"]["pipeline_yaml"]),
             ("azure_devops.protected_environment", protected, profile["azure_devops"]["protected_environment"]),
             ("workspace", ownership, (profile["workspace"].get("id") or profile["workspace"]["name"]).lower()),
-        ):
+        ]
+        if profile["deployment_mode"] == "standard":
+            checks.insert(0, ("source_branch", routes, profile["source_branch"]))
+        for label, store, candidate in checks:
             if candidate in store: _fail(key, label, f"conflicts with profile {store[candidate]}")
             store[candidate] = key
         normalized[key] = profile

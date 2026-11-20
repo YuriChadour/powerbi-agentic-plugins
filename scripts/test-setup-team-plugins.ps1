@@ -114,9 +114,20 @@ try {
 
     # Copilot-only projection remains independent of Codex.
     $copilotProfile = New-TestProfile; $profiles += $copilotProfile
+    $installedPowerBi = Join-Path $copilotProfile '.copilot\installed-plugins\powerbi-agentic-plugins\powerbi'
+    $discoveredPowerBi = Join-Path $copilotProfile '.copilot\extensions\powerbi'
+    New-Item -ItemType Directory -Path $installedPowerBi,$discoveredPowerBi -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $installedPowerBi 'sentinel.txt') -Value 'installed powerbi sentinel' -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $discoveredPowerBi 'sentinel.txt') -Value 'discovered powerbi sentinel' -Encoding UTF8
+    $oldInstalledTime = (Get-Item (Join-Path $installedPowerBi 'sentinel.txt')).LastWriteTimeUtc
+    $oldDiscoveredTime = (Get-Item (Join-Path $discoveredPowerBi 'sentinel.txt')).LastWriteTimeUtc
     $code = Invoke-IsolatedSetup -Profile $copilotProfile -Arguments @{ RepositoryPath=$repo; Target='Copilot'; PluginName='fabric'; SkipCopilotCLI=$true; SkipVSCode=$true; McpLauncher=$fakeMcpLauncher }
     if ($code -ne 0) { throw 'Copilot isolated install failed.' }
     if (-not (Test-Path (Join-Path $copilotProfile '.copilot\extensions\fabric\skills\fabric-cli\SKILL.md'))) { throw 'Copilot fabric projection is missing.' }
+    if ((Get-Content (Join-Path $installedPowerBi 'sentinel.txt') -Raw).Trim() -ne 'installed powerbi sentinel') { throw 'Fabric setup modified the installed Power BI plugin.' }
+    if ((Get-Content (Join-Path $discoveredPowerBi 'sentinel.txt') -Raw).Trim() -ne 'discovered powerbi sentinel') { throw 'Fabric setup modified the discovered Power BI plugin.' }
+    if ((Get-Item (Join-Path $installedPowerBi 'sentinel.txt')).LastWriteTimeUtc -ne $oldInstalledTime) { throw 'Fabric setup rewrote the installed Power BI plugin.' }
+    if ((Get-Item (Join-Path $discoveredPowerBi 'sentinel.txt')).LastWriteTimeUtc -ne $oldDiscoveredTime) { throw 'Fabric setup rewrote the discovered Power BI plugin.' }
     if (Test-Path (Join-Path $copilotProfile '.codex')) { throw 'Copilot-only setup touched Codex state.' }
     Write-Output 'Copilot selected-plugin projection OK.'
 
@@ -175,6 +186,8 @@ try {
     if ($code -eq 0 -or (Test-Path (Join-Path $invalidProfile '.codex')) -or (Test-Path (Join-Path $invalidProfile '.copilot'))) { throw 'Invalid target was not rejected before writes.' }
     $code = Invoke-IsolatedSetup -Profile $invalidProfile -Arguments @{ RepositoryPath=$repo; PluginName='invalid-plugin'; SkipCopilotCLI=$true; SkipVSCode=$true }
     if ($code -eq 0 -or (Test-Path (Join-Path $invalidProfile '.codex')) -or (Test-Path (Join-Path $invalidProfile '.copilot'))) { throw 'Invalid plugin was not rejected before writes.' }
+    $code = Invoke-IsolatedSetup -Profile $invalidProfile -Arguments @{ RepositoryPath=$repo; PlugingName='fabric'; Force=$true; SkipCopilotCLI=$true; SkipVSCode=$true }
+    if ($code -eq 0 -or (Test-Path (Join-Path $invalidProfile '.codex')) -or (Test-Path (Join-Path $invalidProfile '.copilot'))) { throw 'Misspelled plugin selector was not rejected before writes.' }
     $code = Invoke-IsolatedSetup -Profile $invalidProfile -Arguments @{ RepositoryPath=(Join-Path $invalidProfile 'missing-repository'); Target='Codex' }
     if ($code -eq 0 -or (Test-Path (Join-Path $invalidProfile '.codex'))) { throw 'Missing repository was not rejected before writes.' }
     Write-Output 'Invalid selector and missing repository behavior OK.'
