@@ -185,6 +185,39 @@ class GenerateTests(unittest.TestCase):
         self.assertEqual(len(files), len(apply.write_files(repo, files)))
         self.assertEqual([], apply.write_files(repo, files))
 
+    def test_added_profile_renders_its_own_pipeline_workspace_and_bindings(self):
+        from profiles import normalize_setup
+        setup = normalize_setup(make_setup())
+        profile = copy.deepcopy(setup["profiles"]["TEST"])
+        profile["workspace"] = {"name": "WS TEST2", "id": "55555555-1111-4111-8111-111111111111", "create": False, "capacity": {"id": "cap", "name": "Cap"}}
+        profile["source_branch"] = "test2"
+        profile["azure_devops"].update({"pipeline_name": "Repo Fabric TEST2", "pipeline_yaml": "cicd/fabric/fabric-test2.yml", "protected_environment": "fabric-test2", "private_pool": "TEST2-Pool"})
+        setup["profiles"]["TEST2"] = profile
+        ids = dict(self.IDS, TEST2="55555555-1111-4111-8111-111111111111")
+        files = apply.generate(setup, ids)
+        config = yaml.safe_load(files["cicd/fabric/config.yml"])
+        bindings = yaml.safe_load(files["cicd/fabric/parameter.yml"])
+        self.assertEqual(ids["TEST2"], config["core"]["workspace_id"]["TEST2"])
+        self.assertIn("cicd/fabric/fabric-test2.yml", files)
+        self.assertIn("name: 'TEST2-Pool'", files["cicd/fabric/fabric-test2.yml"])
+        self.assertIn("TEST2", bindings["find_replace"][0]["replace_value"])
+
+    def test_profile_fixture_matrix_generates_legacy_test2_uat_and_go_live(self):
+        from profiles import normalize_setup
+        setup = normalize_setup(make_setup())
+        ids = dict(self.IDS)
+        for index, (key, branch) in enumerate((("TEST2", "test2"), ("UAT", "uat"), ("GO-LIVE", "go-live")), 5):
+            profile = copy.deepcopy(setup["profiles"]["TEST"])
+            workspace_id = f"{index}{index}{index}{index}{index}{index}{index}{index}-1111-4111-8111-111111111111"
+            profile["source_branch"] = branch
+            profile["workspace"] = {"name": f"WS {key}", "id": workspace_id, "create": False, "capacity": {"id": "cap", "name": "Cap"}}
+            profile["azure_devops"].update({"pipeline_name": f"Repo Fabric {key}", "pipeline_yaml": f"cicd/fabric/fabric-{key.lower()}.yml", "protected_environment": f"fabric-{key.lower()}"})
+            setup["profiles"][key] = profile
+            ids[key] = workspace_id
+        generated = apply.generate(setup, ids)
+        for key in ("DEV", "TEST", "PROD", "HOTFIX", "TEST2", "UAT", "GO-LIVE"):
+            self.assertIn(f"cicd/fabric/fabric-{key.lower()}.yml", generated)
+
 
 class StepTests(unittest.TestCase):
     def setUp(self):
@@ -200,14 +233,27 @@ class StepTests(unittest.TestCase):
         self.assertEqual([], self.ops.posts)
         self.assertFalse(any("jobs" in p or "run" in p.lower() for p, _ in self.ops.posts))
 
-    def test_grants_are_idempotent_and_cover_owner_on_test_prod(self):
+    def test_grants_are_idempotent_and_cover_owner_in_every_profile_workspace(self):
         ids = apply.bootstrap(self.setup, self.ops)
         apply.grants(self.setup, self.ops, ids)
         paths = [p for p, _ in self.ops.posts if p.endswith("roleAssignments")]
-        self.assertEqual(4 + 2 + 2, len(paths))  # SP x4 workspaces, SP+developer on the connection, owner on TEST+PROD
+        self.assertEqual(4 + 2 + 4, len(paths))  # SP x4, SP+developer on connection, owner x4 profiles
         self.ops.posts.clear()
         apply.grants(self.setup, self.ops, ids)
         self.assertEqual([], self.ops.posts)
+
+    def test_added_profile_receives_pipeline_invocation_owner_grant(self):
+        from profiles import normalize_setup
+        setup = normalize_setup(self.setup)
+        profile = copy.deepcopy(setup["profiles"]["TEST"])
+        profile["workspace"] = {"name": "WS TEST2", "id": None, "create": True, "capacity": {"id": "cap", "name": "Cap"}}
+        profile["source_branch"] = "test2"
+        profile["azure_devops"].update({"pipeline_name": "Repo Fabric TEST2", "pipeline_yaml": "cicd/fabric/fabric-test2.yml", "protected_environment": "fabric-test2"})
+        setup["profiles"]["TEST2"] = profile
+        ids = apply.bootstrap(setup, self.ops)
+        apply.grants(setup, self.ops, ids)
+        owner_grants = [(path, body) for path, body in self.ops.posts if path.endswith("/roleAssignments") and body.get("principal", {}).get("id") == OWNER]
+        self.assertIn((f"workspaces/{ids['TEST2']}/roleAssignments", {"principal": {"id": OWNER, "type": "User"}, "role": "Contributor"}), owner_grants)
 
     def test_missing_connection_permission_stops_naming_the_connection(self):
         ids = apply.bootstrap(self.setup, self.ops)

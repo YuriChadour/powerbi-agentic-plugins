@@ -16,9 +16,11 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bindings import ENVIRONMENTS, GUID, ITEM_TYPES, generate_rules  # noqa: E402
+from bindings import GUID, ITEM_TYPES, generate_rules  # noqa: E402
+from profiles import translate_v1  # noqa: E402
 
 DEFAULT_BRANCHES = {"DEV": "DEV", "TEST": "TEST", "PROD": "PROD", "HOTFIX": "hotfix/*"}
+LEGACY_PROFILE_KEYS = tuple(DEFAULT_BRANCHES)  # only for v1 command-line translation
 DEFAULT_EXCLUDED = [
     {"path": "fabric/**/Files/**", "reason": "Lakehouse data rows are not deployed by CI/CD"},
     {"path": "fabric/**/Tables/**", "reason": "Lakehouse data rows are not deployed by CI/CD"},
@@ -136,10 +138,12 @@ def scan_source(repo: Path, source_root: str) -> list[dict]:
     for folder in sorted(p for p in root.rglob("*") if p.is_dir() and p.name.endswith(suffixes)):
         item_type = folder.name.rsplit(".", 1)[1]
         try:
-            name = json.loads((folder / ".platform").read_text(encoding="utf-8"))["metadata"]["displayName"]
+            platform = json.loads((folder / ".platform").read_text(encoding="utf-8"))
+            name = platform["metadata"]["displayName"]
+            logical_id = (platform.get("config") or {}).get("logicalId")
         except (OSError, KeyError, json.JSONDecodeError):
-            name = folder.name.rsplit(".", 1)[0]
-        managed.append({"folder": str(folder.relative_to(root)).replace("\\", "/"), "type": item_type, "name": name})
+            name, logical_id = folder.name.rsplit(".", 1)[0], None
+        managed.append({"folder": str(folder.relative_to(root)).replace("\\", "/"), "type": item_type, "name": name, "logical_id": logical_id})
     return managed
 
 
@@ -221,7 +225,7 @@ def build_setup(args, tools: Tools, ask: Asker) -> dict:
     shared_kv_connection = args.key_vault_service_connection or ask("key_vault_service_connection", "key_vault_service_connection")
     shared_kv_name = args.key_vault_name or ask("key_vault_name", "key_vault_name")
     shared_kv_secret = args.key_vault_secret or ask("key_vault_secret", "key_vault_secret")
-    for env in ENVIRONMENTS:
+    for env in LEGACY_PROFILE_KEYS:
         spec = getattr(args, f"{env.lower()}_workspace")
         workspace = lookup_workspace(tools, spec, capacities)
         if env == "DEV" and workspace["create"]:
@@ -254,6 +258,10 @@ def build_setup(args, tools: Tools, ask: Asker) -> dict:
     managed = scan_source(repo, args.source_root)
     by_key = {(i["type"], i["name"]): i for i in dev_items}
     gaps = [{"item": m["folder"], "reason": "not found in the DEV workspace"} for m in managed if (m["type"], m["name"]) not in by_key]
+    for item in managed:
+        dev = by_key.get((item["type"], item["name"])) or {}
+        if dev and not (dev.get("logicalId") or item.get("logical_id")):
+            gaps.append({"item": item["folder"], "reason": "required logical_id is unresolved from DEV inventory and .platform metadata"})
     excluded_guids = sorted(set(args.exclude_guid))
     mapped = dict(pair.split("=", 1) for pair in args.map_guid)
     generated = generate_rules(repo / args.source_root, managed, dev_id, dev_items, set(excluded_guids), mapped)
@@ -268,7 +276,9 @@ def build_setup(args, tools: Tools, ask: Asker) -> dict:
         "service_principal": {"app_id": app_id, "object_id": sp},
         "environments": environments,
         "managed_items": [
-            {"folder": m["folder"], "type": m["type"], "name": m["name"], "dependencies": generated["dependencies"][m["folder"]]} for m in managed
+            {"folder": m["folder"], "type": m["type"], "name": m["name"],
+             "logical_id": (by_key.get((m["type"], m["name"])) or {}).get("logicalId") or m.get("logical_id"),
+             "dependencies": generated["dependencies"][m["folder"]]} for m in managed
         ],
         "excluded": DEFAULT_EXCLUDED,
         "connections": connections,
@@ -283,25 +293,27 @@ def build_setup(args, tools: Tools, ask: Asker) -> dict:
 
 def render_markdown(setup: dict) -> str:
     out = ["# Fabric CI/CD setup", "", "Review this file, edit `setup.yml` if anything is wrong, then run `approve.py`.", ""]
-    blocking = setup["gaps"] or setup["open_questions"]
+    blocking = setup["gaps"] or setup["open_questions"] or setup.get("unacknowledged_overwrites")
     out += ["## Status", "", "BLOCKED: resolve the items below, then re-run plan." if blocking else "Ready for review: no blocking gaps.", ""]
     if setup["open_questions"]:
         out += ["### Open questions", ""] + [f"- `{q['key']}`: {q['question']} (e.g. `{q['example']}`)" for q in setup["open_questions"]] + [""]
     if setup["gaps"]:
         out += ["### Blocking gaps", ""] + [f"- {g.get('file') or g['item']}: {g.get('guid', '')} {g['reason']}".replace("  ", " ") for g in setup["gaps"]] + [""]
+    if setup.get("regeneration_overwrites"):
+        out += ["## Regeneration overwrite review", ""] + [f"- `{path}`" for path in setup["regeneration_overwrites"]] + [""]
+    if setup.get("unacknowledged_overwrites"):
+        out += ["### Blocking unrecognized files", "", "Add these reviewed paths to `overwrite_acknowledged` in `setup.yml` before approval:", ""] + [f"- `{path}`" for path in setup["unacknowledged_overwrites"]] + [""]
     sp = setup["service_principal"]
     out += ["## Protected identity", "", f"- Application ID `{sp['app_id']}`, object ID `{sp['object_id']}`", ""]
-    for env, cfg in setup["environments"].items():
-        ws, vg = cfg["workspace"], cfg["variable_group"]
+    for env, profile in setup["profiles"].items():
+        ws, ado, vault = profile["workspace"], profile["azure_devops"], profile["credentials"]["key_vault"]
         out += [f"## {env}", ""]
         out.append(f"- Workspace: {'create' if ws['create'] else 'reuse'} `{ws['name']}`" + (f" (`{ws['id']}`)" if ws["id"] else "") + f" on capacity `{(ws['capacity'] or {}).get('name')}`")
-        out.append(f"- Roles: service principal `Contributor`" + ("; pipeline-invocation connection owner `Contributor`" if env in ("TEST", "PROD") else ""))
+        out.append("- Roles: service principal and pipeline-invocation connection owners `Contributor`")
         out.append(f"- Lakehouses: create any missing, schema-enabled, with the developer session")
-        out.append(f"- Pipeline: `{cfg['pipeline_name']}` from `{cfg['pipeline_yaml']}`, trigger branch `{cfg['branch']}`")
-        out.append(f"- Variable group `{vg['name']}` ({'found' if vg['exists'] else 'missing' if vg['exists'] is False else 'not checked'}); environment `{cfg['ado_environment']}`")
-        pool = cfg["private_pool"]
-        vault = cfg["key_vault"]
-        out.append(f"- Protected job pool `{pool['name']}` ({'found' if pool['exists'] else 'missing' if pool['exists'] is False else 'not checked'})")
+        out.append(f"- Route: `{profile['source_branch']}`; pipeline: `{ado['pipeline_name']}` from `{ado['pipeline_yaml']}`; target: `{ado['protected_environment']}`")
+        out.append(f"- Variable group `{ado['variable_group']}`; protected job pool `{ado['private_pool']}`")
+        out.append(f"- Promotion sources: `{', '.join(profile['promotion']['accepts_from']) or 'none'}`; verification boundary: `{'manual' if profile['verification']['manual_boundary'] else 'automatic'}`")
         out.append(f"- WIF Key Vault connection `{vault['service_connection']}`, vault `{vault['name']}`, secret reference `{vault['secret']}`")
         out.append("")
     out += ["## Managed items", ""] + [f"- {m['type']}: `{m['folder']}`" for m in setup["managed_items"]] + [""]
@@ -328,7 +340,7 @@ def main(argv=None, tools: Tools | None = None) -> int:
     parser.add_argument("--repo", default=".")
     parser.add_argument("--source-root", default="fabric")
     parser.add_argument("--out", default="cicd/fabric")
-    for env in ENVIRONMENTS:
+    for env in LEGACY_PROFILE_KEYS:
         parser.add_argument(f"--{env.lower()}-workspace", required=True, help=f"{env} workspace name or ID")
         parser.add_argument(f"--variable-group-{env.lower()}")
         parser.add_argument(f"--private-pool-{env.lower()}")
@@ -354,6 +366,15 @@ def main(argv=None, tools: Tools | None = None) -> int:
     answers.update(a.split("=", 1) for a in args.answer)
     ask = Asker(answers, prompt=not args.no_prompt and sys.stdin.isatty())
     setup = build_setup(args, tools or Tools(), ask)
+    # Keep the legacy view during the migration window for readable plan output,
+    # while making profiles the approved/apply-time source of truth.
+    setup["profiles"] = translate_v1(setup)["profiles"]
+    setup["version"] = 2
+    existing = sorted(str(path.relative_to(Path(args.repo).resolve())).replace("\\", "/") for path in out.rglob("*") if path.is_file()) if out.exists() else []
+    planning_files = {str((out / name).relative_to(Path(args.repo).resolve())).replace("\\", "/") for name in ("setup.yml", "setup.approved", "SETUP.md")}
+    acknowledged = set(setup.get("overwrite_acknowledged", []))
+    setup["regeneration_overwrites"] = [path for path in existing if path not in planning_files]
+    setup["unacknowledged_overwrites"] = [path for path in setup["regeneration_overwrites"] if path not in acknowledged]
     out.mkdir(parents=True, exist_ok=True)
     (out / "setup.yml").write_text(yaml.safe_dump(setup, sort_keys=True, default_flow_style=False), encoding="utf-8")
     (out / "SETUP.md").write_text(render_markdown(setup), encoding="utf-8")

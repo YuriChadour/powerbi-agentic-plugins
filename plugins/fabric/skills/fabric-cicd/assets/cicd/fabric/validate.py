@@ -11,7 +11,6 @@ from pathlib import Path
 
 import yaml
 
-from release_contract import ENVIRONMENTS
 from validate_notebooks import validate_notebooks
 
 GUID = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])")
@@ -72,7 +71,9 @@ def is_excluded(relative: str, manifest: dict) -> bool:
 
 
 def validate_workspace_contract(manifest: dict) -> list[str]:
-    workspaces = {env: manifest.get(f"{env.lower()}_workspace") for env in ENVIRONMENTS}
+    profile_map = manifest.get("profiles") if isinstance(manifest.get("profiles"), dict) else {}
+    environments = tuple(profile_map) or ("DEV", "TEST", "PROD", "HOTFIX")
+    workspaces = {env: (profile_map[env].get("workspace") if profile_map else manifest.get(f"{env.lower()}_workspace")) for env in environments}
     missing = [env for env, workspace in workspaces.items() if not isinstance(workspace, dict)]
     if missing:
         return ["missing workspace mapping(s): " + ", ".join(missing)]
@@ -81,9 +82,9 @@ def validate_workspace_contract(manifest: dict) -> list[str]:
     if any(not isinstance(value, str) or not GUID.fullmatch(value) for value in ids.values()):
         errors.append("every workspace mapping must contain a valid GUID")
     if len(set(ids.values())) != len(ids):
-        errors.append("workspace IDs must be distinct across " + ", ".join(ENVIRONMENTS))
-    for env in ("TEST", "PROD", "HOTFIX"):
-        if not isinstance(workspaces[env].get("capacity"), dict):
+        errors.append("workspace IDs must be distinct across " + ", ".join(environments))
+    for env, workspace in workspaces.items():
+        if not isinstance(workspace.get("capacity"), dict):
             errors.append(f"{env} workspace must record its approved capacity")
     return errors
 
@@ -137,6 +138,7 @@ def validate(root: Path, manifest_path: Path, output: Path) -> int:
     errors.extend(validate_bindings(root, fabric))
     errors.extend(validate_copy_jobs(fabric, expected))
     errors.extend(validate_connection_bindings(root / "cicd" / "fabric" / "connection-bindings.yml"))
+    environments = list((manifest.get("profiles") or {}).keys()) or ["DEV", "TEST", "PROD", "HOTFIX"]
     result = {
         "manifest_version": manifest["version"],
         "source_root": "fabric",
@@ -144,10 +146,11 @@ def validate(root: Path, manifest_path: Path, output: Path) -> int:
         "managed_items": manifest["managed_items"],
         "errors": errors,
         "unpublish_skip": True,
-        "environments": list(ENVIRONMENTS),
+        "environments": environments,
+        "profiles": manifest.get("profiles"),
         "hashes": {name: sha256(path) for name, path in sorted(actual.items())},
     }
-    for env in ENVIRONMENTS:
+    for env in environments:
         result[f"{env.lower()}_workspace"] = manifest.get(f"{env.lower()}_workspace")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -171,12 +174,14 @@ def validate_bindings(root: Path, fabric: Path) -> list[str]:
     unmapped = sorted(connections - set(rules))
     if unmapped:
         errors.append("unmapped Fabric pipeline connection reference(s): " + ", ".join(unmapped))
+    manifest = load(root / "cicd" / "fabric" / "managed-items.yml") or {}
+    environments = set((manifest.get("profiles") or {}).keys()) or {"DEV", "TEST", "PROD", "HOTFIX"}
     incomplete = sorted(
         cid for cid in connections & set(rules)
-        if not isinstance(rules[cid].get("replace_value"), dict) or not set(ENVIRONMENTS) <= set(rules[cid]["replace_value"])
+        if not isinstance(rules[cid].get("replace_value"), dict) or not environments <= set(rules[cid]["replace_value"])
     )
     if incomplete:
-        errors.append("pipeline connection mapping(s) must define " + ", ".join(ENVIRONMENTS) + ": " + ", ".join(incomplete))
+        errors.append("pipeline connection mapping(s) must define " + ", ".join(sorted(environments)) + ": " + ", ".join(incomplete))
     return errors
 
 

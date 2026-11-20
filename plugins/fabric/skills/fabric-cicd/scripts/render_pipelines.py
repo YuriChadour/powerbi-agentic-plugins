@@ -20,28 +20,26 @@ def substitute(template: str, values: dict[str, str]) -> str:
 
 
 def render_all(setup: dict) -> dict[str, str]:
-    """setup: branches{env: branch}, environments{env: workspace_id, variable_group, ado_environment, pipeline_name}."""
+    """Render all configured profiles; the legacy four-profile input still works."""
     branches, envs = setup["branches"], setup["environments"]
+    profiles = setup.get("profiles", {})
     files = {"validation-steps.yml": (TEMPLATES / "validation-steps.yml").read_text(encoding="utf-8")}
-    release = (TEMPLATES / "fabric-release.yml").read_text(encoding="utf-8")
-    for env in ("DEV", "TEST", "HOTFIX"):
+    release, promotion = ((TEMPLATES / name).read_text(encoding="utf-8") for name in ("fabric-release.yml", "fabric-prod.yml"))
+    for env in sorted(envs):
+        cfg, profile = envs[env], profiles.get(env, {})
+        filename = (profile.get("azure_devops") or {}).get("pipeline_yaml", "").rsplit("/", 1)[-1] or FILES.get(env, f"fabric-{env.lower()}.yml")
         values = {
             "ENV": env, "env": env.lower(), "ENV_TITLE": env.title(), "BRANCH": branches[env],
-            "WORKSPACE_ID": envs[env]["workspace_id"], "VARIABLE_GROUP": envs[env]["variable_group"],
-            "ADO_ENVIRONMENT": envs[env]["ado_environment"], "PRIVATE_POOL": envs[env]["private_pool"],
-            "KEY_VAULT_SERVICE_CONNECTION": envs[env]["key_vault_service_connection"],
-            "KEY_VAULT_NAME": envs[env]["key_vault_name"], "KEY_VAULT_SECRET": envs[env]["key_vault_secret"],
+            "WORKSPACE_ID": cfg["workspace_id"], "VARIABLE_GROUP": cfg["variable_group"],
+            "ADO_ENVIRONMENT": cfg["ado_environment"], "PRIVATE_POOL": cfg["private_pool"],
+            "KEY_VAULT_SERVICE_CONNECTION": cfg["key_vault_service_connection"],
+            "KEY_VAULT_NAME": cfg["key_vault_name"], "KEY_VAULT_SECRET": cfg["key_vault_secret"],
         }
-        files[FILES[env]] = substitute(release, values)
-    files[FILES["PROD"]] = substitute(
-        (TEMPLATES / "fabric-prod.yml").read_text(encoding="utf-8"),
-        {
-            "BRANCH": branches["PROD"], "TEST_BRANCH": branches["TEST"],
-            "TEST_PIPELINE": envs["TEST"]["pipeline_name"], "HOTFIX_PIPELINE": envs["HOTFIX"]["pipeline_name"],
-            "WORKSPACE_ID": envs["PROD"]["workspace_id"], "VARIABLE_GROUP": envs["PROD"]["variable_group"],
-            "ADO_ENVIRONMENT": envs["PROD"]["ado_environment"], "PRIVATE_POOL": envs["PROD"]["private_pool"],
-            "KEY_VAULT_SERVICE_CONNECTION": envs["PROD"]["key_vault_service_connection"],
-            "KEY_VAULT_NAME": envs["PROD"]["key_vault_name"], "KEY_VAULT_SECRET": envs["PROD"]["key_vault_secret"],
-        },
-    )
+        sources = (profile.get("promotion") or {}).get("accepts_from", []) or (["TEST", "HOTFIX"] if env == "PROD" and not profiles else [])
+        if sources:
+            first, second = sources[0], sources[1] if len(sources) > 1 else sources[0]
+            values.update({"TEST_BRANCH": branches[first], "TEST_PIPELINE": envs[first]["pipeline_name"], "HOTFIX_PIPELINE": envs[second]["pipeline_name"]})
+            files[filename] = substitute(promotion, values)
+        else:
+            files[filename] = substitute(release, values)
     return dict(sorted(files.items()))

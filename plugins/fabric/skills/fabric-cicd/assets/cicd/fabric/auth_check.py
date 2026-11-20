@@ -10,9 +10,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", action="append", required=True)
     args = parser.parse_args()
-    tenant = os.getenv("FABRIC_TENANT_ID") or os.getenv("AZURE_TENANT_ID")
-    client = os.getenv("FABRIC_APP_ID") or os.getenv("AZURE_CLIENT_ID")
-    secret = os.getenv("FABRIC_APP_SECRET") or os.getenv("AZURE_CLIENT_SECRET")
+    tenant = os.getenv("FABRIC_TENANT_ID")
+    client = os.getenv("FABRIC_APP_ID")
+    secret = os.getenv("FABRIC_APP_SECRET")
     if not all((tenant, client, secret)):
         raise SystemExit("protected Fabric identity variables are not available")
     token = ClientSecretCredential(tenant, client, secret).get_token("https://api.fabric.microsoft.com/.default").token

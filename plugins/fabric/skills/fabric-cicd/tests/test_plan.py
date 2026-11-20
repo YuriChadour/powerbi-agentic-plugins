@@ -104,6 +104,25 @@ class PlanTests(unittest.TestCase):
         self.assertIn((LAKE_LOGICAL, "$items.Lakehouse.Lake.$id"), rules)
         self.assertIn((CONNECTION, CONNECTION), rules)
 
+    def test_platform_logical_id_is_discovered_without_guessing(self) -> None:
+        platform = self.repo / "fabric" / "Logical.Notebook" / ".platform"
+        platform.parent.mkdir(parents=True)
+        platform.write_text(json.dumps({"metadata": {"displayName": "Logical"}, "config": {"logicalId": "eeeeeeee-1111-4111-8111-111111111111"}}), encoding="utf-8")
+        found = {item["name"]: item for item in plan.scan_source(self.repo, "fabric")}
+        self.assertEqual("eeeeeeee-1111-4111-8111-111111111111", found["Logical"]["logical_id"])
+
+    def test_setup_review_lists_profile_contract_and_unrecognized_overwrites(self) -> None:
+        custom = self.repo / "cicd" / "fabric" / "custom-uat.yml"
+        custom.parent.mkdir(parents=True, exist_ok=True)
+        custom.write_text("custom\n", encoding="utf-8")
+        self.run_plan("--answer", "capacity.PROD=Cap", "--answer", "capacity.HOTFIX=Cap", "--exclude-guid", UNKNOWN)
+        text = (self.repo / "cicd/fabric/SETUP.md").read_text(encoding="utf-8")
+        self.assertIn("Regeneration overwrite review", text)
+        self.assertIn("custom-uat.yml", text)
+        self.assertIn("Promotion sources", text)
+        self.assertIn("verification boundary", text)
+        self.assertIn("unacknowledged_overwrites", self.setup())
+
 
 if __name__ == "__main__":
     unittest.main()

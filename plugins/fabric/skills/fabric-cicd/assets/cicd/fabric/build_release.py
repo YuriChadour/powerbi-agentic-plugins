@@ -9,7 +9,8 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-from release_contract import ENVIRONMENTS, artifact_digest, deployment_relevant_names
+from release_contract import artifact_digest, deployment_relevant_names
+from profile_loader import profile_keys
 
 
 def revision(root: Path) -> str:
@@ -29,12 +30,14 @@ def main() -> None:
     parser.add_argument("--root", default=".")
     parser.add_argument("--validation", default="artifacts/managed-manifest.json")
     parser.add_argument("--out", default="artifacts/release.zip")
-    parser.add_argument("--target", choices=list(ENVIRONMENTS), required=True)
+    parser.add_argument("--target", required=True)
     parser.add_argument("--expected-revision")
     args = parser.parse_args()
 
     root, out = Path(args.root).resolve(), Path(args.out).resolve()
     data = json.loads((root / args.validation).resolve().read_text(encoding="utf-8"))
+    if args.target not in profile_keys(data):
+        raise SystemExit(f"target '{args.target}' is not a configured profile")
     data["revision"] = revision(root)
     data["artifact_target"] = args.target
     if args.expected_revision and data["revision"] != args.expected_revision:

@@ -8,6 +8,7 @@ for that commit, blocks before any target write.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import subprocess
@@ -15,6 +16,9 @@ import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+import yaml
+from profile_loader import load_manifest
 
 
 def choose(source_branch: str, test_branch: str, test_pipeline: str, hotfix_pipeline: str) -> tuple[str, str, str]:
@@ -24,6 +28,26 @@ def choose(source_branch: str, test_branch: str, test_pipeline: str, hotfix_pipe
     if source_branch.startswith("hotfix/"):
         return "HOTFIX", hotfix_pipeline, source_branch
     raise SystemExit(f"merge into PROD came from '{source_branch}'; only '{test_branch}' or 'hotfix/*' pull requests may be promoted")
+
+
+def choose_profile(source_branch: str, profiles: dict, target: str) -> tuple[str, str, str]:
+    """Resolve one accepted source profile from the approved manifest, fail closed."""
+    destination = profiles.get(target)
+    if not isinstance(destination, dict):
+        raise SystemExit(f"target profile '{target}' is not configured")
+    accepted = (destination.get("promotion") or {}).get("accepts_from", [])
+    matches = []
+    for key in accepted:
+        profile = profiles.get(key, {})
+        branch = profile.get("source_branch")
+        if isinstance(branch, str) and fnmatch.fnmatchcase(source_branch, branch):
+            pipeline = (profile.get("azure_devops") or {}).get("pipeline_name")
+            if not isinstance(pipeline, str) or not pipeline:
+                raise SystemExit(f"source profile '{key}' has no pipeline name")
+            matches.append((key, pipeline, source_branch))
+    if len(matches) != 1:
+        raise SystemExit(f"source branch '{source_branch}' is not routed to exactly one accepted profile for {target}")
+    return matches[0]
 
 
 def api(url: str, token: str) -> dict:
@@ -61,6 +85,8 @@ def main() -> None:
     parser.add_argument("--hotfix-pipeline", required=True)
     parser.add_argument("--merge-commit", required=True)
     parser.add_argument("--download-to", required=True, type=Path)
+    parser.add_argument("--profiles", type=Path, help="approved managed-items.yml containing profiles")
+    parser.add_argument("--target-profile", help="promotion destination profile")
     args = parser.parse_args()
     token = os.environ.get("SYSTEM_ACCESSTOKEN")
     if not token:
@@ -69,7 +95,15 @@ def main() -> None:
     pr = merged_pull_request(args.org_url, args.project, args.repository, args.prod_branch, args.merge_commit, token)
     source_branch = pr["sourceRefName"].removeprefix("refs/heads/")
     source_commit = pr["lastMergeSourceCommit"]["commitId"]
-    target, pipeline, branch = choose(source_branch, args.test_branch, args.test_pipeline, args.hotfix_pipeline)
+    if bool(args.profiles) != bool(args.target_profile):
+        raise SystemExit("--profiles and --target-profile must be supplied together")
+    if args.profiles:
+        profiles = load_manifest(args.profiles).get("profiles")
+        if not isinstance(profiles, dict):
+            raise SystemExit("approved manifest has no profiles registry")
+        target, pipeline, branch = choose_profile(source_branch, profiles, args.target_profile)
+    else:
+        target, pipeline, branch = choose(source_branch, args.test_branch, args.test_pipeline, args.hotfix_pipeline)
     build_id = successful_build(args.org_url, args.project, pipeline, branch, source_commit, token)
     artifact = f"fabric-{target.lower()}-release"
     args.download_to.mkdir(parents=True, exist_ok=True)

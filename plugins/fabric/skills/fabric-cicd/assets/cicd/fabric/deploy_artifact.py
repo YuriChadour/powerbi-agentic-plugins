@@ -18,7 +18,7 @@ import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from release_contract import ENVIRONMENTS, workspace_contract
+from release_contract import workspace_contract
 
 
 def archive_members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
@@ -116,9 +116,9 @@ def deploy(root: Path, environment: str, approved_app_id: str, expected_workspac
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--artifact", required=True)
-    parser.add_argument("--environment", required=True, choices=list(ENVIRONMENTS))
+    parser.add_argument("--environment", required=True)
     parser.add_argument("--expected-revision")
-    parser.add_argument("--artifact-target", choices=list(ENVIRONMENTS), help="build environment of the artifact; defaults to --environment (PROD consumes TEST or HOTFIX)")
+    parser.add_argument("--artifact-target", help="configured profile that built the artifact; defaults to --environment")
     parser.add_argument("--extract-to")
     parser.add_argument("--extracted-root")
     parser.add_argument("--verify-only", action="store_true")
