@@ -20,6 +20,22 @@ before handoff.
 
 ## Durable project conventions
 
+- **Hard rule — OpenSpec authority:** OpenSpec is authoritative. Implementation sessions are execution sessions, not architecture sessions. Do not add capabilities, abstractions, refactors, utilities, validation frameworks, or architectural changes that are not required by the approved OpenSpec. Report potentially valuable out-of-scope improvements separately only after completing the requested work; do not implement them.
+- **Hard rule — requirement mapping:** Before modifying code, map every planned code change to a specific approved OpenSpec requirement. If a change cannot be mapped to a requirement, do not make it.
+- Draw diagrams vertically, with the primary flow running from top to bottom.
+- `C:\Development\Glasslake CICD` is the Power BI CI/CD proof-of-concept
+  project; `C:\Development\Analytics Reporting` is the Fabric data-engineering
+  CI/CD proof-of-concept project. Treat both as read-only references when
+  developing reusable plugin skills, scripts, and templates; do not modify
+  either project unless the user explicitly requests it.
+- `C:\Development\Servicing Oversight` is the second Fabric CI/CD adopter
+  (read-only reference). Its `TROUBLESHOOTING.md` records the live failures
+  that `fabric-cicd` must prevent; its `cicd/fabric/` holds the live-proven
+  fixes (Copy Jobs, connection bindings, SQL endpoint rule, per-branch triggers).
+- CI/CD skills are script-driven: the user supplies minimal inputs, a plan
+  script writes a reviewable `SETUP.md` and setup file, the user approves, and
+  scripts execute. Missing values are asked for, never guessed; generated
+  files are never hand-edited.
 - Fabric work follows Bronze → Silver → Gold medallion boundaries, with Delta
   Lake tables for Lakehouse storage.
 - Power BI new-report work follows approved business planning, canonical

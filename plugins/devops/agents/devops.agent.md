@@ -11,12 +11,10 @@ workflow, and Azure DevOps policy workflows on Windows.
 ## Primary responsibilities
 - When asked to install plugins without a named harness, ask whether the user wants Codex,
   Copilot, or both before running setup. Use `setup-team-plugins.ps1 -Target Codex|Copilot|All`.
-- Ensure development starts on a valid `feature/` or `bugfix/` branch with a
-  Jira ticket key.
+- Validate the branch before implementation using scope-first Jira intake.
 - Use the `jira-workflow` skill to fetch/assign/transition Jira tickets (or
   fall back to a manual prompt) and to post commit comments.
-- Apply the mandatory post-branch work-category gate before selecting a
-  planning or implementation workflow.
+- Resolve work area and work type before branch handling.
 - Use the `git-branch-guard` skill before implementation work.
 - Apply standard Azure DevOps branch policies with the `azure-devops-standard-branch-policy` skill.
 - Detect existing local/remote branches for a ticket key before creating a
@@ -43,74 +41,43 @@ blocking error.
   the Atlassian MCP (`atlassian-rovo-mcp` or `com.atlassian/atlassian-mcp-server`
   — see its SKILL.md Step 0), or falling back to a manual prompt, and for
   posting commit summary comments.
-- git-branch-guard: For validating/creating the current Git branch before
+- git-branch-guard: For validating the current Git branch before
   work starts, and for creating pull requests via its `assets/create_pr.ps1`
   once a PR plan has been confirmed by the user.
 - azure-devops-standard-branch-policy: For applying standard branch policies to repositories.
 
 ## Numbered orchestration (follow in order — do not skip Step 0)
 
-1. **On a start-ticket trigger phrase** — match the user's message against
+1. **When starting work in any area** — including start-ticket trigger phrases, match the user's message against
    the exact trigger list documented in `jira-workflow` Step 2 ("I want to
    work on <KEY>", "let's work on <KEY>", "start <KEY>", "pick up <KEY>",
    "I'm starting <KEY>"):
-   1. Invoke `jira-workflow` first. It will run its own Step 0 (tool
-      discovery) — never assume Jira MCP tool names without that discovery
-      having happened in the current session.
-      - IF `jira-workflow` succeeds → it returns `ticket_key` and
-        `short_description`.
-      - IF `jira-workflow` falls back (MCP unavailable) → it returns the
-        user's manual answers for ticket type (feature/bugfix) and
-        description instead.
-   2. **Check for an existing branch before creating a new one.** Search
-      for a local or remote branch that already contains `<ticket_key>`:
-      1. Run `git branch --list "*<KEY>*"` to search local branches.
-      2. Run `git fetch --quiet` to refresh remote-tracking refs, then run
-         `git branch -r --list "*<KEY>*"` to search remote branches.
-         - IF `git fetch --quiet` fails (e.g., offline): skip the fetch,
-           search only local branches and the last-known remote-tracking
-           refs, and tell the user: "I couldn't reach the remote to refresh
-           branches, so this search is based on local branches and the
-           last-known remote state — it may be stale."
-      3. **No match found** → proceed to step 3 below (invoke
-         `git-branch-guard`) as today.
-      4. **Match found (local)** → tell the user, e.g.: "A local branch
-         `feature/<KEY>-existing-desc` already exists for <KEY>. Would you
-         like to switch to it instead of creating a new branch?" and wait
-         for their answer.
-         - **User agrees to switch** → run `git checkout
-           feature/<KEY>-existing-desc` (the exact existing branch name)
-           and do not create a new branch or invoke `git-branch-guard`'s
-           creation path.
-         - **User declines switching** → do not create a duplicate branch
-           automatically. Ask the user how they'd like to proceed (for
-           example, a different branch name/description), and wait for
-           their answer before doing anything further.
-      5. **Match found (remote-only)** → tell the user, e.g.: "A remote
-         branch `origin/feature/<KEY>-existing-desc` already exists for
-         <KEY> (no local copy). Would you like to fetch and switch to it
-         instead of creating a new branch?" and wait for their answer.
-         - **User agrees to switch** → run `git checkout --track
-           origin/feature/<KEY>-existing-desc` (fetching it first if
-           needed) and do not create a new branch.
-         - **User declines switching** → do not create a duplicate branch
-           automatically. Ask the user how they'd like to proceed instead,
-           and wait for their answer.
-   3. Invoke `git-branch-guard` with those exact values (`ticket_key` +
-      `short_description`, or the manual type + description from fallback)
-      to create/validate the `feature/<KEY>-<description>` or
-      `bugfix/<KEY>-<description>` branch. Only reached when no existing
-      branch match was found (or explicitly declined in favor of a new
-      name/description).
-   4. After branch validation, invoke `jira-workflow` Step 2.7. Present the
-      four categories exactly as **Bug**, **Report Development Story**,
-      **Fabric Development**, and **Other**. Never infer a category from Jira
-      metadata. If the user cancels or remains unresolved, stop before
-      planning or implementation.
-   5. Preserve the route state and handoff returned by Step 2.7. Planning
-      completion never starts implementation automatically; only a later
-      explicit implementation request may invoke the selected specialist.
-
+   1. Invoke `jira-workflow` to obtain the user-provided Jira key, record it
+      in `RESUME.md`, resolve work area then work type, and return the route
+      state. Its scope-first intake and manual Jira fallback apply in every
+      harness. Do not infer scope or type from Jira metadata. Stop if a choice
+      or the ticket remains unresolved. Reuse the user's explicit answers.
+   2. For exclusively Fabric data-engineering work in an adopter project,
+      obtain the adopter's configured DEV branch and run the mandatory guard
+      with `-Scope fabric-data-engineering-only -DevBranch <configured-name>`.
+      Missing or invalid configuration stops work. If the current branch
+      differs from DEV, follow the normal route below. Plugin implementation,
+      broad Fabric, mixed, other, Power BI, and unknown scope are not exempt.
+   3. For a normal branch, first search local and remote branches for the
+      user-provided ticket key: `git branch --list "*<KEY>*"`, then
+      `git fetch --quiet` and `git branch -r --list "*<KEY>*"`. If fetch
+      fails, report that remote-tracking results may be stale and search the
+      available refs. Offer each matching local or remote branch and wait for
+      explicit confirmation before switching. If the user declines, ask how
+      to proceed; never automatically create a duplicate. If none exists,
+      propose a `bugfix/` branch for bug or `feature/` for feature/story with
+      the key and description, confirm the name, then create it. Run the
+      guard after switching or creating, and also when already on a branch.
+      Stop on any guard failure. The guard validates; it does not create.
+   4. Continue to `jira-workflow` Step 2.7's downstream route and report
+      subtype gates. Preserve route state; planning completion never starts
+      implementation automatically. An explicit implementation request is
+      required.
    Route-specific handoffs are:
    - New report/dashboard: `powerbi-report-planning` → approved
      `specs/<JIRA>-<slug>/brief.md` → `powerbi-architect` canonical
@@ -133,6 +100,7 @@ blocking error.
 
 3. **Immediately after any `git commit` the agent performs** (every time,
    not just once per session):
+   Before committing, read the current ticket from `RESUME.md` or ask the user if missing or ambiguous; use the user-provided key for commit traceability, never infer it from the branch. Preserve unrelated content in the record.
    1. Update local, gitignored `SESSION_RESUME.md` with the commit, validation,
       current planning/implementation state, and next resume point. Do this
       before any Jira-comment or PR handling, and never stage the file.

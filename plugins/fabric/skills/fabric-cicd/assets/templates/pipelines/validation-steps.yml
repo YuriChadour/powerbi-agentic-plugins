@@ -1,0 +1,17 @@
+steps:
+- checkout: self
+  persistCredentials: false
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.11'
+- script: python -m pip install -r cicd/fabric/requirements-fabric-cicd.lock
+  displayName: Install pinned validation toolchain
+- script: python cicd/fabric/validate_config.py --environment DEV --environment TEST --environment PROD --environment HOTFIX
+  displayName: Run native fabric-cicd configuration validation
+- script: python cicd/shared/secret_scan.py --verify-synthetic-fixture
+  displayName: Scan repository for credentials and accidental data exports
+- script: python cicd/fabric/validate.py --output "$(Build.ArtifactStagingDirectory)/managed-manifest.json"
+  displayName: Validate complete Fabric scope and secret safety
+- publish: $(Build.ArtifactStagingDirectory)/managed-manifest.json
+  artifact: pr-validation
+  displayName: Publish resolved manifest
