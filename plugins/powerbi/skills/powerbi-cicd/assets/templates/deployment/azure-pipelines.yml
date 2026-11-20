@@ -1,0 +1,41 @@
+trigger:
+  branches: { include: [{{POWERBI_BRANCHES}}] }
+  paths: { include: [{{POWERBI_SOURCE_ROOT}}/**, {{POWERBI_CI_FOLDER}}/**] }
+pr:
+  branches: { include: [{{POWERBI_PR_BRANCHES}}] }
+
+parameters:
+  - { name: artifactName, type: string, default: powerbi-release }
+  - { name: configPath, type: string, default: {{POWERBI_CI_FOLDER}}/bootstrap-config.json }
+  - { name: manifestPath, type: string, default: {{POWERBI_CI_FOLDER}}/powerbi-assets.yml }
+  - { name: testDigest, type: string, default: '' }
+  - { name: liveInventoryPath, type: string, default: '' }
+
+stages:
+  - stage: Validate
+    pool:
+      vmImage: ubuntu-latest
+    jobs:
+      - job: OfflineValidation
+        steps:
+          - script: >-
+              python deployment/scripts/powerbi_cicd.py validate --config '${{ parameters.configPath }}'
+              --manifest '${{ parameters.manifestPath }}' --repo .
+            displayName: Validate approved Power BI source boundary
+  - stage: BuildRelease
+    dependsOn: Validate
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/{{POWERBI_DEV_BRANCH}}'), startsWith(variables['Build.SourceBranch'], 'refs/heads/hotfix/')))
+    pool:
+      vmImage: ubuntu-latest
+    jobs:
+      - job: PackageOnce
+        steps:
+          - bash: |
+              set -euo pipefail
+              target=TEST
+              if [[ '$(Build.SourceBranch)' == refs/heads/hotfix/* ]]; then target=HOTFIX; fi
+              python deployment/scripts/build_release.py --config '${{ parameters.configPath }}' --manifest '${{ parameters.manifestPath }}' --repo . --target "$target" --out '$(Build.ArtifactStagingDirectory)/${{ parameters.artifactName }}.zip' --revision '$(Build.SourceVersion)'
+            displayName: Package immutable release once
+          - publish: '$(Build.ArtifactStagingDirectory)/${{ parameters.artifactName }}.zip'
+            artifact: ${{ parameters.artifactName }}
+{{POWERBI_DEPLOY_STAGES}}

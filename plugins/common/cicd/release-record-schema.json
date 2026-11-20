@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Non-secret CI/CD review and approval record",
+  "type": "object",
+  "required": ["contract_revision", "source_scope", "targets", "approval"],
+  "properties": {
+    "contract_revision": {"type": "string"},
+    "source_scope": {"type": "array", "items": {"type": "string"}},
+    "targets": {"type": "object"},
+    "approval": {"enum": ["pending", "approved"]}
+  },
+  "additionalProperties": false
+}
