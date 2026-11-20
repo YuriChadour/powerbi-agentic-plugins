@@ -19,7 +19,10 @@ class Ops:
         executable = shutil.which(command[0])
         if not executable:
             raise StepError(f"'{command[0]}' is not installed or not on PATH; install it and sign in as the developer")
-        return subprocess.run([executable, *command[1:]], capture_output=True, text=True)
+        try:
+            return subprocess.run([executable, *command[1:]], capture_output=True, text=True, timeout=15)
+        except subprocess.TimeoutExpired as exc:
+            raise StepError(f"{command[0]} command timed out after 15 seconds: {' '.join(command[1:3])}") from exc
 
     def fab_get(self, path: str):
         done = self._run(["fab", "api", path])
