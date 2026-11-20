@@ -9,6 +9,12 @@ chats/
 
 **/scripts/_tools
 
+# Cygwin/MSYS crash artifacts
+*.stackdump
+
+# Claude Code machine-local permission cache
+.claude/settings.local.json
+
 .venv/
 __pycache__/
 *.pyc

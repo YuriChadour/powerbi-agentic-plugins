@@ -44,6 +44,8 @@ mock generation, ingestion, and binding tooling are not provided here.
 Use @setup-team-plugins.ps1 -PluginName powerbi to install only the Power BI plugin.
 ```
 
+For Claude Code: `.\setup-claude-plugins.ps1 -PluginName powerbi`
+
 ### `powerbi-architect`
 
 Activated when a user needs to design a Power BI solution before implementation. For new reports, consumes an approved `brief.md` and produces the canonical `specs/<work-item>/<Name>.spec.md` for the `powerbi-developer` agent to execute. Does not implement — only designs. Plans a progressive measure-test task chain (`sync` → developer certification → `generate`+`run`, with optional additive business certification) for every new/modified measure using the `dax-unit-testing` skill's registry contract.

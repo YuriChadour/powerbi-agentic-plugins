@@ -34,16 +34,31 @@ user confirmation flow. Always validate after switching or creating a branch.
 
 From the target Git repository, use the installed script's actual path:
 
+On Windows / PowerShell environments:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File <skill-path>/check_git_branch_guard.ps1
 powershell -ExecutionPolicy Bypass -File <skill-path>/check_git_branch_guard.ps1 -Scope fabric-data-engineering-only -DevBranch dev
 ```
+
+On Bash-based environments (e.g. Claude Code):
+
+```bash
+bash check_git_branch_guard.sh
+```
+
+Both scripts are equivalent, native implementations — use whichever matches
+the current environment.
 
 Exit code 0 permits implementation on the current branch; a nonzero exit
 stops it. Detached HEAD, Git errors, invalid DEV configuration and prohibited
 DEV names (`main`, `master`, `prod`, `production`, `test`) fail. Exact branch
 matching is case-sensitive. A valid normal example is
 `feature/FIN-123-description`; `feature/fin-123-description` is invalid.
+
+## Example valid branches
+- bugfix/BI-123-fix-allocation-bug
+- feature/DATA-456-add-audit-table
 
 The guard validates locally; Git permissions and Azure DevOps policies remain
 independent. Report a rejected commit or policy conflict and do not bypass or
