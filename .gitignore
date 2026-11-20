@@ -13,3 +13,7 @@ chats/
 __pycache__/
 *.pyc
 .pytest_cache/
+Microsoft/
+.vscode/
+
+/SESSION_RESUME.md

@@ -1,0 +1,5 @@
+# Pinned for reproducible CI and release artifacts.
+fabric-cicd==1.4.0
+PyYAML==6.0.3
+azure-identity==1.25.1
+

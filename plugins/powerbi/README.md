@@ -15,13 +15,28 @@ Activated when a user needs to design, build, or maintain Power BI solutions. Co
 | Solution architecture | "Design a semantic model spec for my inventory data" |
 | Measure testing | "Certify a test for my Total Sales measure and run it" |
 | Deployment | "Deploy the semantic model to the Production workspace" |
+| Power BI CI/CD | "Set up immutable CI/CD for this PBIP project" |
 | **Report Copilot optimization** | **"Optimize my report so Copilot answers questions using existing visuals"** |
 
 ## Agents
 
 ### `powerbi-developer`
 
-Activated when a user needs to implement Power BI solutions — creating and editing semantic models, writing and optimizing DAX, building reports in PBIR format, and deploying to Fabric workspaces. Uses the `semantic-model-authoring`, `powerbi-report-authoring`, and `fabric-cli` skills.
+Activated when a user needs to implement Power BI solutions — creating and editing semantic models, writing and optimizing DAX, building interactive PBIR/PBIP or paginated RDL reports, and deploying to Fabric workspaces. Uses the `semantic-model-authoring`, `powerbi-report-authoring`, `paginated-report-authoring`, and `fabric-cli` skills.
+
+## New report workflow
+
+```text
+Optional approved mock --> powerbi-report-planning --> specs/<work-item>/brief.md
+                                                        |
+                                                        v
+powerbi-developer <-- <Name>.spec.md <-- powerbi-architect
+```
+
+Planning owns business discovery and the approved brief. `powerbi-architect` turns that brief
+into the canonical technical specification, embedding the exact `Design Brief:` YAML. Then
+`powerbi-developer` implements and validates its executable tasks. A mock is optional input;
+mock generation, ingestion, and binding tooling are not provided here.
 
 ### Sample install prompt
 
@@ -31,7 +46,7 @@ Use @setup-team-plugins.ps1 -PluginName powerbi to install only the Power BI plu
 
 ### `powerbi-architect`
 
-Activated when a user needs to design a Power BI solution before implementation. Analyzes data sources, designs star schemas, and produces detailed spec documents (`specs/*.spec.md`) for the `powerbi-developer` agent to execute. Does not implement — only designs. Plans a progressive measure-test task chain (`sync` → developer certification → `generate`+`run`, with optional additive business certification) for every new/modified measure using the `dax-unit-testing` skill's registry contract.
+Activated when a user needs to design a Power BI solution before implementation. For new reports, consumes an approved `brief.md` and produces the canonical `specs/<work-item>/<Name>.spec.md` for the `powerbi-developer` agent to execute. Does not implement — only designs. Plans a progressive measure-test task chain (`sync` → developer certification → `generate`+`run`, with optional additive business certification) for every new/modified measure using the `dax-unit-testing` skill's registry contract.
 
 ### `pql-tester`
 
@@ -47,17 +62,31 @@ Activated for any semantic model operation — creating or editing tables, measu
 
 Activated for any report operation — creating or editing Power BI reports in PBIR format, configuring visuals and pages, applying themes, rebinding reports to different semantic models, and deploying reports to Fabric workspaces.
 
+### `paginated-report-authoring`
+
+Activated for RDL paginated report workflows: semantic-model discovery, DAX-backed dataset generation, parameters and filters, tablix layouts, XML validation, and safe publication through the Power BI Imports API. Interactive PBIR/PBIP authoring remains owned by `powerbi-report-authoring`.
+
 ### `powerbi-report-design`
 
 Activated before PBIR files are written — commits a design identity (tone + signature), routes pages to the right archetype, and applies cross-cutting design principles (color, typography, layout, accessibility). Produces a `Design Brief:` contract for `powerbi-report-authoring` to implement.
 
 ### `powerbi-report-planning`
 
-Activated for end-to-end new report/dashboard requests — guides requirements gathering, page planning, and design direction through to an approved, lockable report spec, then continues into implementation.
+Activated for new report/dashboard discovery — guides requirements, model context, page planning, and design direction through an approved `brief.md`, then hands off to `powerbi-architect` without implementation.
 
 ### `powerbi-report-management`
 
 Activated for Fabric REST CRUD on report workspace items — create, get/download, update, list, and delete report definitions via `az rest` against the Fabric REST API.
+
+### `powerbi-cicd`
+
+Activated for explicitly mapped Power BI CI/CD setup, source validation,
+immutable artifacts, protected DEV/TEST/PROD promotion, HOTFIX validation,
+release evidence, drift, and recovery. It accepts only non-secret bootstrap and
+manifest inputs for PBIP/PBIR, TMDL semantic models, and RDL reports. Render
+and plan, review and explicitly approve `CICD-SETUP.md`, then use
+developer-authenticated `fab` and `az` for scoped setup. Runtime identities are
+deployment-only; `fabric-cicd` does not deploy Power BI assets.
 
 ### `check-updates`
 
