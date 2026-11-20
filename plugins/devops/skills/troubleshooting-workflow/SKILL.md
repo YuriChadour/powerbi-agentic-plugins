@@ -29,7 +29,7 @@ repo's own `TROUBLESHOOTING.md`.
 | Dependency | Purpose | Required When |
 |---|---|---|
 | `jira-workflow` skill | Fetch/assign/transition the ticket to "In Progress" (Step 1), and post the findings comment + offer the next transition (Step 9) | Always — falls back to its own manual prompt if no Atlassian MCP is connected |
-| `git-branch-guard` skill | Create/validate the `feature/`/`bugfix/` branch for the ticket | Always, right after Step 1 |
+| `git-branch-guard` skill | Validate the scope-appropriate branch for the ticket | Always, after scope-first intake |
 | A live-query tool matching the repo's data platform (`mssql` MCP, Fabric MCP, a DAX/Power BI MCP, Postgres, etc.) | Confirm or refute root-cause candidates against real data | Step 6-7 — discovered per-repo, never assumed |
 | `tool_search_tool` (or equivalent MCP discovery) | Find the right live-query tool for this repo's platform | Step 6b, only when no working connection is already documented |
 
@@ -50,11 +50,19 @@ repo's own `TROUBLESHOOTING.md`.
 
 ## Step 2 — Get on the right branch (hand off to `git-branch-guard`)
 
-1. Invoke `git-branch-guard` with the `ticket_key` and `short_description`
-   returned from Step 1 to create/validate the
-   `feature/<KEY>-<description>` or `bugfix/<KEY>-<description>` branch.
-   Do not begin investigation (Step 5 onward) until this passes.
-
+Use `jira-workflow` Required intake before branch handling: obtain the user
+provided ticket and record it in `RESUME.md`; ask work area first and then
+bug, feature, or story. Do not infer scope or type. Stop if unresolved.
+For explicit exclusive Fabric data engineering in an adopter project, load
+its configured DEV branch and invoke the guard with
+`-Scope fabric-data-engineering-only -DevBranch <configured-name>`. Missing or
+invalid configuration stops work. If the current branch differs, apply normal
+checks. For Power BI, other, mixed, broad Fabric or unknown scope, use normal
+feature/bugfix rules. The DevOps agent's local/remote reuse and confirmation
+flow applies whenever a normal branch is needed. Always run the guard after
+switching or creating; it validates rather than creates branches. Do not begin
+investigation until validation passes. Report remote policy conflicts without
+bypassing them.
 ## Step 3 — Bootstrap or resume this repo's `TROUBLESHOOTING.md`
 
 1. Check the repo root for `TROUBLESHOOTING.md`.
@@ -82,9 +90,11 @@ repo's own `TROUBLESHOOTING.md`.
    (created alongside `TROUBLESHOOTING.md` — see
    `assets/repo-memory-convention.template.md`) and any other repo-memory
    notes.
-2. IF present → read it before doing fresh discovery. It exists to hold
-   durable facts (e.g. which environment/workspace to query, known
-   gotchas) that are cheaper to remember than to rediscover every session.
+2. IF present → read `MEMORY.md` through the pointer before doing fresh
+   discovery. The pointer must reference only `MEMORY.md`; it is for durable,
+   vendor-neutral project facts, not ticket status or active investigation
+   state. Read `TROUBLESHOOTING.md` separately for ticket history and shared
+   troubleshooting guidance.
 3. IF absent (first run in this repo) → create it from
    `assets/repo-memory-convention.template.md` now, alongside the
    `TROUBLESHOOTING.md` bootstrap in Step 3.
@@ -150,6 +160,23 @@ depends entirely on what this repo's data platform actually is.
    the shared "Standard troubleshooting environment" section (not just the
    ticket's own section).
 
+4. If evidence is unavailable, the connection is not permitted, or candidates
+   cannot be confirmed, record the blocker and leave the ticket status as
+   `Unresolved`, `Blocked`, or another explicitly non-resolved state. Never
+   convert an unverified candidate into a confirmed root cause.
+
+5. After updating the ticket-specific section, extract reusable facts into the
+   shared guidance area when the investigation produced any of these:
+   - a known-good environment, connection, profile, or tool;
+   - a diagnostic shortcut or repeatable query/check;
+   - a known platform or repository limitation;
+   - a prevention rule or guardrail; or
+   - a remediation pattern that applies beyond this ticket.
+
+   Keep the shared entry vendor-neutral where possible, factual, and usable by
+   a cold-start agent. Do not move ticket status, branch names, next steps, or
+   unresolved hypotheses into shared guidance.
+
 ## Step 9 — Report back to Jira (hand off to `jira-workflow`)
 
 1. Invoke `jira-workflow` Step 4 (post-commit-style comment flow, or its
@@ -163,6 +190,38 @@ depends entirely on what this repo's data platform actually is.
    `jira-workflow` Step 3 only after the user explicitly confirms which
    transition they want.
 
+3. Ask the user to choose what happens next: **fix**, **defer**, or
+   **transition**. Root-cause confirmation and the Jira findings comment do
+   not authorize implementation.
+
+## Step 10 — Apply the post-diagnosis fix gate
+
+Run this step only when the user chooses **fix** after a confirmed root cause.
+
+1. Ask for the fix surface: **Power BI report**, **semantic model**,
+   **Fabric**, or **Other**. Ask the user to state the intended change in one
+   sentence. Do not reuse the original Jira category as the fix surface
+   without asking; the correct surface may only become clear after diagnosis.
+2. Run the applicable reference scan before classifying a rename or removal.
+   For report and model objects, use the `powerbi-report-authoring`
+   reference-scan capability. Propose **substantial** when either trigger is
+   present:
+   - a rename or removal has dependents; or
+   - the fix introduces a new object or structural change, such as a TMDL
+     table, role, calculation group, relationship, or report page.
+3. Propose **surgical** when neither trigger applies. If the scan is
+   unavailable or the blast radius is unclear, ask the user rather than
+   guessing. The user may confirm or override the proposal; record the final
+   classification and rationale in the ticket's `TROUBLESHOOTING.md` section.
+4. For a surgical fix, hand off directly to the applicable specialist with the
+   ticket section as the planning record. Do not create a new brief,
+   specification, or OpenSpec change.
+5. For a substantial fix, resume or create the existing planning route for the
+   selected surface, using the troubleshooting section as input. Report the
+   exact handoff record and wait for an explicit implementation request.
+6. Selecting a surface and size only chooses a destination. It never starts
+   implementation automatically.
+
 ## Worked example (compressed)
 
 ```
@@ -170,7 +229,7 @@ User: investigate FIN-1806, current month is stuck on July instead of August
 
 Step 0: ticket key = FIN-1806
 Step 1: jira-workflow assigns + transitions FIN-1806 to "In Progress"
-Step 2: git-branch-guard creates feature/FIN-1806-research-current-month-data
+Step 2: scope and work type are selected; the guard validates the appropriate branch
 Step 3: TROUBLESHOOTING.md doesn't exist yet -> bootstrapped from template
 Step 4: /memories/repo/ has no convention file yet -> bootstrapped from template
 Step 5: traced CDC copy -> lakehouse table -> notebook gate -> semantic model;

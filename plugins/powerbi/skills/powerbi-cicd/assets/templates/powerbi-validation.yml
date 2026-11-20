@@ -1,0 +1,12 @@
+stages:
+- stage: Validate
+  displayName: Offline Power BI validation
+  jobs:
+  - job: ValidateSource
+    pool:
+      vmImage: windows-latest
+    steps:
+    - checkout: self
+    - powershell: |
+        py -3 scripts/powerbi_cicd.py validate --config cicd/powerbi-bootstrap.json --manifest cicd/powerbi-assets.yml --repo .
+      displayName: Validate approved Power BI source boundary
