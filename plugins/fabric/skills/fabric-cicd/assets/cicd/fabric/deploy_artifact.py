@@ -45,7 +45,7 @@ def archive_members(archive: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
     return members
 
 
-def verify_archive(artifact: Path, expected_revision: str | None, expected_environment: str, artifact_target: str | None = None) -> tuple[dict[str, zipfile.ZipInfo], dict]:
+def verify_archive(artifact: Path, expected_revision: str | None, expected_environment: str, expected_lakehouse: str | None = None, artifact_target: str | None = None) -> tuple[dict[str, zipfile.ZipInfo], dict]:
     artifact_target = artifact_target or expected_environment
     with zipfile.ZipFile(artifact) as archive:
         members = archive_members(archive)
@@ -62,6 +62,13 @@ def verify_archive(artifact: Path, expected_revision: str | None, expected_envir
         for name, expected_hash in hashes.items():
             if not isinstance(expected_hash, str) or hashlib.sha256(archive.read(members[name])).hexdigest() != expected_hash:
                 raise SystemExit(f"artifact content hash mismatch: {name}")
+        if expected_lakehouse:
+            try:
+                contract = json.loads(archive.read("target-contract.json"))
+            except KeyError as exc:
+                raise SystemExit("release artifact is missing target-contract.json") from exc
+            if (contract.get("lakehouse") or {}).get("id") != expected_lakehouse:
+                raise SystemExit("artifact Lakehouse does not match the approved target contract")
     if expected_revision and manifest.get("revision") != expected_revision:
         raise SystemExit("artifact revision does not match the trusted merged revision")
     if manifest.get("artifact_target") != artifact_target or metadata.get("artifact_target") != artifact_target:
@@ -119,6 +126,7 @@ def main() -> None:
     parser.add_argument("--environment", required=True)
     parser.add_argument("--expected-revision")
     parser.add_argument("--artifact-target", help="configured profile that built the artifact; defaults to --environment")
+    parser.add_argument("--expected-lakehouse", help="required Lakehouse ID from the approved target contract")
     parser.add_argument("--extract-to")
     parser.add_argument("--extracted-root")
     parser.add_argument("--verify-only", action="store_true")
@@ -127,7 +135,7 @@ def main() -> None:
         raise SystemExit("use either --extract-to or --extracted-root, not both")
 
     artifact = Path(args.artifact).resolve()
-    members, manifest = verify_archive(artifact, args.expected_revision, args.environment, args.artifact_target)
+    members, manifest = verify_archive(artifact, args.expected_revision, args.environment, args.expected_lakehouse, args.artifact_target)
     print(f"Verified immutable artifact revision {manifest['revision']} with {len(manifest['managed_items'])} managed items")
     if args.extract_to:
         extract_verified(artifact, Path(args.extract_to), members)

@@ -81,6 +81,24 @@ class PortedScriptTests(unittest.TestCase):
         result = run(str(CICD / "shared" / "secret_scan.py"), "--root", str(SKILL / "assets"), cwd=SKILL)
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_secret_scan_allows_key_vault_object_name_but_rejects_value(self) -> None:
+        setup = self.root / "cicd" / "fabric" / "setup.yml"
+        setup.write_text(
+            "environments:\n"
+            "  TEST:\n"
+            "    key_vault: &vault\n"
+            "      name: shared-vault\n"
+            "      secret: fabric-app-secret\n"
+            "      service_connection: key-vault-wif\n",
+            encoding="utf-8",
+        )
+        scan = CICD / "shared" / "secret_scan.py"
+        allowed = run(str(scan), "--root", str(self.root), cwd=SKILL)
+        self.assertEqual(0, allowed.returncode, allowed.stderr)
+        setup.write_text("client_secret: real-credential-value\n", encoding="utf-8")
+        rejected = run(str(scan), "--root", str(self.root), cwd=SKILL)
+        self.assertNotEqual(0, rejected.returncode)
+
     def test_protected_helpers_have_no_alternate_credential_fallback(self) -> None:
         for name in ("auth_check.py", "deploy_runner.py"):
             text = (FABRIC / name).read_text(encoding="utf-8")

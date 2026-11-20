@@ -48,7 +48,10 @@ class Tools:
         executable = shutil.which("fab")
         if not executable:
             return None
-        done = subprocess.run([executable, "api", path], capture_output=True, text=True)
+        try:
+            done = subprocess.run([executable, "api", path], capture_output=True, text=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            return None
         if done.returncode:
             return None
         try:
@@ -61,7 +64,10 @@ class Tools:
         executable = shutil.which("az")
         if not executable:
             return None
-        done = subprocess.run([executable, *args, "--output", "json"], capture_output=True, text=True)
+        try:
+            done = subprocess.run([executable, *args, "--output", "json"], capture_output=True, text=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            return None
         if done.returncode:
             return None
         try:

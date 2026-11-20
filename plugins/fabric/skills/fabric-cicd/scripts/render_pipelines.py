@@ -24,7 +24,7 @@ def render_all(setup: dict) -> dict[str, str]:
     branches, envs = setup["branches"], setup["environments"]
     profiles = setup.get("profiles", {})
     files = {"validation-steps.yml": (TEMPLATES / "validation-steps.yml").read_text(encoding="utf-8")}
-    release, promotion = ((TEMPLATES / name).read_text(encoding="utf-8") for name in ("fabric-release.yml", "fabric-prod.yml"))
+    release, promotion, contract = ((TEMPLATES / name).read_text(encoding="utf-8") for name in ("fabric-release.yml", "fabric-prod.yml", "fabric-contract.yml"))
     for env in sorted(envs):
         cfg, profile = envs[env], profiles.get(env, {})
         filename = (profile.get("azure_devops") or {}).get("pipeline_yaml", "").rsplit("/", 1)[-1] or FILES.get(env, f"fabric-{env.lower()}.yml")
@@ -36,7 +36,9 @@ def render_all(setup: dict) -> dict[str, str]:
             "KEY_VAULT_NAME": cfg["key_vault_name"], "KEY_VAULT_SECRET": cfg["key_vault_secret"],
         }
         sources = (profile.get("promotion") or {}).get("accepts_from", []) or (["TEST", "HOTFIX"] if env == "PROD" and not profiles else [])
-        if sources:
+        if profile.get("deployment_mode", "standard") == "contract":
+            files[filename] = substitute(contract, values)
+        elif sources:
             first, second = sources[0], sources[1] if len(sources) > 1 else sources[0]
             values.update({"TEST_BRANCH": branches[first], "TEST_PIPELINE": envs[first]["pipeline_name"], "HOTFIX_PIPELINE": envs[second]["pipeline_name"]})
             files[filename] = substitute(promotion, values)

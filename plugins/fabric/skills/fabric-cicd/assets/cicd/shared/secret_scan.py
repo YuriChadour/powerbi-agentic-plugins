@@ -19,9 +19,19 @@ ASSIGNMENT = re.compile(
 )
 PLACEHOLDER = re.compile(r"^(?:\$\([A-Za-z0-9_. -]+\)|\$\{[^}]+\}|<[^>]+>)$")
 SAFE_RUNTIME_REFERENCE = re.compile(r"^(?:os\.environ(?:\.get)?\[?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\()")
-# AzureKeyVault@2 uses this field for a non-secret Key Vault object name.  Remove
+# AzureKeyVault@2 uses this field for a non-secret Key Vault object name. Remove
 # only that complete YAML field before applying generic assignment detection.
-KEY_VAULT_SECRET_FILTER = re.compile(r"(?im)^\s*SecretsFilter\s*:\s*[A-Za-z0-9][A-Za-z0-9-]{0,127}\s*$")
+KEY_VAULT_SECRET_FILTER = re.compile(
+    r"(?im)^\s*SecretsFilter\s*:\s*['\"]?[A-Za-z0-9][A-Za-z0-9-]{0,127}['\"]?\s*$"
+)
+# Generated setup manifests declare the Key Vault object name under a key_vault
+# block.  It is metadata, not a credential.  Do not exempt arbitrary `secret:`
+# assignments: only remove this exact declarative configuration shape.
+KEY_VAULT_REFERENCE_BLOCK = re.compile(
+    r"(?im)^(?P<indent>[ \t]*)key_vault\s*:\s*(?:&[A-Za-z0-9_-]+\s*)?\r?\n"
+    r"(?P<body>(?:(?P=indent)[ \t]+(?:name|service_connection)\s*:[^\r\n]*\r?\n)*)"
+    r"(?P<secret>(?P=indent)[ \t]+secret\s*:\s*[A-Za-z0-9][A-Za-z0-9-]{0,127}\s*$)"
+)
 EXCLUDED_PARTS = {".git", "__pycache__", "artifacts", "tmp", "node_modules"}
 
 
@@ -29,6 +39,10 @@ def contains_secret(text: str) -> bool:
     if any(pattern.search(text) for pattern in TOKEN_PATTERNS):
         return True
     text = KEY_VAULT_SECRET_FILTER.sub("", text)
+    text = KEY_VAULT_REFERENCE_BLOCK.sub(
+        lambda match: f"{match.group('indent')}key_vault:\n{match.group('body')}",
+        text,
+    )
     return any(
         not PLACEHOLDER.fullmatch(value) and not SAFE_RUNTIME_REFERENCE.match(value)
         for value in ASSIGNMENT.findall(text)
