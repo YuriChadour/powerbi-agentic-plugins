@@ -25,7 +25,7 @@ KEY_VAULT_SECRET_FILTER = re.compile(
     r"(?im)^\s*SecretsFilter\s*:\s*['\"]?[A-Za-z0-9][A-Za-z0-9-]{0,127}['\"]?\s*$"
 )
 # Generated setup manifests declare the Key Vault object name under a key_vault
-# block.  It is metadata, not a credential.  Do not exempt arbitrary `secret:`
+# block. It is metadata, not a credential. Do not exempt arbitrary `secret:`
 # assignments: only remove this exact declarative configuration shape.
 KEY_VAULT_REFERENCE_BLOCK = re.compile(
     r"(?im)^(?P<indent>[ \t]*)key_vault\s*:\s*(?:&[A-Za-z0-9_-]+\s*)?\r?\n"
