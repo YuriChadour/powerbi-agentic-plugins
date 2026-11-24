@@ -48,6 +48,14 @@ Use @setup-team-plugins.ps1 -PluginName fabric to install only the Fabric plugin
 
 Activated when a user needs to run `fab` CLI commands to manage Fabric resources. Covers authentication, workspace and item listing, item import/export, job execution, OneLake file management, and direct calls to the Fabric, Power BI, and OneLake REST APIs.
 
+### `fabric-capacity`
+
+Activated for capacity utilization, carry-forward, throttling, and Capacity Metrics app diagnostics. It uses read-only investigation by default, routes Warehouse and SQL endpoint CU-spike correlation to `sqldw-cli`, and requires explicit approval before any capacity state change.
+
+### `audit-tenant-settings`
+
+Activated for Fabric or Power BI tenant-settings audits and governance questions. It compares live administrator-visible settings with a bundled baseline, identifies delegated overrides, and can inspect referenced Entra security groups without changing tenant state.
+
 ### `fabriciq`
 
 Activated for read-only natural-language questions over existing Power BI
@@ -69,6 +77,7 @@ apps are outside its scope.
 - **Authentication** — Run `fab auth login` before first use to authenticate with your Microsoft account
 - **FabricIQ MCP access** — The configured `FabricIQ` server must expose its
   required read-only tools and be authorized for the target Power BI artifacts.
+- **Tenant audit dependencies** — Python 3 and PyYAML for the Markdown audit; ReportLab is additionally required for PDF output. Entra group investigation requires an authenticated Azure CLI session with Microsoft Graph read permissions.
 
 ### Data-engineering and migration skills
 

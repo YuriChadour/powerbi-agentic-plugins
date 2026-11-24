@@ -1,8 +1,10 @@
+# Fabric CLI Administration Skills Specification
+
 ## Purpose
 
 Provide discoverable Fabric CLI and administration guidance with the resources needed to use it across supported plugin installations.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Fabric CLI guidance is integrated
 The Fabric plugin SHALL provide merged CLI guidance and supporting resources while retaining applicable existing functionality and routing to specialist skills.
@@ -32,3 +34,14 @@ The integrated skills SHALL preserve authorization boundaries, document external
 #### Scenario: An operation changes tenant or capacity state
 - **WHEN** guidance describes a state-changing operation
 - **THEN** it preserves the user's authorization and existing repository constraints rather than silently performing the operation.
+
+### Requirement: Newly integrated Python scripts use uv
+Newly integrated Python scripts under the Fabric CLI and tenant-audit skills SHALL declare their Python runtime dependencies using uv-compatible inline metadata and document invocation through `uv run`.
+
+#### Scenario: A user runs an integrated script
+- **WHEN** a user follows the packaged script guidance on a machine with uv available
+- **THEN** `uv run` resolves only the script's declared Python dependencies without requiring global package installation.
+
+#### Scenario: A script needs an external command or live authorization
+- **WHEN** an integrated script requires `fab`, `az`, DuckDB, SQLCMD, or a live Fabric connection
+- **THEN** its guidance distinguishes that external prerequisite from uv-managed Python dependencies and preserves the existing authentication and consent boundaries.

@@ -6,6 +6,9 @@
     "FabricMigrationEngineer.agent.md"
   ],
   "skills": [
+    "fabric-cli",
+    "fabric-capacity",
+    "audit-tenant-settings",
     "spark-cli",
     "sqldw-cli",
     "eventhouse-cli",
@@ -36,7 +39,6 @@
     "notebook-authoring/context-and-params.md"
   ],
   "excluded": [
-    "FabricAdmin",
     "FabricAppDev",
     "FabricIQ agent persona",
     "fabriciq-ontology-cli",

@@ -25,15 +25,17 @@ Activate automatically when tasks involve:
 ## Critical
 
 - Before first use, ask the user if they have Fabric admin access, any API restrictions, or preferences for Fabric/Power BI API usage
-- Remind the user to add their Fabric access level and preferences to their agent memory files (e.g., CLAUDE.md) for future sessions
+- Encourage the user to record durable access preferences in the project or harness location they control; do not assume a Claude-specific memory file exists
 - If workspace or item name is unclear, ask the user first, then verify with `fab ls` or `fab exists` before proceeding
 - The first time you use `fab` run `fab auth status` to make sure the user is authenticated. If not, ask the user to run `fab auth login` to login
 - Always use `fab --help` and `fab <command> --help` the first time you use a command to understand its syntax, first
 - Always try the simple `fab` command alone, first before piping it
-- Always use `-f` when executing command if the flag is available to do so non-interactively
+- Treat `-f` as a confirmation bypass, not a default. Use it only for a non-interactive command after the user has explicitly approved the exact state-changing operation; it is never authorization to delete, overwrite, move, or change access
 - Ensure that you avoid removing or moving items, workspaces, or definitions, or changing properties without explicit user direction
 - If a command is blocked in your permissions and you try to use it, stop and ask the user for clarification; never try to circumvent it
 - Use `fab` in non-interactive mode. Interactive mode doesn't work with coding agents
+- Do not automatically install or upgrade `fab`. Explain the available upgrade command and wait for the user's approval
+- Before an operation that creates items, runs jobs, refreshes data, schedules work, or otherwise consumes capacity, estimate its CU impact with [capacity-cost.md](./references/capacity-cost.md) and obtain explicit approval when impact is material, recurring, uncertain, or the capacity is throttling
 - When working with Fabric item code definitions for CRUD, load the `assets/*-definitions.md` files to understand more about definition format when calling the fab import operations.
 
 ## First Run
@@ -67,6 +69,12 @@ fab api -A powerbi "groups/$WS_ID/datasets/$MODEL_ID/refreshes" -X post -i '{"ty
 - [Reports](./references/reports.md) - Export, import, visuals, fields
 - [Notebooks](./references/notebooks.md) - Job execution, parameters
 - [Workspaces](./references/workspaces.md) - Create, manage, permissions
+- [Lakehouses](./references/lakehouses.md) - Items, tables, and files
+- [Warehouses](./references/warehouses.md) - Warehouse operations
+- [Connections](./references/connections.md) - Connection management
+- [Permissions](./references/permissions.md) - Workspace and item access
+- [Deployment, import, and download](./references/import-download-deploy.md) - Safe definition movement
+- [Capacity cost](./references/capacity-cost.md) - CU budgeting and throttling
 - [Full Command Reference](./references/reference.md) - All commands detailed
 - [Command Reference Table](#command-reference) - At-a-glance command syntax
 
@@ -344,31 +352,31 @@ Use `scripts/search_across_workspaces.py` for cross-workspace search with rich m
 
 ```bash
 # Find all semantic models (use "Model" not "SemanticModel")
-python3 scripts/search_across_workspaces.py --type Model
+uv run scripts/search_across_workspaces.py --type Model
 
 # Find models by name
-python3 scripts/search_across_workspaces.py --type Model --filter "Sales"
+uv run scripts/search_across_workspaces.py --type Model --filter "Sales"
 
 # Find stale items (not visited in 6+ months)
-python3 scripts/search_across_workspaces.py --type Model --not-visited-since 2024-06-01
+uv run scripts/search_across_workspaces.py --type Model --not-visited-since 2024-06-01
 
 # Find items by owner
-python3 scripts/search_across_workspaces.py --type PowerBIReport --owner "kurt"
+uv run scripts/search_across_workspaces.py --type PowerBIReport --owner "kurt"
 
 # Find Direct Lake models only
-python3 scripts/search_across_workspaces.py --type Model --storage-mode directlake
+uv run scripts/search_across_workspaces.py --type Model --storage-mode directlake
 
 # Find items in workspace
-python3 scripts/search_across_workspaces.py --type Lakehouse --workspace "fit-data"
+uv run scripts/search_across_workspaces.py --type Lakehouse --workspace "fit-data"
 
 # Get JSON output
-python3 scripts/search_across_workspaces.py --type Model --output json
+uv run scripts/search_across_workspaces.py --type Model --output json
 
 # Sort by last visited (oldest first)
-python3 scripts/search_across_workspaces.py --type Model --sort last-visited --sort-order asc
+uv run scripts/search_across_workspaces.py --type Model --sort last-visited --sort-order asc
 
 # List all available types
-python3 scripts/search_across_workspaces.py --list-types
+uv run scripts/search_across_workspaces.py --list-types
 ```
 
 **Unique DataHub fields** (not available via fab api or admin APIs):
@@ -470,6 +478,7 @@ fab api workspaces -o /tmp/workspaces.json
 - **Quote paths with spaces**: `"My Workspace.Workspace"`
 - **Use `-f` for non-interactive scripts** (skips prompts)
 - **Semantic model updates**: Use Power BI API (`-A powerbi`) for DAX queries and dataset operations
+- **Capacity diagnostics**: Use `fabric-capacity` for tenant-wide Capacity Metrics investigation and `sqldw-cli` for Warehouse or SQL endpoint CU correlation
 
 ## Need More Details?
 
@@ -499,6 +508,13 @@ fab <command> --help
 - [API Reference](./references/fab-api.md) - Capacities, gateways, pipelines, domains, dataflows, apps
 - [Full Command Reference](./references/reference.md) - All commands detailed
 - [Quick Start Guide](./references/quickstart.md) - Copy-paste examples
+- [Lakehouses](./references/lakehouses.md) - Tables and OneLake files
+- [Warehouses](./references/warehouses.md) - Warehouse operations
+- [Connections](./references/connections.md) - Connection management
+- [Permissions](./references/permissions.md) - Access control
+- [Deployment, import, and download](./references/import-download-deploy.md) - Definitions and deployment
+- [Capacity cost](./references/capacity-cost.md) - CU impact and throttling
+- [Service principals](./references/service-principals.md) - Automation identities
 
 **External references** (request markdown when possible):
 
