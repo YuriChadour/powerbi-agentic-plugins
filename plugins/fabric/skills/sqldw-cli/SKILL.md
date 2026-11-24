@@ -42,6 +42,16 @@ Read `references/operations.md` first for any operations request, then open the 
 | Capacity Metrics CU spike, costly item, SQL query/user correlation | [references/operations/capacity-metrics-correlation.md](references/operations/capacity-metrics-correlation.md) — start at section 1 |
 | custom SQL pool recommendation for an already identified SQL endpoint | [references/operations/capacity-metrics-correlation.md](references/operations/capacity-metrics-correlation.md) — skip FabricIQ and start at section 6 |
 
+## Complementary Warehouse CLI workflow
+
+For Fabric CLI Warehouse lifecycle inspection, browsing, or a bounded,
+read-only DuckDB query over Warehouse Delta files, read
+[references/warehouse-cli.md](references/warehouse-cli.md). This is not a
+fourth SQL mode: T-SQL authoring, data reads, and diagnostics continue to use
+the mode selection above and SQL Endpoint MCP whenever available. The reference
+also labels Warehouse deletion as destructive and requires explicit user
+confirmation before execution.
+
 ### Mode boundary rule
 
 Classify by **intent**, not by endpoint — all three modes issue the same `execute_query` call.
