@@ -265,11 +265,17 @@ Prompt:
 
 ## Acknowledgments
 
-The `fabric` plugin includes the `fabric-cli` skill by [Kurt Buhler](https://github.com/data-goblin), originally from [fabric-cli-plugin](https://github.com/data-goblin/fabric-cli-plugin).
+The `fabric` plugin includes the original `fabric-cli` skill by [Kurt Buhler](https://github.com/data-goblin), from [fabric-cli-plugin](https://github.com/data-goblin/fabric-cli-plugin).
+
+The expanded Fabric CLI guidance, capacity diagnostics, tenant-settings audit resources, and supporting scripts were adapted from [Yuri Chadour's power-bi-agentic-development repository](https://github.com/YuriChadour/power-bi-agentic-development). The source history attributes the relevant Fabric CLI and administration work to Kurt Buhler; this repository includes local modifications for supported harnesses, consent boundaries, and uv execution.
+
+## License
+
+This repository is licensed under the [GNU General Public License v3.0](LICENSE). Included components may retain additional permissive notices, such as the MIT notice in `plugins/fabric/skills/fabric-cli/LICENSE`; those notices remain preserved.
 
 ## No Warranty / Limitation of Liability
 
-This software is provided "as is" without warranties or conditions of any kind, either express or implied. Microsoft shall not be liable for any damages arising from use, misuse, or misconfiguration of this software.
+This software is provided without warranty as described in Sections 15 and 16 of the GPL-3.0 license.
 
 ## Code of Conduct
 
